@@ -5,42 +5,22 @@ export interface StatCardProps {
   value: string | number;
   subtitle?: string;
   badge?: React.ReactNode;
-  trend?: {
-    value: string;
-    isPositive?: boolean;
-  };
+  trend?: { value: string; isPositive?: boolean };
 }
 
-export const StatCard: React.FC<StatCardProps> = ({
-  title,
-  value,
-  subtitle,
-  badge,
-  trend,
-}) => {
+export function StatCard({ title, value, subtitle, badge, trend }: StatCardProps) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
-          {title}
-        </p>
-        {badge}
+    <div className="kpi">
+      <div className="lbl">
+        {title} {badge}
       </div>
-      <p className="mt-2 text-2xl font-bold text-gray-900">{value}</p>
+      <div className="val num">{value}</div>
       {(subtitle || trend) && (
-        <div className="mt-2 flex items-center text-xs text-gray-500 space-x-2">
-          {trend && (
-            <span
-              className={`font-semibold ${
-                trend.isPositive ? "text-emerald-700" : "text-red-600"
-              }`}
-            >
-              {trend.value}
-            </span>
-          )}
-          {subtitle && <span>{subtitle}</span>}
+        <div className="muted" style={{ fontSize: ".8rem" }}>
+          {trend ? <span>{trend.value} </span> : null}
+          {subtitle}
         </div>
       )}
     </div>
   );
-};
+}
