@@ -4,7 +4,7 @@ import {
   createIngredient, deleteIngredient, listOwnerIngredients, listProducts, productsUsingIngredient,
   saveRecipe, getRecipe, createProduct, deleteProduct, setProductAvailability, updateIngredient, updateProduct,
 } from "../src/store/catalog";
-import { createSupplier, createUser, listSuppliers, listUsers, setSupplierActive, updateUser } from "../src/store/owner";
+import { createSupplier, createUser, listSuppliers, listUsers, setSupplierActive, updateSupplier, updateUser } from "../src/store/owner";
 import { NOW } from "./helpers";
 
 const fresh = () => createState("owner", NOW);
@@ -83,6 +83,13 @@ describe("suppliers and users", () => {
     const sup = createSupplier(s, { name: "New Co", phone: "0900" }, NOW);
     expect(setSupplierActive(s, sup.id, false).isActive).toBe(false);
     expect(listSuppliers(s).find((x) => x.id === sup.id)?.isActive).toBe(false);
+  });
+  it("updateSupplier ignores undefined fields", () => {
+    const s = fresh();
+    const before = listSuppliers(s).find((x) => x.id === "sup-nova")!;
+    const after = updateSupplier(s, "sup-nova", { name: undefined, phone: "0999" });
+    expect(after.name).toBe(before.name);
+    expect(after.phone).toBe("0999");
   });
   it("lists users without passwords, with username", () => {
     const u = listUsers(fresh());

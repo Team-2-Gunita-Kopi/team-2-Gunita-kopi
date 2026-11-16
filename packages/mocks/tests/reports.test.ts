@@ -55,23 +55,78 @@ describe("reports", () => {
 });
 
 describe("dashboard", () => {
-  it("summarises today", () => {
+  const at = (daysBack: number, h: number) => new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() - daysBack, h);
+  const complete = (s: ReturnType<typeof fresh>, id: string) => { advanceOrder(s, id); advanceOrder(s, id); };
+  const place = (s: ReturnType<typeof fresh>, tx: string, pid: string, qty: number, when: Date) =>
+    placeOrder(s, req([line(s, pid, qty)], { clientTxId: tx }), USER, NOW, when);
+
+  // Controlled state: no seeded orders.
+  function controlled() {
     const s = fresh();
-    const d = getDashboard(s, NOW);
-    expect(d.date).toBe(today);
-    expect(d.isFallbackDay).toBe(false);
-    expect(d.topProducts.length).toBeLessThanOrEqual(5);
-    expect(d.recentOrders.length).toBeLessThanOrEqual(6);
-    expect(d.lowStock.every((i) => i.status !== "ok")).toBe(true);
-    const open = s.orders.filter((o) => localDay(o.createdAt) === today && ["pending", "preparing"].includes(o.status)).length;
-    expect(d.openOrdersCount).toBe(open);
+    s.orders = [];
+    return s;
+  }
+
+  it("pins today's figures", () => {
+    const s = controlled();
+    const a = place(s, "a", "p-iced-americano", 2, at(0, 9)); // 220, completed
+    const b = place(s, "b", "p-ensaymada", 1, at(0, 10)); // 70, completed
+    const c = place(s, "c", "p-iced-americano", 1, at(0, 11)); // 110, pending
+    const d = place(s, "d", "p-banana-bread", 1, at(0, 12)); // 60, preparing
+    const e = place(s, "e", "p-ensaymada", 1, at(0, 13)); // cancelled
+    complete(s, a.id); complete(s, b.id);
+    advanceOrder(s, d.id);
+    cancelOrder(s, e.id, USER, NOW);
+    expect(c.status).toBe("pending");
+    const dash = getDashboard(s, NOW);
+    expect(dash.date).toBe(today);
+    expect(dash.isFallbackDay).toBe(false);
+    expect(dash.sales).toBe(290);
+    expect(dash.ordersCount).toBe(5);
+    expect(dash.openOrdersCount).toBe(2);
+    expect(dash.topProducts).toEqual([
+      { productName: "Iced Americano", quantity: 2 },
+      { productName: "Ensaymada", quantity: 1 },
+    ]);
+    expect(dash.recentOrders.map((o) => o.id)).toEqual([e.id, d.id, c.id, b.id, a.id]);
   });
+
+  it("counts open orders and recent orders across all days", () => {
+    const s = controlled();
+    const old = place(s, "old", "p-ensaymada", 1, at(3, 9)); // pending, 3 days ago
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i++) ids.push(place(s, `t${i}`, "p-banana-bread", 1, at(0, 8 + i)).id);
+    for (const id of ids) complete(s, id);
+    const dash = getDashboard(s, NOW);
+    expect(dash.openOrdersCount).toBe(1); // only the old pending one
+    expect(dash.recentOrders.map((o) => o.id)).toEqual([...ids].reverse());
+    expect(dash.recentOrders).toHaveLength(6);
+    expect(dash.recentOrders.some((o) => o.id === old.id)).toBe(false);
+    expect(dash.sales).toBe(360);
+  });
+
+  it("limits top products to five by quantity", () => {
+    const s = controlled();
+    const pids = ["p-iced-americano", "p-ensaymada", "p-banana-bread", "p-salabat", "p-kapeng-barako", "p-tapsilog"];
+    pids.forEach((pid, i) => complete(s, place(s, `x${i}`, pid, 6 - i, at(0, 8 + i)).id));
+    const top = getDashboard(s, NOW).topProducts;
+    expect(top).toHaveLength(5);
+    expect(top.map((x) => x.quantity)).toEqual([6, 5, 4, 3, 2]);
+  });
+
   it("falls back to the latest day with orders", () => {
-    const s = fresh();
-    s.orders = s.orders.filter((o) => localDay(o.createdAt) !== today);
-    const latest = s.orders.map((o) => localDay(o.createdAt)).sort().pop()!;
-    const d = getDashboard(s, NOW);
-    expect(d.isFallbackDay).toBe(true);
-    expect(d.date).toBe(latest);
+    const s = controlled();
+    const old = place(s, "o1", "p-iced-americano", 1, at(5, 9)); // 110
+    const newer = place(s, "o2", "p-ensaymada", 3, at(2, 9)); // 210
+    const pend = place(s, "o3", "p-ensaymada", 1, at(2, 10)); // pending
+    complete(s, old.id); complete(s, newer.id);
+    const dash = getDashboard(s, NOW);
+    expect(dash.isFallbackDay).toBe(true);
+    expect(dash.date).toBe(localDay(at(2, 9).toISOString()));
+    expect(dash.sales).toBe(210);
+    expect(dash.ordersCount).toBe(2);
+    expect(dash.openOrdersCount).toBe(1);
+    expect(dash.topProducts).toEqual([{ productName: "Ensaymada", quantity: 3 }]);
+    expect(dash.recentOrders.map((o) => o.id)).toEqual([pend.id, newer.id, old.id]);
   });
 });

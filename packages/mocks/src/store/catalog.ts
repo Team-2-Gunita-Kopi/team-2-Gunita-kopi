@@ -17,7 +17,7 @@ export function slug(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item";
 }
 
-function uniqueId(taken: (id: string) => boolean, base: string): string {
+export function uniqueId(taken: (id: string) => boolean, base: string): string {
   let id = base;
   for (let n = 2; taken(id); n++) id = `${base}-${n}`;
   return id;

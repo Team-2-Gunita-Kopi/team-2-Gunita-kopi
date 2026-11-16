@@ -1,6 +1,6 @@
 import { checkUserChange } from "@gunita/contracts";
 import type { CreateEmployeeRequest, CreateSupplierRequest, Role, Supplier, UserProfile } from "@gunita/contracts";
-import { slug } from "./catalog";
+import { slug, uniqueId } from "./catalog";
 import { MockError, ownerData, type MockState } from "./state";
 
 // ---- Suppliers ----
@@ -19,8 +19,7 @@ export function createSupplier(state: MockState, req: CreateSupplierRequest, now
   if (!req.name.trim()) throw new MockError("VALIDATION", "Supplier name is required.");
   const { suppliers } = ownerData(state);
   const base = `sup-${slug(req.name)}`;
-  let id = base;
-  for (let n = 2; suppliers.some((s) => s.id === id); n++) id = `${base}-${n}`;
+  const id = uniqueId((x) => suppliers.some((s) => s.id === x), base);
   const s: Supplier = { ...req, id, name: req.name.trim(), isActive: true, createdAt: now.toISOString() };
   suppliers.push(s);
   return { ...s };
@@ -29,7 +28,7 @@ export function createSupplier(state: MockState, req: CreateSupplierRequest, now
 export function updateSupplier(state: MockState, id: string, patch: Partial<CreateSupplierRequest>): Supplier {
   const s = findSupplier(state, id);
   if (patch.name !== undefined && !patch.name.trim()) throw new MockError("VALIDATION", "Supplier name is required.");
-  Object.assign(s, patch);
+  for (const [k, v] of Object.entries(patch)) if (v !== undefined) (s as Record<string, unknown>)[k] = v;
   if (patch.name !== undefined) s.name = patch.name.trim();
   return { ...s };
 }
@@ -72,8 +71,7 @@ export function createUser(
     throw new MockError("VALIDATION", "That email is already in use.");
   }
   const base = `u-${username.toLowerCase()}`;
-  let id = base;
-  for (let n = 2; users.some((u) => u.id === id); n++) id = `${base}-${n}`;
+  const id = uniqueId((x) => users.some((u) => u.id === x), base);
   const user = {
     id,
     authUserId: id,
