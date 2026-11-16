@@ -19,19 +19,22 @@
 - Payment: UI offers Cash only (`paymentMethod: "cash"`).
 - Currency `₱1,234.50` (`en-PH`, 2 decimals); date-time `Nov 3, 2026 2:22 PM`.
 - Styling: use the class names in `packages/ui/css/styles.css`; don't restyle with Tailwind color classes. New styles go into `styles.css` in its style.
-- Owner-only data (unit cost, costing, margins, suppliers, users other than login identities) must never be imported by `apps/pos` — POS imports only `@gunita/mocks/pos`.
+- **Shared demo data:** the mock store runs once in `apps/api` (`:3002`) behind `POST /api/mock/rpc`, enabled only when `MOCK_MODE=true`. Both frontends' `mock.ts` files call it over HTTP; a barista order must appear in the owner app.
+- Owner-only data (unit cost, costing, margins, suppliers, users other than login identities) never reaches `apps/pos`: POS RPC calls go through the POS projection, and `apps/pos` imports only **types** from `@gunita/mocks` (`import type`).
 - Mock session cookie accepted **only** when `process.env.NEXT_PUBLIC_USE_MOCKS === "true"`.
-- No `localStorage` for business data except the mock store key (`gk-mock-v1` admin, `gk-mock-pos-v1` POS) and UI prefs (`gk-sidebar-collapsed`).
+- No `localStorage` for business data; only UI prefs (`gk-sidebar-collapsed`). Mock data lives in the api process + `apps/api/.mock-data/state.json` (git-ignored).
 - Touch targets ≥ 44px in POS; focus ring, labelled dialogs, `aria-live` toasts, `aria-current="page"`, reduced-motion.
 - Settings constants: shop name `Gunita Kopi`, receipt footer `Salamat po! Come again.`, queue prefix `A`, auto-logout 5 min, idle warning countdown 30 s.
-- Never edit files under `apps/api` except where a task says so (none do).
+- Never edit files under `apps/api` except in Task 9b (mock service only; real route handlers untouched).
+- Demo runs with `pnpm dev` (admin `:3000`, pos `:3001`, api `:3002`) and env: admin/pos `NEXT_PUBLIC_USE_MOCKS=true`, `NEXT_PUBLIC_API_URL=http://localhost:3002`; api `MOCK_MODE=true`.
 
 ## Review Focus
 
 1. **Paying with a non-numeric, empty or comma-formatted amount** ("1,000", "") — Confirm stays disabled and no NaN reaches the order; covered in Task 19 (`payment rejects empty and non-numeric amounts`).
 2. **Two quick taps on Confirm / Sync now** — exactly one outbox record / one mock order per `clientTxId`; covered in Task 19 (`double confirm creates one outbox record`) and Task 20 (`syncing the same transaction twice returns duplicate`).
 3. **Stock running out between adding to cart and checkout** (another line used the last milk) — checkout is rejected by the store with the ingredient named, cart kept; covered in Task 7 (`placeOrder rejects when combined lines exceed stock`) and Task 20 (failed sync shows reason).
-4. **Reload mid-session** — mock data and session survive; corrupt `gk-mock-v1` JSON reseeds instead of crashing; covered in Task 6 (`corrupt storage reseeds`).
+4. **Restarting the dev servers or reloading mid-session** — demo data and session survive; a corrupt `.mock-data/state.json` reseeds instead of crashing; covered in Task 6 (`corrupt storage reseeds`) and Task 9b (`file store survives restart`).
+6. **Mock service not running** (api on `:3002` stopped) — screens show the error state `Can't reach the demo data service on :3002. Is \`pnpm dev\` running?` instead of hanging; POS checkout still saves to the outbox; covered in Task 15 (`rpc network error shows service message`).
 5. **Owner deactivating/demoting the last active owner or themselves** via the edit form (not only the toggle) — blocked with toast; covered in Task 30 (`edit form cannot demote last owner`).
 
 ---
@@ -194,7 +197,7 @@ docs/prototype/                                    Task 31 (move prototype files
   - `seed/catalog.ts` (POS-safe): `seedProducts(): PosProduct[]` with `ingredients: RecipeIngredient[]` (no cost fields), `seedIngredients(): PosIngredient[]`, settings `{shopName, receiptFooter, queuePrefix, autoLogoutMin}`. Port values from `apps/admin/store.js` (products ~L141–200, ingredients ~L122–140); map ids as in the prototype (`p-iced-spanish-latte`, `i-beans`…). Settings type `MockSettings = { shopName: string; receiptFooter: string; queuePrefix: string; autoLogoutMin: number }` exported from `@gunita/mocks/pos` and `/owner`.
   - `seed/owner.ts` (owner-only): unit costs by ingredient id, packaging costs by product, suppliers (6, from `store.js` L112–121), users (`owner/owner123` Eric Espedilion owner_admin; `barista/barista123` Juan Dela Cruz; `barista2/barista123` Maria Santos; emails `<username>@gunita.local`)
   - `seed/orders.ts`: `seedOrders(now: Date, rng)` — port `buildSeedOrders`/`buildSeedTx` so there are orders today and on prior days with deterministic RNG seed `20261103`
-  - `store/state.ts`: `type MockState` (products, ingredients, orders, stockTx, settings, queue `{day, seq}`, plus owner-only `suppliers?`, `users?`, `unitCosts?`, `packaging?`); `createState(kind: "owner" | "pos", now: Date): MockState`; `loadState(storage: Storage | null, key: string, kind, now): MockState` (reseeds on missing/corrupt JSON); `saveState(storage, key, state): void`
+  - `store/state.ts`: `type MockState` (products, ingredients, orders, stockTx, settings, queue `{day, seq}`, plus owner-only `suppliers?`, `users?`, `unitCosts?`, `packaging?`); `createState(kind: "owner" | "pos", now: Date): MockState`; `loadState(storage: StateStorage | null, key: string, kind, now): MockState` (`StateStorage` defined here, see Task 9) (reseeds on missing/corrupt JSON); `saveState(storage, key, state): void`
   - `class MockError extends Error { code: "NOT_FOUND" | "VALIDATION" | "INSUFFICIENT_STOCK" | "FORBIDDEN" }`
 
 - [ ] **Step 1: Write failing tests:** `createState("owner")` has 6 suppliers, 3 users, ≥ 16 products across all 4 categories, today has ≥ 1 order; `createState("pos")` has `suppliers`, `users`, `unitCosts` undefined and `JSON.stringify` contains none of `unitCost`, `costPrice`, `supplier`; `corrupt storage reseeds` — storage with `"{not json"` under the key returns a valid seeded state; save then load returns equal state; same `now` → identical seed (deterministic).
@@ -260,11 +263,36 @@ docs/prototype/                                    Task 31 (move prototype files
 
 **Interfaces:**
 - Produces:
-  - `createOwnerMockDb(opts: { storage: Storage | null; now?: () => Date }): OwnerMockDb` — binds every op from Tasks 7–8 to a persisted state (key `gk-mock-v1`, save after each mutating call), plus `reset(): void`
-  - `createPosMockDb(opts): PosMockDb` — key `gk-mock-pos-v1`; exposes only: `listCatalog(): { products: PosProduct[]; ingredients: PosIngredient[]; settings; updatedAt: string }`, `listOrders`, `getOrder`, `placeOrder`, `advanceOrder`, `cancelOrder`, `listIngredients(): PosIngredient[]`, `createStockTransaction`, `listStockTransactions`, `syncOrders`, `authenticate`, `reset`
-- [ ] **Step 1: Write failing tests:** `PosMockDb` results never contain `unitCost`, `costPrice`, `profitMarginPercent`, `supplierId`; `tests/entrypoints.test.ts` also reads `src/pos.ts` and every file it imports transitively (simple regex over `from "./..."`) and asserts none is `seed/owner.ts` or `store/owner.ts`/`store/reports.ts`; owner db persists across two instances sharing one in-memory `Storage` stub.
+  - `type StateStorage = { getItem(key: string): string | null; setItem(key: string, value: string): void }` (Task 6's `loadState/saveState` take this instead of DOM `Storage`)
+  - `createOwnerMockDb(opts: { storage: StateStorage | null; key?: string /*default "gk-mock-v1"*/; now?: () => Date }): OwnerMockDb` — binds every op from Tasks 7–8 to one persisted state (save after each mutating call), plus `reset(): void`
+  - `createPosView(db: OwnerMockDb): PosMockDb` — over the **same** state; exposes only: `listCatalog(): { products: PosProduct[]; ingredients: PosIngredient[]; settings: MockSettings; updatedAt: string }`, `listOrders`, `getOrder`, `placeOrder`, `advanceOrder`, `cancelOrder`, `listIngredients(): PosIngredient[]`, `createStockTransaction`, `listStockTransactions`, `syncOrders`, `authenticate`, `reset`; every result is parsed through `PosProductSchema`/`PosIngredientSchema` (or stripped) so owner-only fields are removed
+  - `OWNER_OPS: (keyof OwnerMockDb)[]`, `POS_OPS: (keyof PosMockDb)[]` allow-lists
+  - `src/pos.ts` exports **types only** (`PosMockDb`, `MockSettings`, `POS_OPS` as a `const` tuple of strings) so `apps/pos` can `import type` without pulling seed code
+- [ ] **Step 1: Write failing tests:** `createPosView(db)` results never contain `unitCost`, `costPrice`, `profitMarginPercent`, `supplierId`; an order placed through the POS view appears in `db.listOrders({})` (shared state); owner db persists across two instances sharing one in-memory `StateStorage` stub.
 - [ ] **Step 2–4:** FAIL → implement → PASS.
 - [ ] **Step 5: Commit** `feat(mocks): add owner and pos entry points`.
+
+### Task 9b: Shared mock service in `apps/api`
+
+**Files:**
+- Create: `apps/api/src/lib/mock-db.ts`, `apps/api/src/app/api/mock/rpc/route.ts`, `apps/api/tests/mock-rpc.test.ts`
+- Modify: `apps/api/package.json` (+ `@gunita/mocks: workspace:*`), `apps/api/next.config.ts` (`transpilePackages` += `@gunita/mocks`), `apps/api/vitest.config.ts` (alias `@gunita/mocks`), `apps/api/.env.example` (`MOCK_MODE=true`), root `.gitignore` (`apps/api/.mock-data/`)
+
+**Interfaces:**
+- Consumes: `createOwnerMockDb`, `createPosView`, `OWNER_OPS`, `POS_OPS`, `MockError` (Tasks 6–9)
+- Produces:
+  - `fileStorage(dir: string): StateStorage` (sync `fs` read/write of `<dir>/<key>.json`, creates the dir; read errors → null)
+  - `getSharedMockDb(): { owner: OwnerMockDb; pos: PosMockDb }` — singleton on `globalThis.__gkMockDb` (survives Next dev hot reload), storage `fileStorage(path.join(process.cwd(), ".mock-data"))`
+  - `POST /api/mock/rpc` — 404 `{ok:false,error:{code:"NOT_FOUND",message:"Mock mode is off"}}` unless `process.env.MOCK_MODE === "true"`; body `{ app: "owner" | "pos"; op: string; args: unknown[] }` (zod); op not in that app's allow-list → 400 `UNKNOWN_OP`; `MockError` → 400 `{ok:false,error:{code,message}}`; success `{ ok: true, data }`; `OPTIONS` + CORS headers via `getCorsHeaders` from `src/lib/cors.ts`. The route is excluded from the api auth middleware (check `apps/api/src/middleware.ts` matcher and add `/api/mock` to its public paths).
+- [ ] **Step 1: Write failing tests** (call the route's `POST` with `new NextRequest(...)`):
+  - `returns 404 when MOCK_MODE is off`.
+  - `pos cannot call owner ops` — `{app:"pos", op:"listSuppliers"}` → 400 `UNKNOWN_OP`.
+  - `order placed by pos is visible to owner` — `pos.placeOrder` then `owner.listOrders` contains its `orderNumber`.
+  - `pos catalog has no cost fields` — response JSON text contains no `unitCost`/`costPrice`.
+  - `file store survives restart` — write through one db, clear `globalThis.__gkMockDb`, new db (same temp dir) sees the order.
+  - `mock errors map to 400` — underpaid `placeOrder` → `{ok:false, error:{code:"VALIDATION"}}`.
+- [ ] **Step 2–4:** FAIL → implement → PASS; `pnpm --filter @gunita/api typecheck` PASS.
+- [ ] **Step 5: Commit** `feat(api): add dev-only shared mock service`.
 
 ### Task 10: `@gunita/ui` — base components in the prototype style
 
@@ -367,13 +395,13 @@ docs/prototype/                                    Task 31 (move prototype files
 
 **Interfaces:**
 - Produces:
-  - `getMockDb(): OwnerMockDb` (singleton, `window.localStorage` in browser, null on server)
-  - `mockCall<T>(feature: string, fn: (db: OwnerMockDb) => T, delayMs = 250): Promise<T>` — `structuredClone` result; throws `Error("Mock failure (<feature>)")` when the URL has `?mockFail=<feature>`; converts `MockError` to `Error` with its message
+  - `mockRpc<T>(op: string, ...args: unknown[]): Promise<T>` in `src/lib/mock-db.ts` — `POST ${env.apiUrl}/api/mock/rpc` with `{ app: "owner", op, args }`; `{ok:false}` → throws `Error(error.message)`; network failure → throws `Error("Can't reach the demo data service on :3002. Is \`pnpm dev\` running?")`; throws `Error("Mock failure (<op>)")` when the URL has `?mockFail=<op>` (for error-state demos). Feature `mock.ts` files are thin wrappers over `mockRpc` (op names = `OwnerMockDb` method names).
   - `unwrap<T>(res: ApiResponse<T>): T` added to `src/lib/api-client.ts` (throws `Error(res.error?.message ?? "Request failed")`)
   - Feature folder pattern used by every later task: `features/<f>/types.ts` declares `interface <F>Data {…}`; `mock.ts` and `api.ts` each `export const data: <F>Data`; `index.ts` `export const <f>Data: <F>Data = USE_MOCKS ? mock.data : api.data`; hooks in `hooks/use-<f>.ts` with query keys `["<f>", …]`
   - Owner nav (exact order, labels/short): Dashboard/Home `/dashboard` home, Orders/Orders `/orders` receipt, Products/Menu `/products` cup, Inventory/Stock `/inventory` box, Suppliers/Suppliers `/suppliers` truck, Reports/Reports `/reports` chart, Users/Users `/users` users
-  - Layout: `QueryProvider` + `OverlayProvider` + `AppShell` + `IdleLogout` (5 min) ; top bar user = session full name, role label `Owner`; menu items `Reset demo data` (mock only; confirm → `getMockDb().reset()` → invalidate all queries → toast `Demo data reset.`) and `Sign out`
-- [ ] **Step 1: Write failing tests:** layout renders 7 nav links in order with Dashboard `aria-current` on `/dashboard`; `Reset demo data` is absent when `USE_MOCKS` is false; `mockCall("orders", …)` rejects when `location.search` is `?mockFail=orders`.
+  - Layout: `QueryProvider` + `OverlayProvider` + `AppShell` + `IdleLogout` (5 min) ; top bar user = session full name, role label `Owner`; menu items `Reset demo data` (mock only; confirm `Reset all demo data for both Owner and Barista?` → `mockRpc("reset")` → invalidate all queries → toast `Demo data reset.`) and `Sign out`
+  - Owner queries for orders and dashboard use `refetchInterval: 5000` and `refetchOnWindowFocus: true` so barista orders appear without a manual reload
+- [ ] **Step 1: Write failing tests:** layout renders 7 nav links in order with Dashboard `aria-current` on `/dashboard`; `Reset demo data` is absent when `USE_MOCKS` is false; `mockRpc` posts `{app:"owner", op:"listOrders", args:[{}]}` (mock `fetch`); `rpc network error shows service message` — `fetch` rejecting → error text `Can't reach the demo data service on :3002. Is \`pnpm dev\` running?`; `?mockFail=listOrders` rejects.
 - [ ] **Step 2–4:** FAIL → implement → PASS.
 - [ ] **Step 5: Commit** `feat(admin): add owner shell and mock data plumbing`.
 
@@ -387,7 +415,7 @@ docs/prototype/                                    Task 31 (move prototype files
 **Interfaces:**
 - Consumes: `CartLine`, `addLine`, `lineTotal`, `orderTotal` (Task 3)
 - Produces:
-  - `getMockDb(): PosMockDb`, `mockCall` (same contract as Task 15)
+  - `mockRpc` (same contract as Task 15 but `app: "pos"`; ops = `PosMockDb` method names; `import type` only from `@gunita/mocks/pos`)
   - `useConnectivity(): { online: boolean; simulatedOffline: boolean; setSimulatedOffline(v: boolean): void }` — `online = navigator.onLine && !simulatedOffline`; simulated flag in memory only; mock `listCatalog`/sync calls throw `Error("Offline")` while `!online`
   - `useCartStore` (Zustand): `lines: CartLine[]`, `add(p: PosProduct)`, `increment(lineId)`, `decrement(lineId)` (removes at 1), `remove(lineId)`, `updateLine(lineId, patch: Partial<Pick<CartLine,"addons"|"customization"|"specialInstructions">>)`, `clear()`; selectors `selectTotal`, `selectCount` (Σ qty)
   - POS nav: POS/POS `/pos` cart, Orders/Orders `/orders` receipt, Inventory/Stock `/inventory` box
@@ -601,6 +629,6 @@ docs/prototype/                                    Task 31 (move prototype files
 - Move (git mv): `apps/admin/{owner.html,app.js,admin.js,store.js}` → `docs/prototype/`; `apps/pos/{barista.html,pos.js}` → `docs/prototype/`; delete the duplicate `apps/pos/app.js`, `apps/pos/store.js` (identical to the admin copies — verify with `diff` first)
 - Modify: every `apps/*/src/features/*/README.md` (describe files actually present), `docs/architecture/*_GUIDELINE.md` §13/§14 (mark Q-items `Decided: …` per spec §13), prototype references → `docs/prototype/`, `README.md` (how to run with mocks: `NEXT_PUBLIC_USE_MOCKS=true`, demo accounts)
 - [ ] **Step 1:** Apply the moves and doc edits.
-- [ ] **Step 2: Verify:** `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build` → all PASS. Manually with `pnpm dev`: owner `owner/owner123` at `:3000` and barista `barista/barista123` at `:3001` complete one checkout online, one with `Simulate offline` then sync, cancel an order, edit a recipe; check 360 px and 1280 px widths; no console errors.
+- [ ] **Step 2: Verify:** `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build` → all PASS. Manually with `pnpm dev`: owner `owner/owner123` at `:3000` and barista `barista/barista123` at `:3001` complete one checkout online and confirm it appears in the owner's Orders and Dashboard within 5 s, one with `Simulate offline` then sync (also appears for the owner), cancel an order from the owner side and see it Cancelled on the barista board, edit a recipe; restart `pnpm dev` and confirm the orders are still there; check 360 px and 1280 px widths; no console errors.
 - [ ] **Step 3:** Run `graphify update .` to refresh the knowledge graph.
 - [ ] **Step 4: Commit** `chore: move prototype to docs, update readmes and guidelines`.
