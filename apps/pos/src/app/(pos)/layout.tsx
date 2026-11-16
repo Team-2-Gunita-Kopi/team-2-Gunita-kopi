@@ -8,9 +8,9 @@ import { initSyncTriggers } from "@/offline/triggers";
 import { getPendingSyncCount } from "@/offline/outbox";
 
 const POS_NAV_ITEMS: NavItem[] = [
-  { label: "POS Terminal", href: "/pos" },
-  { label: "Orders", href: "/orders" },
-  { label: "Inventory", href: "/inventory" },
+  { label: "POS Terminal", short: "POS", href: "/pos", icon: "cart" },
+  { label: "Orders", short: "Orders", href: "/orders", icon: "receipt" },
+  { label: "Inventory", short: "Stock", href: "/inventory", icon: "box" },
 ];
 
 export default function PosAppLayout({
@@ -82,12 +82,16 @@ export default function PosAppLayout({
       currentPath={pathname}
       onNavigate={(href) => router.push(href)}
       topBarProps={{
-        appName: "Barista POS",
+        title: "Barista POS",
         userName: "Barista Station 1",
-        role: "barista",
+        roleLabel: "Barista",
         onLogout: handleLogout,
-        statusBadge: connectionBadge,
-        syncIndicator: syncIndicator,
+        statusSlot: (
+          <>
+            {connectionBadge}
+            {syncIndicator}
+          </>
+        ),
       }}
     >
       {children}
