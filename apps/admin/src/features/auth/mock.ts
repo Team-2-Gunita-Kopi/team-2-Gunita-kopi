@@ -6,6 +6,7 @@ import {
 } from "@gunita/auth";
 import type { UserProfile } from "@gunita/contracts";
 import { mockRpc } from "@/lib/mock-db";
+import { USE_MOCKS } from "@/lib/use-mocks";
 
 const REQUIRED_ROLE = "owner_admin";
 export const WRONG_ROLE_MESSAGE = "This is the Owner page. Please use the Barista POS for this account.";
@@ -15,6 +16,7 @@ export const INACTIVE_MESSAGE = "This account is inactive. Contact the administr
 export const BAD_CREDENTIALS_MESSAGE = "Incorrect username or password.";
 
 export async function signIn(identifier: string, password: string): Promise<MockSession> {
+  if (!USE_MOCKS) throw new Error("Mock sign-in is disabled.");
   const user = await mockRpc<UserProfile | null>("authenticate", identifier, password);
   if (!user) throw new Error(BAD_CREDENTIALS_MESSAGE);
   if (!user.isActive) throw new Error(INACTIVE_MESSAGE);
@@ -34,6 +36,7 @@ export async function signOut(): Promise<void> {
 }
 
 export function getSession(): MockSession | null {
+  if (!USE_MOCKS) return null;
   const match = document.cookie
     .split("; ")
     .find((c) => c.startsWith(`${MOCK_SESSION_COOKIE}=`));

@@ -17,7 +17,12 @@ export async function mockRpc<T>(op: string, ...args: unknown[]): Promise<T> {
   } catch {
     throw new Error("Can't reach the demo data service on :3002. Is `pnpm dev` running?");
   }
-  const body = (await res.json()) as RpcResponse<T>;
+  let body: RpcResponse<T>;
+  try {
+    body = (await res.json()) as RpcResponse<T>;
+  } catch {
+    throw new Error("Demo data service returned an unexpected response.");
+  }
   if (!body.ok) throw new Error(body.error.message);
   return body.data;
 }
