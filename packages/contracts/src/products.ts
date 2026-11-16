@@ -18,6 +18,7 @@ export const ProductSchema = z.object({
   sellingPrice: z.number().nonnegative(),
   costPrice: z.number().nonnegative().default(0),
   profitMarginPercent: z.number().optional(),
+  description: z.string().optional(),
   imageUrl: z.string().url().optional(),
   isActive: z.boolean().default(true),
   ingredients: z.array(RecipeIngredientSchema).optional(),
@@ -36,5 +37,17 @@ export type CreateProductRequest = z.infer<typeof CreateProductRequestSchema>;
 
 export const UpdateRecipeRequestSchema = z.object({
   ingredients: z.array(RecipeIngredientSchema),
+  packagingCost: z.number().nonnegative().optional(),
 });
 export type UpdateRecipeRequest = z.infer<typeof UpdateRecipeRequestSchema>;
+
+export const ProductCostingSchema = z.object({
+  productId: z.string(),
+  ingredientCost: z.number(),
+  packagingCost: z.number(),
+  totalCost: z.number(),
+  margin: z.number(),
+  marginPercent: z.number(),
+  updatedAt: z.string(),
+});
+export type ProductCosting = z.infer<typeof ProductCostingSchema>;

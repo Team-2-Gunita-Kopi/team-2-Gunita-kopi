@@ -9,12 +9,14 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "lint": "echo \"@gunita/contracts lint clean\""
   },
   "dependencies": {
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.7"
   }
 }
