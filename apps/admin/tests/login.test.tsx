@@ -66,7 +66,7 @@ describe("admin login", () => {
     await login("owner", "owner123");
     await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith("/dashboard"));
   });
-  it.each(["%2F%5Cevil.example", "%2F%09%2Fevil.example", "%2F%0A%2Fevil.example"])(
+  it.each(["%2F.%2F%2Fevil.example", "%2Fa%2F..%2F%2Fevil.example", "%2Flogin", "%2F%5Cevil.example", "%2F%09%2Fevil.example", "%2F%0A%2Fevil.example"])(
     "ignores the tricky off-site redirect %s",
     async (enc) => {
       window.history.pushState({}, "", `/login?redirect=${enc}`);

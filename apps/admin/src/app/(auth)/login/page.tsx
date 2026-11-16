@@ -12,7 +12,10 @@ function safeRedirect(value: string | null): string {
   if (!value) return HOME;
   try {
     const u = new URL(value, window.location.origin);
-    return u.origin === window.location.origin ? u.pathname + u.search + u.hash : HOME;
+    if (u.origin !== window.location.origin) return HOME;
+    const path = u.pathname + u.search + u.hash;
+    // "//host" would be protocol-relative; "/login" would loop back here.
+    return path.startsWith("//") || path.startsWith("/login") ? HOME : path;
   } catch {
     return HOME;
   }
