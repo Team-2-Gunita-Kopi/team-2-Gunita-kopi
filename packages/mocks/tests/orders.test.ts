@@ -43,6 +43,23 @@ describe("placeOrder", () => {
     expect(JSON.stringify(s)).toBe(snapshot);
   });
 
+  it("rejects line-total mismatch, bad order total, inactive and unknown products", () => {
+    const s = createState("pos", NOW);
+    const l = line(s, LATTE, 1);
+    expect(codeOf(() => placeOrder(s, req([{ ...l, subtotal: 1 }]), USER, NOW))).toBe("VALIDATION");
+    expect(codeOf(() => placeOrder(s, { ...req([l]), totalAmount: 1, paidAmount: 500 }, USER, NOW))).toBe("VALIDATION");
+    s.products.find((p) => p.id === LATTE)!.isActive = false;
+    expect(codeOf(() => placeOrder(s, req([l]), USER, NOW))).toBe("VALIDATION");
+    expect(codeOf(() => placeOrder(s, req([{ ...l, productId: "p-nope" }]), USER, NOW))).toBe("NOT_FOUND");
+  });
+
+  it("accepts totals adjusted by tax and discount", () => {
+    const s = createState("pos", NOW);
+    const r = req([line(s, LATTE, 1)]);
+    const o = placeOrder(s, { ...r, taxAmount: 10, discountAmount: 5, totalAmount: r.totalAmount + 5, paidAmount: 500 }, USER, NOW);
+    expect(o.totalAmount).toBe(r.totalAmount + 5);
+  });
+
   it("rejects underpayment", () => {
     const s = createState("pos", NOW);
     const r = req([line(s, LATTE, 1)]);
@@ -67,6 +84,26 @@ describe("cancelOrder / advanceOrder", () => {
     advanceOrder(s, o2.id);
     advanceOrder(s, o2.id);
     expect(() => cancelOrder(s, o2.id, USER, NOW)).toThrow(MockError);
+  });
+
+  it("cancel restores the deducted amounts even after the recipe is edited or the product deleted", () => {
+    const s = createState("pos", NOW);
+    const beans = stockOf(s, "i-beans");
+    const o = placeOrder(s, req([line(s, LATTE, 1)]), USER, NOW);
+    s.products.find((p) => p.id === LATTE)!.ingredients = [];
+    cancelOrder(s, o.id, USER, NOW);
+    expect(stockOf(s, "i-beans")).toBe(beans);
+    const o2 = placeOrder(s, req([line(s, "p-iced-americano", 1)], { clientTxId: "tx-2" }), USER, NOW);
+    s.products = s.products.filter((p) => p.id !== "p-iced-americano");
+    expect(cancelOrder(s, o2.id, USER, NOW).status).toBe("cancelled");
+    expect(stockOf(s, "i-beans")).toBe(beans);
+  });
+
+  it("cannot cancel an already-cancelled order", () => {
+    const s = createState("pos", NOW);
+    const o = placeOrder(s, req([line(s, LATTE, 1)]), USER, NOW);
+    cancelOrder(s, o.id, USER, NOW);
+    expect(codeOf(() => cancelOrder(s, o.id, USER, NOW))).toBe("VALIDATION");
   });
 
   it("advances pending -> preparing -> completed then throws", () => {

@@ -1,4 +1,4 @@
-import { ADDON_CATALOG, round2 } from "@gunita/contracts";
+import { ADDON_CATALOG, itemTotal, round2 } from "@gunita/contracts";
 import type { CreateOrderRequest } from "@gunita/contracts";
 import type { MockState } from "../src/store/state";
 
@@ -11,13 +11,12 @@ export function line(state: MockState, productId: string, quantity: number, addo
     const a = ADDON_CATALOG.find((x) => x.label === l)!;
     return { ingredientId: a.ingredientId, label: a.label, quantity: a.quantity, price: a.price };
   });
-  const sum = addons.reduce((s, a) => s + a.price, 0);
   return {
     productId,
     productName: p.name,
     quantity,
     unitPrice: p.sellingPrice,
-    subtotal: round2((p.sellingPrice + sum) * quantity),
+    subtotal: itemTotal({ unitPrice: p.sellingPrice, quantity, addons }),
     addons,
   };
 }

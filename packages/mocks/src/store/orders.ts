@@ -1,4 +1,4 @@
-import { canCancel, computeChange, isOrderable, nextQueueNo, nextStatus, round2 } from "@gunita/contracts";
+import { canCancel, computeChange, isOrderable, itemTotal, nextQueueNo, nextStatus, round2 } from "@gunita/contracts";
 import type { CreateOrderRequest, Order, OrderFilters } from "@gunita/contracts";
 import { MockError, type MockState } from "./state";
 import { applyStockChange, localDay, newestFirst, type Actor } from "./stock";
@@ -24,7 +24,7 @@ export function getOrder(state: MockState, id: string): Order {
 }
 
 /** Ingredient need for order lines (recipe + add-ons, times line quantity); rejects unavailable products. */
-function ingredientNeed(state: MockState, items: Order["items"], checkActive: boolean): Map<string, number> {
+function ingredientNeed(state: MockState, items: Order["items"]): Map<string, number> {
   const need = new Map<string, number>();
   const add = (id: string, n: number) => need.set(id, (need.get(id) ?? 0) + n);
   const stockById = Object.fromEntries(state.ingredients.map((i) => [i.id, i.currentStock]));
@@ -32,7 +32,7 @@ function ingredientNeed(state: MockState, items: Order["items"], checkActive: bo
     const product = state.products.find((p) => p.id === item.productId);
     const recipe = product?.ingredients ?? [];
     if (!product) throw new MockError("NOT_FOUND", `Product ${item.productName} not found.`);
-    if (checkActive && isOrderable(product, recipe, stockById).reason === "unavailable") {
+    if (isOrderable(product, recipe, stockById).reason === "unavailable") {
       throw new MockError("VALIDATION", `${product.name} is unavailable.`);
     }
     for (const r of recipe) add(r.ingredientId, r.quantity * item.quantity);
@@ -41,16 +41,27 @@ function ingredientNeed(state: MockState, items: Order["items"], checkActive: bo
   return need;
 }
 
-export function placeOrder(state: MockState, req: CreateOrderRequest, user: Actor, now: Date): Order {
+export function placeOrder(
+  state: MockState,
+  req: CreateOrderRequest,
+  user: Actor,
+  now: Date,
+  createdAt: Date = now,
+): Order {
   const change = computeChange(req.totalAmount, req.paidAmount);
   if (!change.ok) throw new MockError("VALIDATION", change.error);
   for (const item of req.items) {
-    const addonSum = (item.addons ?? []).reduce((s, a) => s + a.price, 0);
-    if (round2((item.unitPrice + addonSum) * item.quantity) !== round2(item.subtotal)) {
+    if (itemTotal(item) !== round2(item.subtotal)) {
       throw new MockError("VALIDATION", `Line total mismatch for ${item.productName}.`);
     }
   }
-  const need = ingredientNeed(state, req.items, true);
+  const expectedTotal = round2(
+    req.items.reduce((sum, i) => sum + i.subtotal, 0) - req.discountAmount + req.taxAmount,
+  );
+  if (expectedTotal !== round2(req.totalAmount)) {
+    throw new MockError("VALIDATION", "Order total does not match its lines.");
+  }
+  const need = ingredientNeed(state, req.items);
   for (const [id, qty] of need) {
     const ing = state.ingredients.find((i) => i.id === id);
     if (!ing) throw new MockError("NOT_FOUND", "Ingredient not found.");
@@ -73,7 +84,7 @@ export function placeOrder(state: MockState, req: CreateOrderRequest, user: Acto
     paidAmount: req.paidAmount,
     changeAmount: change.change,
     paymentMethod: req.paymentMethod,
-    createdAt: now.toISOString(),
+    createdAt: createdAt.toISOString(),
     createdBy: user.id,
     cashierName: user.fullName,
   };
@@ -105,18 +116,18 @@ export function advanceOrder(state: MockState, id: string): Order {
 export function cancelOrder(state: MockState, id: string, user: Actor, now: Date): Order {
   const o = getOrder(state, id);
   if (!canCancel(o.status)) throw new MockError("VALIDATION", `Cannot cancel a ${o.status} order.`);
-  const need = ingredientNeed(state, o.items, false);
   const label = o.orderNumber ?? o.id;
-  for (const [ingId, qty] of need) {
+  const deductions = state.stockTx.filter((t) => t.type === "order_deduction" && t.referenceId === o.id);
+  for (const d of deductions) {
     applyStockChange(state, {
-      ingredientId: ingId,
+      ingredientId: d.ingredientId,
       type: "stock_in",
-      change: qty,
+      change: -d.quantityChange,
       reason: `Cancelled ${label}`,
       referenceId: o.id,
       createdBy: user.fullName,
       now,
-      idBase: `st-cancel-${label}-${ingId}`,
+      idBase: `st-cancel-${label}-${d.ingredientId}`,
     });
   }
   o.status = "cancelled";

@@ -49,9 +49,14 @@ export function addLine(
   ];
 }
 
+/** Price of one order line: (unit price + add-on prices) x quantity, rounded to 2dp. */
+export function itemTotal(item: { unitPrice: number; quantity: number; addons?: OrderAddon[] }): number {
+  const addons = (item.addons ?? []).reduce((s, a) => s + a.price, 0);
+  return round2((item.unitPrice + addons) * item.quantity);
+}
+
 export function lineTotal(l: CartLine): number {
-  const addons = l.addons.reduce((s, a) => s + a.price, 0);
-  return round2((l.unitPrice + addons) * l.quantity);
+  return itemTotal(l);
 }
 
 export function orderTotal(lines: CartLine[]): number {
