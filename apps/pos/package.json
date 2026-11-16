@@ -13,6 +13,7 @@
     "@gunita/auth": "workspace:*",
     "@gunita/config": "workspace:*",
     "@gunita/contracts": "workspace:*",
+    "@gunita/mocks": "workspace:*",
     "@gunita/ui": "workspace:*",
     "@serwist/next": "^9.0.11",
     "@supabase/supabase-js": "^2.49.1",
