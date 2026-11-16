@@ -575,3 +575,14 @@ body.auth-mode .main{padding:0}
   .print-area .slip{background:#fff;color:#000;border:1px dashed #999}
   .print-area .bay-head{color:#333}
 }
+
+/* shared component states (@gunita/ui) */
+.lowstock-banner.banner-danger{border-color:var(--danger);background:rgba(224,113,90,.08)}
+.lowstock-banner.banner-danger svg{color:var(--danger)}
+.empty-state{text-align:center;padding:1.5rem 1rem}
+.empty-state p{margin:0 0 .6rem}
+.skeleton-row{height:1rem;margin:.6rem 0;border-radius:6px;background:linear-gradient(90deg,var(--muted) 25%,var(--card-2) 50%,var(--muted) 75%);background-size:200% 100%;opacity:.6;animation:skeleton-shimmer 1.4s ease-in-out infinite}
+@keyframes skeleton-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.skeleton-row{animation:none}}
+.tbl tr.row-click{cursor:pointer}
+.tbl tr.row-click:focus-visible{outline:2px solid var(--moss);outline-offset:-2px}

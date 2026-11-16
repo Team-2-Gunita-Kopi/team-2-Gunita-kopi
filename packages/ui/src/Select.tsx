@@ -16,8 +16,10 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function 
   { label, error, options, ...props },
   ref,
 ) {
+  const uid = React.useId();
+  const errorId = error ? `${uid}-err` : undefined;
   const select = (
-    <select ref={ref} aria-invalid={error ? true : undefined} {...props}>
+    <select ref={ref} aria-invalid={error ? true : undefined} aria-describedby={errorId} {...props}>
       {options.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}
@@ -27,7 +29,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function 
   );
   if (!label) return select;
   return (
-    <Field label={label} error={error}>
+    <Field label={label} error={error} errorId={errorId}>
       {select}
     </Field>
   );

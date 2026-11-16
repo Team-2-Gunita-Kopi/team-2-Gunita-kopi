@@ -49,8 +49,19 @@ export function DataTable<T>({
             data.map((row) => (
               <tr
                 key={keyExtractor(row)}
+                className={onRowClick ? "row-click" : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
-                style={onRowClick ? { cursor: "pointer" } : undefined}
+                onKeyDown={
+                  onRowClick
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onRowClick(row);
+                        }
+                      }
+                    : undefined
+                }
               >
                 {columns.map((c) => (
                   <td key={c.key} className={c.className}>

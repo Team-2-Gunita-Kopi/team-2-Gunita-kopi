@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Order } from "@gunita/contracts";
-import { Button, PageHeader, Receipt, Seg, StatusBadge, Tabs } from "../src";
+import { Banner, Button, DataTable, EmptyState, Input, PageHeader, Receipt, Seg, Skeleton, StatusBadge, Tabs } from "../src";
 
 const order: Order = {
   id: "o1",
@@ -92,5 +92,55 @@ describe("base components", () => {
     expect(screen.getByText("Pending sync")).toBeInTheDocument();
     rerender(<Receipt order={order} shopName="Gunita Kopi" footer="x" cashierName="Ana" />);
     expect(screen.queryByText("Pending sync")).toBeNull();
+  });
+
+  it("Receipt shows capitalized method when paid and Unpaid row otherwise", () => {
+    const { rerender } = render(<Receipt order={order} shopName="S" footer="f" cashierName="Ana" />);
+    expect(screen.getByText("Cash")).toBeInTheDocument();
+    expect(screen.getByText("Change")).toBeInTheDocument();
+    rerender(<Receipt order={{ ...order, paidAmount: 0, changeAmount: 0 }} shopName="S" footer="f" cashierName="Ana" />);
+    expect(screen.getByText("Unpaid")).toBeInTheDocument();
+    expect(screen.queryByText("Change")).toBeNull();
+  });
+
+  it("Banner danger uses the banner-danger class", () => {
+    render(<Banner tone="danger">Oops</Banner>);
+    expect(screen.getByRole("alert")).toHaveClass("lowstock-banner", "banner-danger");
+  });
+
+  it("Skeleton renders the requested rows", () => {
+    const { container } = render(<Skeleton rows={4} />);
+    expect(container.querySelectorAll(".skeleton-row")).toHaveLength(4);
+  });
+
+  it("EmptyState renders the message and action", () => {
+    render(<EmptyState message="Nothing here" action={<button>Add</button>} />);
+    expect(screen.getByText("Nothing here")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add" })).toBeInTheDocument();
+  });
+
+  it("DataTable rows are keyboard-activatable", async () => {
+    const onRowClick = vi.fn();
+    render(
+      <DataTable
+        columns={[{ key: "n", header: "Name" }]}
+        data={[{ id: "1", n: "Latte" }]}
+        keyExtractor={(r) => r.id}
+        onRowClick={onRowClick}
+      />,
+    );
+    const row = screen.getByText("Latte").closest("tr")!;
+    expect(row).toHaveAttribute("tabindex", "0");
+    expect(row).toHaveClass("row-click");
+    row.focus();
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard(" ");
+    expect(onRowClick).toHaveBeenCalledTimes(2);
+  });
+
+  it("Input links its error text via aria-describedby", () => {
+    render(<Input label="Name" error="Required" />);
+    const id = screen.getByLabelText(/Name/).getAttribute("aria-describedby")!;
+    expect(document.getElementById(id)).toHaveTextContent("Required");
   });
 });

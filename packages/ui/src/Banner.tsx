@@ -9,12 +9,8 @@ export interface BannerProps {
 export function Banner({ tone, children }: BannerProps) {
   const danger = tone === "danger";
   return (
-    <div
-      className="lowstock-banner"
-      role={danger ? "alert" : "status"}
-      style={danger ? { borderColor: "var(--danger)" } : undefined}
-    >
-      <Icon name="alert" style={danger ? { color: "var(--danger)" } : undefined} />
+    <div className={danger ? "lowstock-banner banner-danger" : "lowstock-banner"} role={danger ? "alert" : "status"}>
+      <Icon name="alert" />
       <div>{children}</div>
     </div>
   );
