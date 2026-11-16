@@ -99,6 +99,22 @@ describe("cancelOrder / advanceOrder", () => {
     expect(stockOf(s, "i-beans")).toBe(beans);
   });
 
+  it("cancelling a seeded pending order restores stock via stock_in rows", () => {
+    const s = createState("pos", NOW);
+    const o = s.orders.find((x) => x.status === "pending")!;
+    const rows = s.stockTx.filter((t) => t.type === "order_deduction" && t.referenceId === o.id);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.reason === `Order ${o.orderNumber}`)).toBe(true);
+    const ing = rows[0]!.ingredientId;
+    const before = stockOf(s, ing);
+    const n = s.stockTx.length;
+    cancelOrder(s, o.id, USER, NOW);
+    const added = s.stockTx.slice(n);
+    expect(added.length).toBe(rows.length);
+    expect(added.every((r) => r.type === "stock_in")).toBe(true);
+    expect(stockOf(s, ing)).toBe(before - rows[0]!.quantityChange);
+  });
+
   it("cannot cancel an already-cancelled order", () => {
     const s = createState("pos", NOW);
     const o = placeOrder(s, req([line(s, LATTE, 1)]), USER, NOW);
