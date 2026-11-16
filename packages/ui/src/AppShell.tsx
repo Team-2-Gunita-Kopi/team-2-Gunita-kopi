@@ -103,7 +103,8 @@ export const AppShell: React.FC<AppShellProps> = ({
             <a
               key={n.href}
               href={n.href}
-              className="role-link"
+              className={"role-link" + (isActivePath(currentPath, n.href) ? " active" : "")}
+              aria-current={isActivePath(currentPath, n.href) ? "page" : undefined}
               onClick={(e) => {
                 setMoreOpen(false);
                 go(e, n.href);
