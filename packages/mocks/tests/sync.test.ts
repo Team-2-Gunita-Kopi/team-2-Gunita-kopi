@@ -16,6 +16,15 @@ describe("syncOrders", () => {
     expect(s.orders.length).toBe(before + 1);
   });
 
+  it("keeps the offline createdAt on the order while stock rows use now", () => {
+    const s = createState("pos", NOW);
+    const t = new Date(2026, 10, 3, 9, 0, 0).toISOString();
+    const order = req([line(s, "p-iced-americano", 1)], { clientTxId: "tx-off" });
+    syncOrders(s, { orders: [{ transactionId: "tx-off", order, createdAt: t }] }, USER, NOW);
+    expect(s.orders.at(-1)?.createdAt).toBe(t);
+    expect(s.stockTx.at(-1)?.createdAt).toBe(NOW.toISOString());
+  });
+
   it("reports failed items with a message and continues", () => {
     const s = createState("pos", NOW);
     s.ingredients.find((i) => i.id === "i-milk")!.currentStock = 0;
