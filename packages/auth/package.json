@@ -9,12 +9,14 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "echo \"@gunita/auth lint clean\""
+    "lint": "echo \"@gunita/auth lint clean\"",
+    "test": "vitest run"
   },
   "dependencies": {
     "@gunita/contracts": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.7"
   }
 }
