@@ -52,7 +52,7 @@ export function createState(kind: StateKind, now: Date): MockState {
     products,
     ingredients: seedIngredients(now),
     orders,
-    stockTx: seedStockTx(now),
+    stockTx: seedStockTx(now, orders),
     settings: seedSettings(),
     queue,
   };

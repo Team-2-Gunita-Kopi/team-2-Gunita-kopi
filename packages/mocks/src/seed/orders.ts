@@ -1,6 +1,6 @@
 import { ADDON_CATALOG, nextQueueNo, round2 } from "@gunita/contracts";
 import type { Order, OrderItem, OrderStatus, OrderType, PosProduct, StockTransaction } from "@gunita/contracts";
-import { seedProducts, seedSettings } from "./catalog";
+import { seedIngredients, seedProducts, seedSettings } from "./catalog";
 import { seedUsers } from "./owner";
 
 type Rng = () => number;
@@ -170,7 +170,7 @@ export function seedOrders(now: Date, rng: Rng): { orders: Order[]; queue: Queue
 }
 
 /** The prototype's nine Stock History rows, placed relative to `now`. */
-export function seedStockTx(now: Date): StockTransaction[] {
+export function seedStockTx(now: Date, orders: Order[] = []): StockTransaction[] {
   const users = seedUsers(now);
   const nameOf = (id: string) => (users.find((u) => u.id === id)?.fullName as string);
   const juan = nameOf("u-juan");
@@ -209,6 +209,7 @@ export function seedStockTx(now: Date): StockTransaction[] {
   const yday = (h: number, m: number) => at(now, 1, h, m);
   const week = at(now, 2, 16, 55);
   return [
+    ...seedDeductionRows(now, orders),
     row(9, "i-caramel", "in", 100, 772, yday(17, 29), juan, "Delivery"),
     row(8, "i-caramel", "in", 22, 672, yday(17, 28), juan, "Delivery"),
     row(7, "i-vanilla", "out", 120, 600, week, eric, "Weekly usage"),
@@ -219,4 +220,40 @@ export function seedStockTx(now: Date): StockTransaction[] {
     row(2, "i-longganisa", "out", 140, 700, week, eric, "Weekly usage"),
     row(1, "i-ube", "out", 100, 500, week, eric, "Weekly usage"),
   ];
+}
+
+/**
+ * Historical order_deduction rows for seeded orders so cancelling one restores stock.
+ * Seeded ingredient stock already reflects them: newStock = current stock, previousStock = newStock + qty.
+ */
+function seedDeductionRows(now: Date, orders: Order[]): StockTransaction[] {
+  const products = new Map(seedProducts(now).map((p) => [p.id, p]));
+  const ingredients = new Map(seedIngredients(now).map((i) => [i.id, i]));
+  const rows: StockTransaction[] = [];
+  for (const o of orders) {
+    const need = new Map<string, number>();
+    const add = (id: string, n: number) => need.set(id, (need.get(id) ?? 0) + n);
+    for (const it of o.items) {
+      for (const r of products.get(it.productId)?.ingredients ?? []) add(r.ingredientId, r.quantity * it.quantity);
+      for (const a of it.addons ?? []) add(a.ingredientId, a.quantity * it.quantity);
+    }
+    for (const [ingredientId, qty] of need) {
+      const ing = ingredients.get(ingredientId);
+      if (!ing) continue;
+      rows.push({
+        id: `stx-${o.id}-${ingredientId}`,
+        ingredientId,
+        ingredientName: ing.name,
+        type: "order_deduction",
+        quantityChange: -qty,
+        previousStock: ing.currentStock + qty,
+        newStock: ing.currentStock,
+        referenceId: o.id,
+        reason: `Order ${o.orderNumber ?? o.id}`,
+        createdAt: o.createdAt,
+        createdBy: o.cashierName ?? o.createdBy,
+      });
+    }
+  }
+  return rows;
 }
