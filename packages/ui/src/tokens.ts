@@ -1,27 +1,22 @@
 export const DESIGN_TOKENS = {
   colors: {
-    // Gunita dark green theme
-    forestDark: "#091A14",
-    forest: "#0F2F24",
-    forestLight: "#1C4B3B",
-    // Main action button green
-    accent: "#15803D",
-    accentHover: "#166534",
-    accentLight: "#DCFCE7",
-    accentFocus: "rgba(21, 128, 61, 0.25)",
-    // Warm colored tags for low stock
-    warmStock: {
-      bg: "#FEF3C7",
-      text: "#92400E",
-      border: "#FDE68A",
-      solid: "#D97706",
-    },
-    // Neutrals
-    background: "#F9FAFB",
-    surface: "#FFFFFF",
-    border: "#E5E7EB",
-    textMain: "#111827",
-    textMuted: "#6B7280",
+    // Gunita dark "nature" theme (mirrors css/styles.css :root)
+    bg: "#0F1410",
+    surface: "#151D16",
+    card: "#1B251C",
+    card2: "#212C22",
+    muted: "#2A362B",
+    border: "#34433A",
+    fg: "#EDE6D6",
+    fgMuted: "#A9B3A3",
+    moss: "#7FAE68",
+    mossStrong: "#5C8A48",
+    leaf: "#A7C98B",
+    coffee: "#C08A4E",
+    coffeeDeep: "#5A3B24",
+    bark: "#3B2A1E",
+    warn: "#D9A441",
+    danger: "#E0715A",
   },
   spacing: {
     xs: "0.25rem",
@@ -31,8 +26,9 @@ export const DESIGN_TOKENS = {
     xl: "2rem",
   },
   fonts: {
-    body: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    heading:
-      'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    head: "var(--font-head)",
+    body: "var(--font-body)",
+    num: "var(--font-num)",
+    baybayin: "var(--font-baybayin)",
   },
 } as const;
