@@ -1,9 +1,7 @@
-import { ADDON_CATALOG, nextQueueNo } from "@gunita/contracts";
+import { ADDON_CATALOG, nextQueueNo, round2 } from "@gunita/contracts";
 import type { Order, OrderItem, OrderStatus, OrderType, PosProduct, StockTransaction } from "@gunita/contracts";
-import { seedProducts } from "./catalog";
+import { seedProducts, seedSettings } from "./catalog";
 import { seedUsers } from "./owner";
-
-const round2 = (x: number): number => Math.round((x + Number.EPSILON) * 100) / 100;
 
 type Rng = () => number;
 type Queue = { day: string; seq: number };
@@ -102,13 +100,18 @@ export function seedOrders(now: Date, rng: Rng): { orders: Order[]; queue: Queue
   const prod = (id: string) => byId.get(id) as PosProduct;
   const users = seedUsers(now);
   const cashiers = users.filter((u) => u.role === "barista").map((u) => ({ id: u.id, fullName: u.fullName }));
-  const juan = { id: "u-juan", fullName: "Juan Dela Cruz" };
-  const maria = { id: "u-maria", fullName: "Maria Santos" };
+  const userRef = (id: string) => {
+    const u = users.find((x) => x.id === id) as (typeof users)[number];
+    return { id: u.id, fullName: u.fullName };
+  };
+  const juan = userRef("u-juan");
+  const prefix = seedSettings().queuePrefix;
+  const maria = userRef("u-maria");
 
   const orders: Order[] = [];
   let queue: Queue | null = null;
   const nextNo = (day: Date): string => {
-    const n = nextQueueNo(queue, day, "A");
+    const n = nextQueueNo(queue, day, prefix);
     queue = { day: n.day, seq: n.seq };
     return n.queueNo;
   };
@@ -168,8 +171,10 @@ export function seedOrders(now: Date, rng: Rng): { orders: Order[]; queue: Queue
 
 /** The prototype's nine Stock History rows, placed relative to `now`. */
 export function seedStockTx(now: Date): StockTransaction[] {
-  const juan = "Juan Dela Cruz";
-  const eric = "Eric Espedilion";
+  const users = seedUsers(now);
+  const nameOf = (id: string) => (users.find((u) => u.id === id)?.fullName as string);
+  const juan = nameOf("u-juan");
+  const eric = nameOf("u-owner");
   const names: Record<string, string> = {
     "i-caramel": "Caramel syrup",
     "i-vanilla": "Vanilla syrup",
