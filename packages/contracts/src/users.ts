@@ -6,6 +6,7 @@ export const UserProfileSchema = z.object({
   authUserId: z.string(),
   email: z.string().email(),
   fullName: z.string(),
+  username: z.string().optional(),
   role: RoleSchema,
   phone: z.string().optional(),
   isActive: z.boolean(),

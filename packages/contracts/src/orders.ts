@@ -16,6 +16,14 @@ export const OrderTypeSchema = z.enum([
 ]);
 export type OrderType = z.infer<typeof OrderTypeSchema>;
 
+export const OrderAddonSchema = z.object({
+  ingredientId: z.string(),
+  label: z.string(),
+  quantity: z.number().positive(),
+  price: z.number().nonnegative(),
+});
+export type OrderAddon = z.infer<typeof OrderAddonSchema>;
+
 export const OrderItemSchema = z.object({
   id: z.string().optional(),
   productId: z.string(),
@@ -24,6 +32,9 @@ export const OrderItemSchema = z.object({
   unitPrice: z.number().nonnegative(),
   subtotal: z.number().nonnegative(),
   notes: z.string().optional(),
+  addons: z.array(OrderAddonSchema).optional(),
+  customization: z.string().optional(),
+  specialInstructions: z.string().optional(),
 });
 export type OrderItem = z.infer<typeof OrderItemSchema>;
 
@@ -42,6 +53,7 @@ export const OrderSchema = z.object({
   paymentMethod: z.enum(["cash", "card", "qr_code", "other"]),
   createdAt: z.string(),
   createdBy: z.string(),
+  cashierName: z.string().optional(),
   notes: z.string().optional(),
 });
 export type Order = z.infer<typeof OrderSchema>;
@@ -60,3 +72,9 @@ export const CreateOrderRequestSchema = z.object({
   notes: z.string().optional(),
 });
 export type CreateOrderRequest = z.infer<typeof CreateOrderRequestSchema>;
+
+export type OrderFilters = {
+  status?: OrderStatus | "all";
+  date?: string;
+  search?: string;
+};

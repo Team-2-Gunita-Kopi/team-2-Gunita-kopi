@@ -12,3 +12,4 @@ export * from "./reports";
 export * from "./dashboard";
 export * from "./receipts";
 export * from "./audit";
+export * from "./pos";
