@@ -66,7 +66,18 @@ describe("payment", () => {
       ok: false,
       error: "Amount paid is less than the total.",
     });
-    expect(computeChange(0.1 + 0.2, 0.3).ok).toBe(true);
+    expect(computeChange(0.1 + 0.2, 0.3)).toEqual({ ok: true, change: 0 });
+  });
+  it("never returns negative zero", () => {
+    const r = computeChange(0.1 + 0.2, 0.3);
+    expect(r.ok && Object.is(r.change, 0)).toBe(true);
+  });
+  it("rejects non-finite amounts", () => {
+    const err = { ok: false, error: "Amount paid is less than the total." };
+    expect(computeChange(100, NaN)).toEqual(err);
+    expect(computeChange(NaN, 100)).toEqual(err);
+    expect(computeChange(100, Infinity)).toEqual(err);
+    expect(computeChange(Infinity, 100)).toEqual(err);
   });
   it("parses amounts", () => {
     expect(parseAmount("1,000.50")).toBe(1000.5);

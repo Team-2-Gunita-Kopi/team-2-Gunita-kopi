@@ -78,7 +78,7 @@ export function computeChange(
   | { ok: true; change: number }
   | { ok: false; error: "Amount paid is less than the total." } {
   const change = round2(paid - total);
-  if (change < 0) return { ok: false, error: "Amount paid is less than the total." };
+  if (!Number.isFinite(total) || !Number.isFinite(paid) || change < 0) return { ok: false, error: "Amount paid is less than the total." };
   return { ok: true, change };
 }
 
