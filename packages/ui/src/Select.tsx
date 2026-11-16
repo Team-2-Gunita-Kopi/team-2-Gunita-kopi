@@ -1,4 +1,5 @@
 import React from "react";
+import { Field } from "./Field";
 
 export interface SelectOption {
   value: string;
@@ -11,41 +12,23 @@ export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElemen
   options: SelectOption[];
 }
 
-export const Select: React.FC<SelectProps> = ({
-  label,
-  error,
-  options,
-  id,
-  className = "",
-  ...props
-}) => {
-  const selectId =
-    id || (label ? label.toLowerCase().replace(/\s+/g, "-") : undefined);
-
-  return (
-    <div className="w-full">
-      {label && (
-        <label
-          htmlFor={selectId}
-          className="block text-xs font-medium text-gray-700 mb-1"
-        >
-          {label}
-        </label>
-      )}
-      <select
-        id={selectId}
-        className={`w-full px-3 py-2 text-sm bg-white border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${
-          error ? "border-red-500" : "border-gray-300"
-        } ${className}`}
-        {...props}
-      >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-    </div>
+export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function Select(
+  { label, error, options, ...props },
+  ref,
+) {
+  const select = (
+    <select ref={ref} aria-invalid={error ? true : undefined} {...props}>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
   );
-};
+  if (!label) return select;
+  return (
+    <Field label={label} error={error}>
+      {select}
+    </Field>
+  );
+});

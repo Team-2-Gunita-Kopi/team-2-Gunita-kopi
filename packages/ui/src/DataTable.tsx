@@ -4,6 +4,8 @@ export interface Column<T> {
   key: string;
   header: string;
   render?: (row: T) => React.ReactNode;
+  /** Optional td/th class, e.g. "num", "mono", "status-cell", "act-cell". */
+  className?: string;
 }
 
 export interface DataTableProps<T> {
@@ -11,33 +13,35 @@ export interface DataTableProps<T> {
   data: T[];
   keyExtractor: (row: T) => string;
   emptyMessage?: string;
+  /** Extra table classes, e.g. "tbl-orders". */
+  className?: string;
+  onRowClick?: (row: T) => void;
 }
 
-export function DataTable<T extends Record<string, unknown>>({
+export function DataTable<T>({
   columns,
   data,
   keyExtractor,
   emptyMessage = "No records found.",
+  className,
+  onRowClick,
 }: DataTableProps<T>): React.ReactElement {
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
-      <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
-        <thead className="bg-gray-50 text-xs font-medium uppercase text-gray-500">
+    <div className="tbl-wrap">
+      <table className={["tbl", className ?? ""].filter(Boolean).join(" ")}>
+        <thead>
           <tr>
-            {columns.map((col) => (
-              <th key={col.key} className="px-4 py-3">
-                {col.header}
+            {columns.map((c) => (
+              <th key={c.key} className={c.className}>
+                {c.header}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-200">
+        <tbody>
           {data.length === 0 ? (
             <tr>
-              <td
-                colSpan={columns.length}
-                className="px-4 py-8 text-center text-gray-500"
-              >
+              <td colSpan={columns.length} className="muted" style={{ textAlign: "center" }}>
                 {emptyMessage}
               </td>
             </tr>
@@ -45,11 +49,12 @@ export function DataTable<T extends Record<string, unknown>>({
             data.map((row) => (
               <tr
                 key={keyExtractor(row)}
-                className="hover:bg-gray-50/75 transition-colors"
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                style={onRowClick ? { cursor: "pointer" } : undefined}
               >
-                {columns.map((col) => (
-                  <td key={col.key} className="px-4 py-3 text-gray-800">
-                    {col.render ? col.render(row) : String(row[col.key] ?? "")}
+                {columns.map((c) => (
+                  <td key={c.key} className={c.className}>
+                    {c.render ? c.render(row) : String((row as Record<string, unknown>)[c.key] ?? "")}
                   </td>
                 ))}
               </tr>
