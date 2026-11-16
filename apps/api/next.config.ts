@@ -27,6 +27,7 @@ const nextConfig: NextConfig = {
     "@gunita/auth",
     "@gunita/db-types",
     "@gunita/config",
+    "@gunita/mocks",
   ],
 };
 
