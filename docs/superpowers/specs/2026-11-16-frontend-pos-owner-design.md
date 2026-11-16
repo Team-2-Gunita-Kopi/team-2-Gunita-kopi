@@ -26,7 +26,7 @@ Authoritative specs for screen behavior: `docs/architecture/OWNER_ADMIN_GUIDELIN
 - Follows the existing folder structure (§6).
 
 **Non-goals (this round)**
-- Implementing `apps/api` or Supabase schema/migrations.
+- Implementing the real `apps/api` routes or Supabase schema/migrations. (The only `apps/api` change is the temporary shared mock service in §7.)
 - Real Supabase login, MFA (TOTP), audit-log writes.
 - PWA install prompt polish, Playwright E2E tests.
 - Product image upload to Supabase Storage (mock keeps images as data URLs / none).
@@ -106,8 +106,13 @@ The existing `(app)` / `(pos)` route groups are kept (the guideline's `(admin)` 
 - Screens never import `api.ts`/`mock.ts` directly; they use the feature's hooks.
 - Server-state hooks: **TanStack Query** (named in both guidelines; new dependency). Mutations invalidate the related query keys.
 - `@gunita/mocks` ports the prototype's `store.js` seed (users, suppliers, ingredients, products, recipes, costing, ~seed orders, stock transactions, add-on catalogue, settings) to TypeScript and implements the same operations the prototype store had (place order, set status, cancel with stock restore, stock in/out, recipe save + costing recompute, user activate/deactivate, report aggregations). Mock calls add a small artificial delay so loading states are visible.
-- **Mock persistence (my call):** the mock store lives in memory and is mirrored to `localStorage` under one key (`gk-mock-v1`) so data survives reloads during demos; a "Reset demo data" item in the user menu reseeds it. This is demo data, not business data, and is deleted along with the mocks.
-- **Known limitation:** admin (`:3000`) and POS (`:3001`) are different origins, so each app has its own mock copy — a sale made in the POS does not appear in the owner dashboard while on mocks. Accepted for this round.
+- **Shared demo data (decided by the user, 2026-11-16):** the owner must see every order the barista makes. Because admin (`:3000`) and POS (`:3001`) are different browser origins, browser storage can't be shared, so the mock store runs **once, server-side, in `apps/api` (`:3002`)** as a temporary mock service:
+  - One route, `POST /api/mock/rpc`, enabled only when `MOCK_MODE=true` in `apps/api` (404 otherwise). Body `{ app: "owner" | "pos", op, args }`; response `{ ok: true, data } | { ok: false, error: { code, message } }`.
+  - It holds a single `@gunita/mocks` state shared by both apps, kept in memory and saved to `apps/api/.mock-data/state.json` (git-ignored) so restarting the dev server keeps the demo data.
+  - Each app may only call its own allow-listed operations. POS operations go through a projection that strips owner-only fields (§8), so cost/supplier/user data never reaches the POS even in mock mode.
+  - The feature `mock.ts` files call this route; `api.ts` still targets the real endpoints. "Reset demo data" (owner and POS user menus) reseeds the shared state.
+  - No Supabase, no database, no auth on this route; it is dev-only and is deleted along with the mocks when the real API lands.
+  - Running the demo needs all three apps: `pnpm dev` (Turborepo starts admin, pos and api).
 - Every screen has loading, empty and error states (error state reachable by making a mock throw).
 
 ## 8. Contracts changes needed
@@ -123,7 +128,7 @@ The existing `(app)` / `(pos)` route groups are kept (the guideline's `(admin)` 
 - Supplier and report row types: add where missing.
 - Payment method stays the existing enum; UI offers **Cash only** in v1 (guideline Q9). Order type `online` exists in the enum but is hidden in the UI.
 
-**Owner-only data never reaches the POS (least privilege, Barista guideline §7).** Owner-only fields (unit cost, costing, margins, suppliers, users) live in owner-specific schemas/exports, not on the shared Product/Ingredient types used by the POS. `@gunita/mocks` exposes two entry points: `@gunita/mocks/owner` (full seed) and `@gunita/mocks/pos` (products, recipes, add-ons, ingredient name/unit/stock/reorder level, orders, stock transactions — no costs, suppliers or users). The POS app only imports `@gunita/mocks/pos`, so costing data is never in its bundle, localStorage or Dexie.
+**Owner-only data never reaches the POS (least privilege, Barista guideline §7).** Owner-only fields (unit cost, costing, margins, suppliers, users) live in owner-specific schemas/exports, not on the shared Product/Ingredient types used by the POS. The shared mock service (§7) answers POS requests through a POS projection (products, recipes, add-ons, ingredient name/unit/stock/reorder level, orders, stock transactions — no costs, suppliers or users). The POS app never imports `@gunita/mocks` runtime code (types only), so costing data is never in its bundle, browser storage or Dexie.
 
 Where the guidelines and `docs/database.md` disagree (report view names, stock transaction types), the frontend uses the contracts types and does not depend on DB names; the mismatch is listed in §13.
 
@@ -184,6 +189,7 @@ Behavior per screen is exactly as in the guidelines; prototype (`app.js`, `admin
 | D9 | Guideline `queue_no` column | contract's existing `orderNumber` carries it |
 | D10 | Guideline user `status` | existing `isActive` shown as Active/Inactive |
 | D11 | Existing POS middleware lets `owner_admin` in "for cross-testing" | removed; owner sees Restricted in POS (Barista guideline §4) |
+| D12 | Prototype shares data between owner and barista pages via one browser storage | shared mock service in `apps/api` (`POST /api/mock/rpc`, `MOCK_MODE=true`) — see §7 |
 
 ## 14. Prototype files
 
