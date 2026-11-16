@@ -1,0 +1,2 @@
+-- Gunita Kopi POS: Initial Seed Data Placeholder
+-- Note: Initial seed data (default categories, test ingredients, demo products) will be added in Phase 3 database tasks.
