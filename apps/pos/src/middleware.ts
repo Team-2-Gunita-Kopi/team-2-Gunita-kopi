@@ -1,10 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { extractRoleFromToken, isBarista, isOwnerAdmin } from "@gunita/auth";
+import { resolveRole } from "@/lib/session";
+import { USE_MOCKS } from "@/lib/use-mocks";
+
+const REQUIRED_ROLE = "barista";
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow static assets, manifest, icons, and service worker
+  // Allow public static assets, manifest, icons and the service worker
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon.ico") ||
@@ -17,50 +20,20 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Allow login page
-  if (pathname === "/login") {
+  // Public pages
+  if (pathname === "/login" || pathname === "/restricted") {
     return NextResponse.next();
   }
 
-  // Check auth cookie or header
-  const cookies = request.cookies.getAll();
-  let accessToken: string | null = null;
-
-  for (const cookie of cookies) {
-    if (cookie.name.includes("-auth-token")) {
-      try {
-        const parsed = JSON.parse(cookie.value);
-        if (Array.isArray(parsed) && parsed[0]) {
-          accessToken = parsed[0];
-        } else if (parsed?.access_token) {
-          accessToken = parsed.access_token;
-        }
-      } catch {
-        accessToken = cookie.value;
-      }
-      break;
-    }
-  }
-
-  if (!accessToken) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader?.startsWith("Bearer ")) {
-      accessToken = authHeader.substring(7);
-    }
-  }
-
-  if (!accessToken) {
+  const role = resolveRole(request, USE_MOCKS);
+  if (!role) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // Require barista role (or owner_admin during cross-testing)
-  const role = extractRoleFromToken(accessToken);
-  if (!isBarista(role) && !isOwnerAdmin(role)) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("error", "unauthorized_role");
-    return NextResponse.redirect(loginUrl);
+  if (role !== REQUIRED_ROLE) {
+    return NextResponse.rewrite(new URL("/restricted", request.url));
   }
 
   return NextResponse.next();
