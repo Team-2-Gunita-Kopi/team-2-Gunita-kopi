@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Offline-First Point of Sale for Gunita Kopi Baristas",
     start_url: "/pos",
     display: "standalone",
-    background_color: "#0F2F24",
-    theme_color: "#0F2F24",
+    background_color: "#0F1410",
+    theme_color: "#0F1410",
     icons: [
       {
         src: "/icons/icon-192.png",

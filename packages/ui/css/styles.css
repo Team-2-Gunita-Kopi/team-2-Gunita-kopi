@@ -6,10 +6,10 @@
   --coffee:#C08A4E; --coffee-deep:#5A3B24; --bark:#3B2A1E;
   --warn:#D9A441; --danger:#E0715A; --ring:#A7C98B;
   --radius:14px;
-  --font-head:'Lora',serif;
-  --font-body:'Raleway',sans-serif;
-  --font-num:'Fira Code',monospace;
-  --font-baybayin:'Noto Sans Tagalog',sans-serif;
+  --font-head:var(--font-lora),'Lora',serif;
+  --font-body:var(--font-raleway),'Raleway',sans-serif;
+  --font-num:var(--font-fira),'Fira Code',monospace;
+  --font-baybayin:var(--font-tagalog),'Noto Sans Tagalog',sans-serif;
 }
 *,*::before,*::after{box-sizing:border-box}
 html{scroll-behavior:smooth;overflow-x:clip}
