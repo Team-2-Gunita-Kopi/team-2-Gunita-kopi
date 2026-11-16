@@ -19,6 +19,7 @@ export const IdleLogout: React.FC<IdleLogoutProps> = ({ timeoutMs, warnSeconds =
   const onLogoutRef = useRef(onLogout);
   onLogoutRef.current = onLogout;
   const warningShown = left !== null;
+  const deadline = useRef(0);
 
   // Idle timer: armed only while the warning is hidden; activity restarts it.
   useEffect(() => {
@@ -26,7 +27,10 @@ export const IdleLogout: React.FC<IdleLogoutProps> = ({ timeoutMs, warnSeconds =
     let timer: ReturnType<typeof setTimeout>;
     const arm = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => setLeft(warnSeconds), timeoutMs);
+      timer = setTimeout(() => {
+        deadline.current = Date.now() + warnSeconds * 1000;
+        setLeft(warnSeconds);
+      }, timeoutMs);
     };
     arm();
     EVENTS.forEach((ev) => document.addEventListener(ev, arm, { passive: true }));
@@ -39,8 +43,14 @@ export const IdleLogout: React.FC<IdleLogoutProps> = ({ timeoutMs, warnSeconds =
   // Countdown while the warning is showing.
   useEffect(() => {
     if (!warningShown) return;
-    const id = setInterval(() => setLeft((n) => (n === null ? n : n - 1)), 1000);
-    return () => clearInterval(id);
+    // Derive seconds left from a wall-clock deadline so a throttled tab still signs out on time.
+    const tick = () => setLeft(Math.max(0, Math.ceil((deadline.current - Date.now()) / 1000)));
+    const id = setInterval(tick, 1000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
   }, [warningShown]);
 
   useEffect(() => {

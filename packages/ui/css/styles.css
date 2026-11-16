@@ -276,6 +276,15 @@ table.tbl-stock-history{min-width:860px}
 #tb-logout{background:#d84315;border-color:#d84315;color:#fff}
 #tb-logout:hover{background:#bf360c;border-color:#bf360c}
 #tb-logout svg{color:#fff}
+.tb-menu-wrap{position:relative;display:inline-flex}
+.tb-menu-btn{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);background:var(--card);color:var(--fg-muted);border-radius:10px;cursor:pointer}
+.tb-menu-btn:hover{background:var(--card-2);color:var(--fg)}
+.tb-menu-btn:focus-visible{outline:2px solid var(--ring)}
+.tb-menu-btn svg{width:20px;height:20px}
+.tb-menu{position:absolute;right:0;top:calc(100% + .4rem);z-index:40;min-width:200px;display:flex;flex-direction:column;gap:.15rem;padding:.35rem;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.tb-menu button{background:none;border:0;color:var(--fg);font:inherit;text-align:left;padding:.55rem .7rem;border-radius:8px;cursor:pointer}
+.tb-menu button:hover,.tb-menu button:focus-visible{background:var(--card-2);outline:none}
+@media (max-width:767px){.tb-menu-wrap{display:none}}
 .stockbar{width:110px;height:8px;border-radius:4px;background:var(--muted);overflow:hidden}
 .stockbar i{display:block;height:100%;border-radius:4px}
 .avail-toggle{display:inline-flex;align-items:center;gap:.4rem;cursor:pointer}

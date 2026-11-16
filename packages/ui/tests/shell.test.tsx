@@ -100,6 +100,45 @@ describe("AppShell", () => {
   });
 });
 
+describe("TopBar user menu", () => {
+  it("opens on desktop, calls onSelect, and closes on Esc / outside click", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(
+      <AppShell navItems={NAV} topBarProps={{ ...TOP, menuItems: [{ label: "Reset demo data", onSelect }] }}>
+        x
+      </AppShell>,
+    );
+    const btn = screen.getByRole("button", { name: "User menu" });
+    expect(btn.getAttribute("aria-haspopup")).toBe("menu");
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
+    await user.click(btn);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("menu")).toBeTruthy();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).toBeNull();
+    await user.click(btn);
+    await user.click(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
+    await user.click(btn);
+    await user.click(screen.getByRole("menuitem", { name: "Reset demo data" }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("More sheet marks the active link with aria-current", async () => {
+    const user = userEvent.setup();
+    render(
+      <AppShell navItems={NAV} currentPath="/reports" topBarProps={TOP}>
+        x
+      </AppShell>,
+    );
+    await user.click(screen.getByRole("button", { name: "More" }));
+    const link = screen.getByRole("dialog", { name: "Menu" }).querySelector('a[href="/reports"]');
+    expect(link?.getAttribute("aria-current")).toBe("page");
+  });
+});
+
 describe("Restricted", () => {
   it("renders the heading and runs the action", async () => {
     const user = userEvent.setup();
@@ -156,6 +195,17 @@ describe("IdleLogout", () => {
     act(() => void vi.advanceTimersByTime(1));
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(onLogout).not.toHaveBeenCalled();
+  });
+
+  it("signs out when the clock jumps past the deadline (throttled tab)", () => {
+    const onLogout = vi.fn();
+    render(<IdleLogout timeoutMs={1000} onLogout={onLogout} />);
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    vi.setSystemTime(Date.now() + 60000);
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(onLogout).toHaveBeenCalledWith("idle");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("Sign out now logs out manually", () => {
