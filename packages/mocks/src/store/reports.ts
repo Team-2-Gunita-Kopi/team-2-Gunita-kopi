@@ -139,21 +139,18 @@ export function getDashboard(state: MockState, now: Date): OwnerDashboard {
   const dayOrders = state.orders.filter((o) => localDay(o.createdAt) === date);
   const done = dayOrders.filter((o) => o.status === "completed");
 
-  const qty = new Map<string, number>();
-  for (const o of done) for (const it of o.items) qty.set(it.productName, (qty.get(it.productName) ?? 0) + it.quantity);
-  const topProducts = [...qty.entries()]
-    .map(([productName, quantity]) => ({ productName, quantity }))
-    .sort((a, b) => b.quantity - a.quantity || a.productName.localeCompare(b.productName))
-    .slice(0, 5);
+  const topProducts = bestSellers(state, date, date)
+    .slice(0, 5)
+    .map((b) => ({ productName: b.productName, quantity: b.quantitySold }));
 
   return {
     date,
     isFallbackDay: !hasToday && dayOrders.length > 0,
     sales: round2(done.reduce((s, o) => s + o.totalAmount, 0)),
-    ordersCount: done.length,
-    openOrdersCount: dayOrders.filter((o) => o.status === "pending" || o.status === "preparing").length,
+    ordersCount: dayOrders.length,
+    openOrdersCount: state.orders.filter((o) => o.status === "pending" || o.status === "preparing").length,
     topProducts,
     lowStock: stockStatusReport(state).filter((i) => i.status !== "ok"),
-    recentOrders: newestFirst(dayOrders).slice(0, 6),
+    recentOrders: newestFirst(state.orders).slice(0, 6),
   };
 }
