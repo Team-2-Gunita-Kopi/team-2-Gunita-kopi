@@ -13,6 +13,7 @@ export default defineConfig({
         __dirname,
         "../../packages/contracts/src",
       ),
+      "@gunita/mocks/owner": path.resolve(__dirname, "../../packages/mocks/src/owner.ts"),
       "@gunita/auth": path.resolve(__dirname, "../../packages/auth/src"),
       "@gunita/db-types": path.resolve(
         __dirname,

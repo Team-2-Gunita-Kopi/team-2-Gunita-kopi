@@ -96,6 +96,9 @@ importers:
       '@gunita/db-types':
         specifier: workspace:*
         version: link:../../packages/db-types
+      '@gunita/mocks':
+        specifier: workspace:*
+        version: link:../../packages/mocks
       '@supabase/supabase-js':
         specifier: ^2.49.1
         version: 2.119.0
