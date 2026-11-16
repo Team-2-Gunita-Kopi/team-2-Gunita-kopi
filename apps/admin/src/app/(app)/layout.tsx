@@ -6,13 +6,13 @@ import { AppShell, NavItem } from "@gunita/ui";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 const ADMIN_NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard" },
-  { label: "Orders", href: "/orders" },
-  { label: "Products", href: "/products" },
-  { label: "Inventory", href: "/inventory" },
-  { label: "Suppliers", href: "/suppliers" },
-  { label: "Reports", href: "/reports" },
-  { label: "Users", href: "/users" },
+  { label: "Dashboard", short: "Home", href: "/dashboard", icon: "home" },
+  { label: "Orders", short: "Orders", href: "/orders", icon: "receipt" },
+  { label: "Products", short: "Menu", href: "/products", icon: "cup" },
+  { label: "Inventory", short: "Stock", href: "/inventory", icon: "box" },
+  { label: "Suppliers", short: "Suppliers", href: "/suppliers", icon: "truck" },
+  { label: "Reports", short: "Reports", href: "/reports", icon: "chart" },
+  { label: "Users", short: "Users", href: "/users", icon: "users" },
 ];
 
 export default function AdminAppLayout({
@@ -34,9 +34,9 @@ export default function AdminAppLayout({
       currentPath={pathname}
       onNavigate={(href) => router.push(href)}
       topBarProps={{
-        appName: "Admin Portal",
+        title: "Admin Portal",
         userName: "Store Owner",
-        role: "owner_admin",
+        roleLabel: "Owner",
         onLogout: handleLogout,
       }}
     >
