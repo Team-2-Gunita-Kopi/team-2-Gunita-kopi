@@ -102,3 +102,21 @@ export function saveState(storage: StateStorage | null, key: string, state: Mock
     // persistence is best-effort
   }
 }
+
+export type OwnerData = {
+  suppliers: Supplier[];
+  users: MockUser[];
+  unitCosts: Record<string, number>;
+  ingredientSuppliers: Record<string, string>;
+  packaging: Record<string, number>;
+};
+
+/** The owner-only slices of state; throws if this is a POS projection. Missing maps are created lazily. */
+export function ownerData(state: MockState): OwnerData {
+  if (!state.suppliers || !state.users || !state.unitCosts) {
+    throw new MockError("FORBIDDEN", "Owner data is not available in this state.");
+  }
+  state.ingredientSuppliers ??= {};
+  state.packaging ??= {};
+  return state as OwnerData & MockState;
+}
