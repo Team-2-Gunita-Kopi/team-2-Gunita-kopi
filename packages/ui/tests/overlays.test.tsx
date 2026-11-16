@@ -20,6 +20,17 @@ function Harness({ sticky }: { sticky?: boolean }) {
 afterEach(() => vi.useRealTimers());
 
 describe("Dialog", () => {
+  it("backdrop click and the close button close a normal dialog", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByText("open"));
+    await user.pointer({ keys: "[MouseLeft]", target: document.querySelector(".modal-backdrop") as HTMLElement });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.click(screen.getByText("open"));
+    await user.click(screen.getByLabelText("Close dialog"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("Esc closes a normal dialog", async () => {
     const user = userEvent.setup();
     render(<Harness />);
@@ -123,5 +134,59 @@ describe("useToast", () => {
     expect(region.textContent).toContain("Saved");
     act(() => void vi.advanceTimersByTime(1));
     expect(region.textContent).toBe("");
+  });
+});
+
+function StackHarness({ onResult }: { onResult: (v: boolean) => void }) {
+  const [open, setOpen] = useState(true);
+  const confirm = useConfirm();
+  return (
+    <Dialog isOpen={open} onClose={() => setOpen(false)} title="Edit">
+      <button onClick={async () => onResult(await confirm({ title: "Sure?", message: "m" }))}>ask</button>
+    </Dialog>
+  );
+}
+
+describe("stacked dialogs", () => {
+  it("only the topmost dialog handles Esc and Tab", async () => {
+    const user = userEvent.setup();
+    const results: boolean[] = [];
+    render(
+      <OverlayProvider>
+        <StackHarness onResult={(v) => results.push(v)} />
+      </OverlayProvider>,
+    );
+    await user.click(screen.getByText("ask"));
+    expect(screen.getAllByRole("dialog")).toHaveLength(2);
+    const top = screen.getByRole("dialog", { name: "Sure?" });
+    await user.tab();
+    await user.tab();
+    await user.tab();
+    expect(top.contains(document.activeElement)).toBe(true);
+    await user.keyboard("{Escape}");
+    expect(results).toEqual([false]);
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByRole("dialog", { name: "Edit" })).toBeTruthy();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("a second confirm cancels the pending one", async () => {
+    function Two({ onResult }: { onResult: (v: boolean) => void }) {
+      const confirm = useConfirm();
+      return <button onClick={() => void confirm({ title: "t", message: "m" }).then(onResult)}>go</button>;
+    }
+    const user = userEvent.setup();
+    const results: boolean[] = [];
+    render(
+      <OverlayProvider>
+        <Two onResult={(v) => results.push(v)} />
+      </OverlayProvider>,
+    );
+    act(() => screen.getByText("go").click());
+    act(() => screen.getByText("go").click());
+    await vi.waitFor(() => expect(results).toEqual([false]));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    await vi.waitFor(() => expect(results).toEqual([false, true]));
   });
 });

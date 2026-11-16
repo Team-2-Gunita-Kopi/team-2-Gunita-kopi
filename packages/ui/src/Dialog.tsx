@@ -17,6 +17,9 @@ export interface DialogProps {
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/** Open dialogs, oldest first; only the last one handles keyboard events. */
+const openStack: symbol[] = [];
+
 export const Dialog: React.FC<DialogProps> = ({ isOpen, onClose, title, children, sticky, wide }) => {
   const titleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
@@ -26,12 +29,15 @@ export const Dialog: React.FC<DialogProps> = ({ isOpen, onClose, title, children
   useEffect(() => {
     if (!isOpen) return;
     const opener = document.activeElement as HTMLElement | null;
+    const token = Symbol("dialog");
+    openStack.push(token);
     const modal = modalRef.current;
     if (modal) {
       const first = modal.querySelector<HTMLElement>(FOCUSABLE);
       (first ?? modal).focus();
     }
     const onKey = (e: KeyboardEvent) => {
+      if (openStack[openStack.length - 1] !== token) return;
       const el = modalRef.current;
       if (e.key === "Escape") {
         if (!sticky) onCloseRef.current();
@@ -59,6 +65,8 @@ export const Dialog: React.FC<DialogProps> = ({ isOpen, onClose, title, children
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
+      const i = openStack.indexOf(token);
+      if (i >= 0) openStack.splice(i, 1);
       if (opener && opener.isConnected) opener.focus();
     };
   }, [isOpen, sticky]);

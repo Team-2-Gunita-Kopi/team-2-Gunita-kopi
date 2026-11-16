@@ -19,10 +19,16 @@ export function OverlayProvider({ children }: { children: React.ReactNode }) {
   const nextId = useRef(0);
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
 
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+
   useEffect(() => {
     setMounted(true);
     const active = timers.current;
-    return () => active.forEach(clearTimeout);
+    return () => {
+      active.forEach(clearTimeout);
+      pendingRef.current?.resolve(false);
+    };
   }, []);
 
   const toast = useCallback<ToastFn>((message, isError) => {
@@ -36,7 +42,12 @@ export function OverlayProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const confirm = useCallback<ConfirmFn>(
-    (opts) => new Promise<boolean>((resolve) => setPending({ opts, resolve })),
+    (opts) =>
+      new Promise<boolean>((resolve) => {
+        // A newer confirm supersedes (cancels) a still-pending one.
+        pendingRef.current?.resolve(false);
+        setPending({ opts, resolve });
+      }),
     [],
   );
 
