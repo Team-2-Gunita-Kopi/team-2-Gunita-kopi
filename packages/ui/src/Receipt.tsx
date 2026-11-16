@@ -12,6 +12,11 @@ export interface ReceiptProps {
   pendingSync?: boolean;
 }
 
+function methodLabel(m: string): string {
+  const t = m.replace(/_/g, " ");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 /** Layout from receiptModal() in apps/admin/app.js. */
 export function Receipt({ order, shopName, footer, cashierName, pendingSync }: ReceiptProps) {
   const small = { fontSize: ".78rem" } as const;
@@ -67,14 +72,23 @@ export function Receipt({ order, shopName, footer, cashierName, pendingSync }: R
               <td><strong>Total</strong></td>
               <td className="r"><strong>{formatPeso(order.totalAmount)}</strong></td>
             </tr>
-            <tr>
-              <td className="muted">{order.paymentMethod}</td>
-              <td className="r muted">{formatPeso(order.paidAmount)}</td>
-            </tr>
-            <tr>
-              <td className="muted">Change</td>
-              <td className="r muted">{formatPeso(order.changeAmount)}</td>
-            </tr>
+            {order.paidAmount > 0 ? (
+              <>
+                <tr>
+                  <td className="muted">{methodLabel(order.paymentMethod)}</td>
+                  <td className="r muted">{formatPeso(order.paidAmount)}</td>
+                </tr>
+                <tr>
+                  <td className="muted">Change</td>
+                  <td className="r muted">{formatPeso(order.changeAmount)}</td>
+                </tr>
+              </>
+            ) : (
+              <tr>
+                <td className="muted">Payment</td>
+                <td className="r muted">Unpaid</td>
+              </tr>
+            )}
           </tbody>
         </table>
         <p className="muted" style={{ ...small, margin: ".5rem 0 0" }}>Served by {cashierName}</p>

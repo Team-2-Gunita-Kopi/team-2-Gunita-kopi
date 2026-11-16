@@ -12,10 +12,12 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Inp
   { label, error, helperText, ...props },
   ref,
 ) {
-  const input = <input ref={ref} aria-invalid={error ? true : undefined} {...props} />;
+  const uid = React.useId();
+  const errorId = error ? `${uid}-err` : undefined;
+  const input = <input ref={ref} aria-invalid={error ? true : undefined} aria-describedby={errorId} {...props} />;
   if (!label) return input;
   return (
-    <Field label={label} error={error}>
+    <Field label={label} error={error} errorId={errorId}>
       {input}
       {helperText && !error ? <span className="muted">{helperText}</span> : null}
     </Field>

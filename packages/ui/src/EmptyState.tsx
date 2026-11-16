@@ -7,7 +7,7 @@ export interface EmptyStateProps {
 
 export function EmptyState({ message, action }: EmptyStateProps) {
   return (
-    <div className="card" style={{ textAlign: "center" }}>
+    <div className="card empty-state">
       <p className="muted">{message}</p>
       {action}
     </div>
