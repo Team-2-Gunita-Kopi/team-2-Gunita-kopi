@@ -53,7 +53,7 @@ export default function PosPage() {
     const { record, order } = await checkout({ lines, type, paid, cashier });
     setReceipt({
       order: order ?? recordToOrder(record, cashier),
-      pendingSync: !order,
+      pendingSync: record.status !== "synced",
       cashierName: cashier.fullName,
     });
     setPaying(false);

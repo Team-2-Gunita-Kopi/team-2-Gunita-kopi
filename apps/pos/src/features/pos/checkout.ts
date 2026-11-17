@@ -35,20 +35,24 @@ export async function checkout(input: CheckoutInput): Promise<{ record: OutboxOr
   let order: Order | undefined;
 
   if (online) {
+    // The order is already saved: nothing below may fail the checkout.
     try {
       await syncOutboxOrders();
-      const synced = await posDb.ordersOutbox.get(request.clientTxId);
-      if (synced?.status === "synced" && synced.serverOrderId) {
-        record = synced;
-        order = await posData.getOrder(synced.serverOrderId);
-      }
     } catch {
       // saved, pending sync
     }
-    if (!order) {
-      const provisionalNo = await nextProvisionalNo();
-      await setProvisionalNo(request.clientTxId, provisionalNo);
-      record = { ...record, provisionalNo };
+    const synced = await posDb.ordersOutbox.get(request.clientTxId).catch(() => undefined);
+    if (synced) record = synced;
+    if (synced?.status === "synced") {
+      if (synced.serverOrderId) order = await posData.getOrder(synced.serverOrderId).catch(() => undefined);
+    } else {
+      try {
+        const provisionalNo = await nextProvisionalNo();
+        await setProvisionalNo(request.clientTxId, provisionalNo);
+        record = { ...record, provisionalNo };
+      } catch {
+        // numbering is cosmetic; the order stays queued
+      }
     }
   }
   return { record, order };
@@ -61,7 +65,7 @@ export function recordToOrder(record: OutboxOrderRecord, cashier: { userId: stri
   return {
     id: record.clientTxId,
     clientTxId: record.clientTxId,
-    orderNumber: record.provisionalNo,
+    orderNumber: record.provisionalNo ?? record.serverOrderId,
     status: "pending",
     type: o.type,
     items: o.items,
