@@ -141,3 +141,14 @@ describe("pos menu", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });
+
+describe("pos customize wiring", () => {
+  it("Customize on a cart line opens the modal for that product", async () => {
+    await renderPos();
+    await userEvent.click(tile("Iced Spanish Latte"));
+    await userEvent.click(screen.getByRole("button", { name: "Customize" }));
+    expect(await screen.findByRole("dialog", { name: /Customize — Iced Spanish Latte/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+});

@@ -605,3 +605,9 @@ body.auth-mode .main{padding:0}
 .pos-wrap .stepper button{width:44px;height:44px;min-height:44px}
 .pos-wrap .cart-line .cust-btn,.pos-wrap .cart-side .icon-btn,.pos-wrap .cart-head .btn{min-height:44px;min-width:44px}
 .menu-item .price{color:var(--coffee);font-size:.9rem}
+
+/* POS customize modal */
+.modal .opt{min-height:44px}
+.modal .opt-chips{margin-bottom:.45rem}
+.opt .opt-note{display:block;font-size:.7rem;color:var(--danger)}
+.modal textarea{width:100%}
