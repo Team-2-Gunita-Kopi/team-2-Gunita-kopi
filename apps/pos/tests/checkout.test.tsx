@@ -12,6 +12,7 @@ import { renderWithProviders } from "@/test/render";
 import PosPage from "@/app/(pos)/pos/page";
 
 let rpcCalls: string[] = [];
+let failOps = new Set<string>();
 
 function stubService() {
   const db = createOwnerMockDb({ storage: null, now: () => new Date("2026-11-16T06:00:00Z") });
@@ -22,6 +23,7 @@ function stubService() {
     vi.fn(async (_url: string, init: { body: string }) => {
       const { op, args } = JSON.parse(init.body) as { op: string; args: unknown[] };
       rpcCalls.push(op);
+      if (failOps.has(op)) return { json: async () => ({ ok: false, error: { code: "X", message: `${op} failed` } }) } as Response;
       return { json: async () => ({ ok: true, data: view[op]!(...args) ?? null }) } as Response;
     }),
   );
@@ -43,6 +45,7 @@ beforeEach(async () => {
   document.cookie = `${MOCK_SESSION_COOKIE}=${encodeMockSession({ userId: "u-barista", role: "barista", fullName: "Test Barista", username: "barista" })}; path=/`;
   await posDb.ordersOutbox.clear();
   await posDb.meta.clear();
+  failOps = new Set();
   stubService();
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -114,5 +117,42 @@ describe("checkout", () => {
     const receipt = await screen.findByRole("dialog", { name: "Receipt" });
     await userEvent.click(within(receipt).getByRole("button", { name: "Print" }));
     expect(print).toHaveBeenCalledTimes(1);
+  });
+
+  async function confirmAndGetReceipt(offline = false) {
+    const dialog = await openPayment(offline);
+    await userEvent.type(within(dialog).getByLabelText("Amount paid"), "300");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    return await screen.findByRole("dialog", { name: "Receipt" });
+  }
+
+  it("online sync failure: OFF number, Pending sync, one record", async () => {
+    failOps.add("syncOrders");
+    const receipt = await confirmAndGetReceipt();
+    expect(within(receipt).getByText("OFF-001")).toBeInTheDocument();
+    expect(within(receipt).getByText("Pending sync")).toBeInTheDocument();
+    const recs = await posDb.ordersOutbox.toArray();
+    expect(recs).toHaveLength(1);
+    expect(recs[0]).toMatchObject({ status: "failed", provisionalNo: "OFF-001" });
+  });
+
+  it("synced but getOrder fails: no OFF number, no Pending sync, record untouched", async () => {
+    failOps.add("getOrder");
+    const receipt = await confirmAndGetReceipt();
+    expect(within(receipt).queryByText("Pending sync")).not.toBeInTheDocument();
+    expect(within(receipt).queryByText(/^OFF-/)).not.toBeInTheDocument();
+    const recs = await posDb.ordersOutbox.toArray();
+    expect(recs).toHaveLength(1);
+    expect(recs[0]!.status).toBe("synced");
+    expect(recs[0]!.provisionalNo).toBeUndefined();
+  });
+
+  it("a numbering failure after the save still resolves the checkout with one record", async () => {
+    failOps.add("syncOrders");
+    vi.spyOn(posDb.meta, "put").mockRejectedValue(new Error("quota"));
+    const receipt = await confirmAndGetReceipt();
+    expect(within(receipt).getByText("Pending sync")).toBeInTheDocument();
+    expect(await posDb.ordersOutbox.count()).toBe(1);
+    vi.restoreAllMocks();
   });
 });
