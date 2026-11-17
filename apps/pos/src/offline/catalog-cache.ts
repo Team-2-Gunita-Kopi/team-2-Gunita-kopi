@@ -49,22 +49,18 @@ export async function readCatalog(): Promise<PosCatalog | null> {
   };
 }
 
-/**
- * Online: fetch and cache. Offline or fetch error: the saved copy. With no saved copy it throws
- * NO_SAVED_MENU when offline, or the fetch error itself when online (more useful than "no menu").
- */
+/** Online: fetch and cache. Offline or fetch error: the saved copy, or NO_SAVED_MENU when there is none. */
 export async function getCatalogWithCache(fetchCatalog: () => Promise<PosCatalog>): Promise<PosCatalog> {
-  let fetchError: unknown;
   if (isOnline()) {
     try {
       const fresh = await fetchCatalog();
       await saveCatalog(fresh).catch(() => undefined);
       return fresh;
-    } catch (e) {
-      fetchError = e;
+    } catch {
+      // fall through to the saved copy
     }
   }
   const cached = await readCatalog().catch(() => null);
-  if (!cached) throw fetchError ?? new Error(NO_SAVED_MENU);
+  if (!cached) throw new Error(NO_SAVED_MENU);
   return cached;
 }

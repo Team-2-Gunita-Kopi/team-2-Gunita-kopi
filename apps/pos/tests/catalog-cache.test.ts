@@ -65,6 +65,13 @@ describe("catalog cache", () => {
     );
   });
 
+  it("online fetch failure with an empty cache throws the saved-menu message", async () => {
+    fetchFails = true;
+    await expect(posData.getCatalog()).rejects.toThrow(
+      "No saved menu yet. Connect to the internet once to download it.",
+    );
+  });
+
   it("saveCatalog replaces earlier rows", async () => {
     const fresh = await posData.getCatalog();
     await saveCatalog({ ...fresh, products: fresh.products.slice(0, 1) });
