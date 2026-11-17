@@ -1,9 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { LoginForm } from "@gunita/ui";
-import { signIn } from "@/features/auth";
+import { CreateAccountForm, ForgotPasswordForm, LoginForm } from "@gunita/ui";
+import { registerOwner, requestPasswordRecovery, resetPassword, signIn, verifyRecoveryCode } from "@/features/auth";
 
 const HOME = "/dashboard";
 
@@ -21,8 +21,17 @@ function safeRedirect(value: string | null): string {
   }
 }
 
+type View = "login" | "forgot" | "create";
+
 export default function LoginPage() {
   const router = useRouter();
+  const [view, setView] = useState<View>("login");
+  const [notice, setNotice] = useState("");
+
+  const backToLogin = (message = "") => {
+    setNotice(message);
+    setView("login");
+  };
 
   const onSubmit = async (identifier: string, password: string): Promise<string | null> => {
     try {
@@ -34,5 +43,42 @@ export default function LoginPage() {
     return null;
   };
 
-  return <LoginForm roleLabel="Owner" onSubmit={onSubmit} />;
+  if (view === "forgot") {
+    return (
+      <ForgotPasswordForm
+        roleLabel="Owner"
+        onRequestCode={requestPasswordRecovery}
+        onVerifyCode={verifyRecoveryCode}
+        onResetPassword={resetPassword}
+        onDone={() => backToLogin("Password updated. Sign in with your new password.")}
+        onBack={() => backToLogin()}
+      />
+    );
+  }
+
+  if (view === "create") {
+    return (
+      <CreateAccountForm
+        onCreate={registerOwner}
+        onDone={() => backToLogin("Account created. You can now sign in.")}
+        onBack={() => backToLogin()}
+      />
+    );
+  }
+
+  return (
+    <LoginForm
+      roleLabel="Owner"
+      onSubmit={onSubmit}
+      notice={notice}
+      onForgotPassword={() => {
+        setNotice("");
+        setView("forgot");
+      }}
+      onCreateAccount={() => {
+        setNotice("");
+        setView("create");
+      }}
+    />
+  );
 }

@@ -41,6 +41,8 @@ export type MockState = {
   unitCosts?: Record<string, number>;
   ingredientSuppliers?: Record<string, string>;
   packaging?: Record<string, number>;
+  /** Owner password-recovery codes, keyed by lower-cased email. */
+  recoveryCodes?: Record<string, { code: string; expiresAt: string }>;
 };
 
 export type StateKind = "owner" | "pos";

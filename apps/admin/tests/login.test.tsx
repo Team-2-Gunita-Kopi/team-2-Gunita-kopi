@@ -75,3 +75,20 @@ describe("admin login", () => {
     },
   );
 });
+
+describe("admin login links", () => {
+  it("opens Forgot password and returns to sign in", async () => {
+    renderWithProviders(<LoginPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Forgot password?" }));
+    expect(screen.getByText("Forgot password")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "← Back to sign in" }));
+    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeInTheDocument();
+  });
+
+  it("opens Create account", async () => {
+    renderWithProviders(<LoginPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(screen.getByLabelText("Full name")).toBeInTheDocument();
+    expect(screen.getByText("Initial Owner registration only. Registration closes after setup.")).toBeInTheDocument();
+  });
+});

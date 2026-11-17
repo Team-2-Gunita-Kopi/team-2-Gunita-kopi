@@ -8,12 +8,18 @@ export interface LoginFormProps {
   roleLabel: "Owner" | "Barista";
   /** Resolves to an error message, or null on success. */
   onSubmit: (identifier: string, password: string) => Promise<string | null>;
+  /** Shows a "Forgot password?" link when provided. */
+  onForgotPassword?: () => void;
+  /** Shows a "Create account" link when provided. */
+  onCreateAccount?: () => void;
+  /** Success message shown above the form (e.g. after a password reset). */
+  notice?: string;
 }
 
 const MAX_FAILS = 5;
 const LOCK_MS = 30000;
 
-export const LoginForm: React.FC<LoginFormProps> = ({ roleLabel, onSubmit }) => {
+export const LoginForm: React.FC<LoginFormProps> = ({ roleLabel, onSubmit, onForgotPassword, onCreateAccount, notice }) => {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -68,6 +74,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({ roleLabel, onSubmit }) => 
           <span className="brand-word">Gunita Kopi</span>
           <span className="brand-sub">{roleLabel} Sign-in</span>
         </div>
+        {notice ? (
+          <div className="login-notice" role="status">
+            {notice}
+          </div>
+        ) : null}
         <label className="field">
           Email or username
           <input
@@ -103,6 +114,22 @@ export const LoginForm: React.FC<LoginFormProps> = ({ roleLabel, onSubmit }) => 
         <Button type="submit" variant="primary" block disabled={loading}>
           {loading ? "Signing in…" : "Sign in"}
         </Button>
+        {onForgotPassword || onCreateAccount ? (
+          <div className="login-links">
+            {onForgotPassword ? (
+              <button type="button" className="login-link" onClick={onForgotPassword}>
+                Forgot password?
+              </button>
+            ) : (
+              <span />
+            )}
+            {onCreateAccount ? (
+              <button type="button" className="login-link" onClick={onCreateAccount}>
+                Create account
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </form>
     </div>
   );

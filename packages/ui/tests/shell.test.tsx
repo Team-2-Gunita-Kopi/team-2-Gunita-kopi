@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AppShell, IdleLogout, LoginForm, Restricted, type NavItem } from "../src";
+import { AppShell, CreateAccountForm, ForgotPasswordForm, IdleLogout, LoginForm, Restricted, type NavItem } from "../src";
 
 const NAV: NavItem[] = [
   { label: "Dashboard", short: "Home", href: "/dashboard", icon: "home" },
@@ -275,5 +275,109 @@ describe("LoginForm", () => {
     await user.click(btn);
     expect(onSubmit).toHaveBeenCalledTimes(6);
     expect(screen.getByRole("alert").textContent).toBe("Incorrect username or password.");
+  });
+});
+
+describe("LoginForm links", () => {
+  it("hides the links unless handlers are given", () => {
+    render(<LoginForm roleLabel="Barista" onSubmit={async () => null} />);
+    expect(screen.queryByRole("button", { name: "Forgot password?" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Create account" })).toBeNull();
+  });
+
+  it("calls the forgot-password and create-account handlers and shows a notice", async () => {
+    const user = userEvent.setup();
+    const onForgot = vi.fn();
+    const onCreate = vi.fn();
+    render(
+      <LoginForm roleLabel="Owner" onSubmit={async () => null} onForgotPassword={onForgot} onCreateAccount={onCreate} notice="Password updated." />,
+    );
+    expect(screen.getByRole("status").textContent).toBe("Password updated.");
+    await user.click(screen.getByRole("button", { name: "Forgot password?" }));
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    expect(onForgot).toHaveBeenCalledOnce();
+    expect(onCreate).toHaveBeenCalledOnce();
+  });
+});
+
+describe("ForgotPasswordForm", () => {
+  it("walks email -> code -> new password", async () => {
+    const user = userEvent.setup();
+    const onRequestCode = vi.fn(async () => {});
+    const onVerifyCode = vi.fn(async () => {});
+    const onResetPassword = vi.fn(async () => {});
+    const onDone = vi.fn();
+    render(
+      <ForgotPasswordForm
+        roleLabel="Owner"
+        onRequestCode={onRequestCode}
+        onVerifyCode={onVerifyCode}
+        onResetPassword={onResetPassword}
+        onDone={onDone}
+        onBack={() => {}}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Send recovery link" }));
+    expect(screen.getByRole("alert").textContent).toBe("Enter a valid email address.");
+    await user.type(screen.getByLabelText("Email address"), " mark@gmail.com ");
+    await user.click(screen.getByRole("button", { name: "Send recovery link" }));
+    expect(onRequestCode).toHaveBeenCalledWith("mark@gmail.com");
+
+    expect(await screen.findByText("mark@gmail.com")).toBeTruthy();
+    await user.type(screen.getByLabelText("Recovery code"), "123456");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect(onVerifyCode).toHaveBeenCalledWith("mark@gmail.com", "123456");
+
+    await user.type(await screen.findByLabelText("New password (min 8 chars)"), "newpass123");
+    await user.type(screen.getByLabelText("Confirm password"), "different1");
+    await user.click(screen.getByRole("button", { name: "Save new password" }));
+    expect(screen.getByRole("alert").textContent).toBe("Passwords do not match.");
+    await user.clear(screen.getByLabelText("Confirm password"));
+    await user.type(screen.getByLabelText("Confirm password"), "newpass123");
+    await user.click(screen.getByRole("button", { name: "Save new password" }));
+    expect(onResetPassword).toHaveBeenCalledWith("mark@gmail.com", "123456", "newpass123");
+    expect(onDone).toHaveBeenCalledOnce();
+  });
+
+  it("shows the error from a rejected code", async () => {
+    const user = userEvent.setup();
+    render(
+      <ForgotPasswordForm
+        roleLabel="Owner"
+        onRequestCode={async () => {}}
+        onVerifyCode={async () => {
+          throw new Error("That recovery code is invalid or has expired.");
+        }}
+        onResetPassword={async () => {}}
+        onDone={() => {}}
+        onBack={() => {}}
+      />,
+    );
+    await user.type(screen.getByLabelText("Email address"), "a@b.co");
+    await user.click(screen.getByRole("button", { name: "Send recovery link" }));
+    await user.type(await screen.findByLabelText("Recovery code"), "999999");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("That recovery code is invalid or has expired.");
+  });
+});
+
+describe("CreateAccountForm", () => {
+  it("validates, submits trimmed values and reports server errors", async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async () => {
+      throw new Error("Registration is closed. Ask the Owner to create your account.");
+    });
+    const onBack = vi.fn();
+    render(<CreateAccountForm onCreate={onCreate} onDone={() => {}} onBack={onBack} />);
+    await user.type(screen.getByLabelText("Full name"), " Mark Allen ");
+    await user.type(screen.getByLabelText("Email address"), "mark@gmail.com");
+    await user.type(screen.getByLabelText("Username"), "mark");
+    await user.type(screen.getByLabelText("Password (min 8 chars)"), "secret12");
+    await user.type(screen.getByLabelText("Confirm password"), "secret12");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    expect(onCreate).toHaveBeenCalledWith({ fullName: "Mark Allen", email: "mark@gmail.com", username: "mark", password: "secret12" });
+    expect((await screen.findByRole("alert")).textContent).toBe("Registration is closed. Ask the Owner to create your account.");
+    await user.click(screen.getByRole("button", { name: "← Back to sign in" }));
+    expect(onBack).toHaveBeenCalledOnce();
   });
 });
