@@ -1,17 +1,15 @@
 import { NextRequest } from "next/server";
-import {
-  Role,
-  extractRoleFromToken,
-  extractUserIdFromToken,
-  extractEmailFromToken,
-} from "@gunita/auth";
-import { UnauthorizedError, ForbiddenError } from "./errors";
+import { Role, RoleSchema } from "@gunita/auth";
+import { AppError, UnauthorizedError, ForbiddenError } from "./errors";
 import { createScopedUserClient } from "./supabase-user";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { Database } from "@gunita/db-types";
 
 export interface AuthenticatedUser {
+  /** Supabase Auth user id (uuid). */
   id: string;
+  /** users.user_id, used for orders, payments and stock attribution. */
+  userId: number;
   email: string;
   role: Role;
   token: string;
@@ -30,8 +28,9 @@ export function getBearerToken(req: NextRequest | Request): string | null {
 }
 
 /**
- * Requires a valid user session. Verifies token and returns AuthenticatedUser.
- * Creates a scoped Supabase client with the user's token so RLS applies.
+ * Requires a valid user session. Verifies the token with Supabase Auth (signature and expiry),
+ * then reads role and status from the users table: token claims are never trusted for authorization.
+ * Returns a scoped Supabase client with the user's token so RLS applies.
  */
 export async function requireUser(
   req: NextRequest | Request,
@@ -41,22 +40,36 @@ export async function requireUser(
     throw new UnauthorizedError("Missing Bearer authentication token");
   }
 
-  const userId = extractUserIdFromToken(token);
-  const email = extractEmailFromToken(token) || "unknown@gunitakopi.com";
-  const role = extractRoleFromToken(token);
-
-  if (!userId || !role) {
-    throw new UnauthorizedError(
-      "Invalid or expired authentication token claims",
-    );
-  }
-
   const scopedClient = createScopedUserClient(token);
 
+  const { data: authData, error: authError } =
+    await scopedClient.auth.getUser(token);
+  if (authError || !authData.user) {
+    throw new UnauthorizedError("Invalid or expired authentication token");
+  }
+
+  // RLS policy users_select lets a user read their own profile row.
+  const { data: profile, error: profileError } = await scopedClient
+    .from("users")
+    .select("user_id, role, status")
+    .eq("auth_user_id", authData.user.id)
+    .maybeSingle();
+  if (profileError) {
+    throw new AppError(profileError.message, 500, "DATABASE_ERROR");
+  }
+  if (!profile || profile.status !== "active") {
+    throw new ForbiddenError("Account has no active employee profile");
+  }
+  const role = RoleSchema.safeParse(profile.role);
+  if (!role.success) {
+    throw new ForbiddenError("Account has an unrecognized role");
+  }
+
   return {
-    id: userId,
-    email,
-    role,
+    id: authData.user.id,
+    userId: profile.user_id,
+    email: authData.user.email ?? "",
+    role: role.data,
     token,
     supabaseClient: scopedClient,
   };

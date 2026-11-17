@@ -3,6 +3,27 @@ import { Role, ROLES, RoleSchema } from "@gunita/contracts";
 export type { Role };
 export { ROLES, RoleSchema };
 
+/**
+ * Staff sign in with a username, but Supabase Auth needs an email.
+ * Barista accounts get this internal address; no mail is ever sent to it.
+ * The Owner/Admin uses a real email instead (users.email).
+ * Used only by the API: account creation and POST /api/auth/login.
+ */
+export const STAFF_EMAIL_DOMAIN = "staff.gunitakopi.local";
+
+/**
+ * Session cookie names (@supabase/ssr, HttpOnly, set by each site's server). Different per site so
+ * Admin and POS on one host (localhost:3000 and :3001 share cookies) never overwrite each other.
+ */
+export const ADMIN_SESSION_COOKIE = "sb-gunita-admin-auth";
+export const POS_SESSION_COOKIE = "sb-gunita-pos-auth";
+/** Short-lived browser session used only by the Admin password-recovery pages. */
+export const ADMIN_RECOVERY_COOKIE = "sb-gunita-admin-recovery";
+
+export function usernameToAuthEmail(username: string): string {
+  return `${username.trim().toLowerCase()}@${STAFF_EMAIL_DOMAIN}`;
+}
+
 export interface SupabaseJwtPayload {
   sub: string;
   email?: string;

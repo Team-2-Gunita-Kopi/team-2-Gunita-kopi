@@ -4,7 +4,8 @@ import { RoleSchema } from "./roles";
 export const UserProfileSchema = z.object({
   id: z.string(),
   authUserId: z.string(),
-  email: z.string().email(),
+  // Owner/Admin only; NULL for baristas.
+  email: z.string().email().nullable(),
   fullName: z.string(),
   role: RoleSchema,
   phone: z.string().optional(),

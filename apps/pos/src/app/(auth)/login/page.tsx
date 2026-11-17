@@ -2,10 +2,10 @@
 
 import React, { useState } from "react";
 import { Button, Input } from "@gunita/ui";
-import { supabaseBrowser } from "@/lib/supabase-browser";
+import { apiClient } from "@/lib/api-client";
 
 export default function PosLoginPage() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -16,20 +16,17 @@ export default function PosLoginPage() {
     setErrorMessage("");
 
     try {
-      const { data, error } = await supabaseBrowser.auth.signInWithPassword({
-        email,
-        password,
+      // This site's server signs in through the API and sets an HttpOnly session cookie.
+      const res = await apiClient<null>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
       });
-
-      if (error) {
-        setErrorMessage(error.message);
-        setIsLoading(false);
+      if (!res.success) {
+        setErrorMessage(res.error?.message ?? "Sign in failed");
         return;
       }
 
-      if (data?.session) {
-        window.location.href = "/pos";
-      }
+      window.location.href = "/pos";
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Sign in failed");
     } finally {
@@ -60,12 +57,13 @@ export default function PosLoginPage() {
 
         <form onSubmit={handleLogin} className="space-y-4">
           <Input
-            label="Barista Email"
-            type="email"
+            label="Username"
+            type="text"
+            autoComplete="username"
             required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="barista@gunitakopi.com"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="barista username"
           />
 
           <Input

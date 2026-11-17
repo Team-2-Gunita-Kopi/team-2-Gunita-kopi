@@ -47,6 +47,12 @@ const nextConfig: NextConfig = {
             value: "DENY",
           },
           {
+            // Baseline CSP that cannot break Next.js inline scripts; session tokens are HttpOnly.
+            key: "Content-Security-Policy",
+            value:
+              "base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'",
+          },
+          {
             key: "X-Content-Type-Options",
             value: "nosniff",
           },
