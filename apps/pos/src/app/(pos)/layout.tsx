@@ -1,100 +1,126 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { AppShell, NavItem, StatusBadge } from "@gunita/ui";
-import { supabaseBrowser } from "@/lib/supabase-browser";
-import { initSyncTriggers } from "@/offline/triggers";
+import { useQueryClient } from "@tanstack/react-query";
+import { AppShell, IdleLogout, NavItem, OverlayProvider, useConfirm, useToast } from "@gunita/ui";
+import { getSession, signOut } from "@/features/auth";
+import { OfflineBanner } from "@/components/OfflineBanner";
+import { SyncIndicator } from "@/components/SyncIndicator";
+import { useConnectivity } from "@/lib/connectivity";
+import { mockRpc } from "@/lib/mock-db";
+import { QueryProvider } from "@/lib/query";
+import { USE_MOCKS } from "@/lib/use-mocks";
 import { getPendingSyncCount } from "@/offline/outbox";
+import { syncOutboxOrders } from "@/offline/sync";
+import { initSyncTriggers } from "@/offline/triggers";
 
 const POS_NAV_ITEMS: NavItem[] = [
-  { label: "POS Terminal", short: "POS", href: "/pos", icon: "cart" },
+  { label: "POS", short: "POS", href: "/pos", icon: "cart" },
   { label: "Orders", short: "Orders", href: "/orders", icon: "receipt" },
   { label: "Inventory", short: "Stock", href: "/inventory", icon: "box" },
 ];
 
-export default function PosAppLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+const IDLE_MS = 5 * 60 * 1000;
+
+function PosShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [isOnline, setIsOnline] = useState(true);
-  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const toast = useToast();
+  const { online, simulatedOffline, setSimulatedOffline } = useConnectivity();
+  const [userName, setUserName] = useState("Barista");
+  const [pending, setPending] = useState(0);
 
-  const refreshPendingCount = async () => {
-    const count = await getPendingSyncCount();
-    setPendingSyncCount(count);
-  };
+  const refreshPending = useCallback(async () => setPending(await getPendingSyncCount()), []);
 
   useEffect(() => {
-    setIsOnline(navigator.onLine);
-
-    const updateOnlineStatus = () => setIsOnline(navigator.onLine);
-    window.addEventListener("online", updateOnlineStatus);
-    window.addEventListener("offline", updateOnlineStatus);
-
-    refreshPendingCount();
-    const cleanup = initSyncTriggers(() => {
-      refreshPendingCount();
-    });
-
-    return () => {
-      window.removeEventListener("online", updateOnlineStatus);
-      window.removeEventListener("offline", updateOnlineStatus);
-      cleanup();
-    };
+    const session = getSession();
+    if (session?.fullName) setUserName(session.fullName);
   }, []);
 
+  useEffect(() => {
+    void refreshPending();
+    return initSyncTriggers(() => void refreshPending());
+  }, [refreshPending]);
+
   const handleLogout = async () => {
-    await supabaseBrowser.auth.signOut();
+    await signOut();
     router.push("/login");
   };
 
-  const connectionBadge = isOnline ? (
-    <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
-      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-      <span>Online</span>
-    </span>
-  ) : (
-    <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-300">
-      <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
-      <span>Offline Mode</span>
-    </span>
-  );
+  // Full outbox sync wiring (progress, errors, retry) lands in Task 20; this runs the existing sync once.
+  const syncNow = async () => {
+    try {
+      await syncOutboxOrders();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Sync failed.", true);
+    }
+    await refreshPending();
+  };
 
-  const syncIndicator = (
-    <div className="flex items-center space-x-2">
-      <span className="text-xs text-gray-500">Outbox:</span>
-      <StatusBadge
-        status={pendingSyncCount > 0 ? "preparing" : "synced"}
-        label={
-          pendingSyncCount > 0 ? `${pendingSyncCount} Pending` : "All Synced"
-        }
-      />
-    </div>
-  );
+  const resetDemo = async () => {
+    const ok = await confirm({
+      title: "Reset demo data",
+      message: "Reset all demo data for both Owner and Barista?",
+      confirmLabel: "Reset",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await mockRpc("reset");
+      await queryClient.invalidateQueries();
+      toast("Demo data reset.");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Reset failed.", true);
+    }
+  };
+
+  const menuItems = [
+    ...(USE_MOCKS
+      ? [
+          { label: "Simulate offline", onSelect: () => setSimulatedOffline(!simulatedOffline) },
+          { label: "Reset demo data", onSelect: resetDemo },
+        ]
+      : []),
+    { label: "Sign out", onSelect: handleLogout },
+  ];
+
+  const warning =
+    pending > 0
+      ? `You have ${pending} unsynced order${pending === 1 ? "" : "s"}. They stay on this device and will sync after you sign in again.`
+      : undefined;
 
   return (
-    <AppShell
-      navItems={POS_NAV_ITEMS}
-      currentPath={pathname}
-      onNavigate={(href) => router.push(href)}
-      topBarProps={{
-        title: "Barista POS",
-        userName: "Barista Station 1",
-        roleLabel: "Barista",
-        onLogout: handleLogout,
-        statusSlot: (
-          <>
-            {connectionBadge}
-            {syncIndicator}
-          </>
-        ),
-      }}
-    >
-      {children}
-    </AppShell>
+    <>
+      <OfflineBanner online={online} />
+      <AppShell
+        navItems={POS_NAV_ITEMS}
+        currentPath={pathname}
+        onNavigate={(href) => router.push(href)}
+        topBarProps={{
+          title: "Barista POS",
+          userName,
+          roleLabel: "Barista",
+          onLogout: handleLogout,
+          statusSlot: <SyncIndicator pending={pending} onSync={syncNow} />,
+          menuItems,
+        }}
+      >
+        {children}
+      </AppShell>
+      <IdleLogout timeoutMs={IDLE_MS} onLogout={handleLogout} warning={warning} />
+    </>
+  );
+}
+
+export default function PosAppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <QueryProvider>
+      <OverlayProvider>
+        <PosShell>{children}</PosShell>
+      </OverlayProvider>
+    </QueryProvider>
   );
 }
