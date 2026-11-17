@@ -29,3 +29,4 @@ export * from "./OverlayProvider";
 export * from "./Restricted";
 export * from "./IdleLogout";
 export * from "./LoginForm";
+export * from "./AuthForms";

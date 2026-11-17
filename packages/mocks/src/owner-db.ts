@@ -25,12 +25,12 @@ import type {
   UserProfile,
 } from "@gunita/contracts";
 import type { MockActor, MockSettings } from "./pos";
-import { authenticate } from "./store/auth";
+import * as auth from "./store/auth";
 import * as catalog from "./store/catalog";
 import { advanceOrder, cancelOrder, getOrder, listOrders, placeOrder } from "./store/orders";
 import * as owner from "./store/owner";
 import * as reports from "./store/reports";
-import { createState, loadState, saveState, type MockState, type StateStorage } from "./store/state";
+import { createState, loadState, MockError, saveState, type MockState, type StateStorage } from "./store/state";
 import { createStockTransaction, listIngredients, listStockTransactions } from "./store/stock";
 import { syncOrders } from "./store/sync";
 
@@ -81,6 +81,10 @@ export interface OwnerMockDb {
   getDashboard(): OwnerDashboard;
   // auth / lifecycle
   authenticate(identifier: string, password: string): UserProfile | null;
+  requestPasswordRecovery(email: string): null;
+  verifyRecoveryCode(email: string, code: string): true;
+  resetPasswordWithCode(email: string, code: string, password: string): true;
+  registerOwner(req: { fullName: string; email: string; username: string; password: string }): UserProfile;
   reset(): void;
 }
 
@@ -121,6 +125,10 @@ export const OWNER_OPS = [
   "stockStatusReport",
   "getDashboard",
   "authenticate",
+  "requestPasswordRecovery",
+  "verifyRecoveryCode",
+  "resetPasswordWithCode",
+  "registerOwner",
   "reset",
 ] as const satisfies readonly (keyof OwnerMockDb)[];
 
@@ -187,7 +195,18 @@ export function createOwnerMockDb(opts: {
     bestSellers: read(reports.bestSellers),
     stockStatusReport: read(reports.stockStatusReport),
     getDashboard: read((s) => reports.getDashboard(s, now())),
-    authenticate: read(authenticate),
+    authenticate: read(auth.authenticate),
+    requestPasswordRecovery: write((s, email: string) => auth.requestPasswordRecovery(s, email, now())),
+    verifyRecoveryCode: read((s, email: string, code: string) => auth.verifyRecoveryCode(s, email, code, now())),
+    resetPasswordWithCode: write((s, email: string, code: string, password: string) =>
+      auth.resetPasswordWithCode(s, email, code, password, now()),
+    ),
+    registerOwner: write((s, req: { fullName: string; email: string; username: string; password: string }) => {
+      if (!auth.registrationOpen(s)) {
+        throw new MockError("FORBIDDEN", "Registration is closed. Ask the Owner to create your account.");
+      }
+      return owner.createUser(s, { ...req, role: "owner_admin" }, now());
+    }),
     reset() {
       state = createState("owner", now());
       saveState(opts.storage, key, state);
