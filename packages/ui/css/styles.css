@@ -598,3 +598,10 @@ body.auth-mode .main{padding:0}
 @media (prefers-reduced-motion:reduce){.skeleton-row{animation:none}}
 .tbl tr.row-click{cursor:pointer}
 .tbl tr.row-click:focus-visible{outline:2px solid var(--moss);outline-offset:-2px}
+
+/* POS touch targets (>= 44px) */
+.pos-wrap .cat-tabs .opt{min-height:44px;display:inline-flex;align-items:center;gap:.35rem}
+.pos-search input{min-height:44px}
+.pos-wrap .stepper button{width:44px;height:44px;min-height:44px}
+.pos-wrap .cart-line .cust-btn,.pos-wrap .cart-side .icon-btn,.pos-wrap .cart-head .btn{min-height:44px;min-width:44px}
+.menu-item .price{color:var(--coffee);font-size:.9rem}
