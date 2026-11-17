@@ -534,29 +534,17 @@ export type Database = {
       v_inventory_status: {
         Row: {
           current_stock: number;
+          date_updated: string;
           ingredient_id: number;
           ingredient_name: string;
           reorder_level: number;
           stock_status: string | null;
+          supplier_id: number | null;
+          supplier_name: string | null;
           unit: string | null;
+          unit_cost: number | null;
         };
         ComputedFields: never;
-        Insert: {
-          current_stock?: number | null;
-          ingredient_id?: number | null;
-          ingredient_name?: string | null;
-          reorder_level?: number | null;
-          stock_status?: never;
-          unit?: string | null;
-        };
-        Update: {
-          current_stock?: number | null;
-          ingredient_id?: number | null;
-          ingredient_name?: string | null;
-          reorder_level?: number | null;
-          stock_status?: never;
-          unit?: string | null;
-        };
         Relationships: [];
       };
       v_monthly_sales: {
@@ -671,6 +659,14 @@ export type Database = {
         Returns: undefined;
       };
       process_checkout_transaction: { Args: { p_order: Json }; Returns: Json };
+      recalculate_product_costing: {
+        Args: { p_product_id: number };
+        Returns: undefined;
+      };
+      set_product_recipe: {
+        Args: { p_items: Json; p_product_id: number };
+        Returns: undefined;
+      };
       provision_initial_owner: {
         Args: {
           p_auth_user_id: string;

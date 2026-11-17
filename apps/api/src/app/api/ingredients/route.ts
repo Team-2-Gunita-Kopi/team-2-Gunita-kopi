@@ -1,47 +1,26 @@
-import { NextRequest } from "next/server";
 import { requireRole } from "@/lib/auth";
-import { errorResponse, notImplementedResponse } from "@/lib/response";
+import { jsonResponse, route } from "@/lib/response";
+import { readJson, readQuery } from "@/lib/request";
 import {
-  listIngredients,
+  CreateIngredientRequestSchema,
+  IngredientListQuerySchema,
+} from "@gunita/contracts";
+import {
   createIngredient,
+  listIngredients,
 } from "@/modules/ingredients/service";
-import { CreateIngredientRequestSchema } from "@/modules/ingredients/schema";
 
-export async function GET(req: NextRequest) {
-  try {
-    const user = await requireRole(req, ["barista", "owner_admin"]);
-    await listIngredients(user);
-    return notImplementedResponse("GET /api/ingredients");
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "statusCode" in error &&
-      (error as { statusCode: number }).statusCode === 501
-    ) {
-      return notImplementedResponse("GET /api/ingredients");
-    }
-    return errorResponse(error);
-  }
-}
+// FR-14: inventory and stock status for both roles.
+export const GET = route(async (req) => {
+  const user = await requireRole(req, ["owner_admin", "barista"]);
+  return jsonResponse(
+    await listIngredients(user, readQuery(req, IngredientListQuerySchema)),
+  );
+});
 
-export async function POST(req: NextRequest) {
-  try {
-    const user = await requireRole(req, ["barista", "owner_admin"]);
-    const body = await req.json();
-    const validated = CreateIngredientRequestSchema.parse(body);
-
-    await createIngredient(user, validated);
-    return notImplementedResponse("POST /api/ingredients");
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "statusCode" in error &&
-      (error as { statusCode: number }).statusCode === 501
-    ) {
-      return notImplementedResponse("POST /api/ingredients");
-    }
-    return errorResponse(error);
-  }
-}
+// FR-21, Owner only (the SRS gives ingredient management to the Owner/Manager).
+export const POST = route(async (req) => {
+  const user = await requireRole(req, "owner_admin");
+  const body = await readJson(req, CreateIngredientRequestSchema);
+  return jsonResponse(await createIngredient(user, body), { status: 201 });
+});

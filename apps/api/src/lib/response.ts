@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { ApiResponse } from "@gunita/contracts";
 import { ZodError } from "zod";
 import { AppError } from "./errors";
@@ -46,8 +46,8 @@ export function errorResponse(
   }
 
   // Server errors: keep details in the logs, never in the response (they can hold database
-  // internals). 501 messages are authored placeholders and safe to show.
-  if (statusCode >= 500 && statusCode !== 501) {
+  // internals).
+  if (statusCode >= 500) {
     logger.error("request.failed", {
       status: statusCode,
       code,
@@ -79,16 +79,15 @@ export function errorResponse(
   });
 }
 
-export function notImplementedResponse(
-  feature: string = "Endpoint",
-  requestId?: string,
-): NextResponse<ApiResponse<never>> {
-  return errorResponse(
-    new AppError(
-      `${feature} is scaffolded but not implemented yet.`,
-      501,
-      "NOT_IMPLEMENTED",
-    ),
-    { status: 501, requestId },
-  );
+/** Wraps a route handler so every thrown error becomes a safe errorResponse. */
+export function route<C>(
+  fn: (req: NextRequest, ctx: C) => Promise<Response>,
+): (req: NextRequest, ctx: C) => Promise<Response> {
+  return async (req, ctx) => {
+    try {
+      return await fn(req, ctx);
+    } catch (error) {
+      return errorResponse(error);
+    }
+  };
 }
