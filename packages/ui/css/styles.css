@@ -549,6 +549,7 @@ body.auth-mode .main{padding:0}
 .pos-tools{display:flex;gap:.9rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:.9rem}
 .pos-tools .cat-tabs{margin-bottom:0;flex:1}
 .pos-search{min-width:180px}
+.pos-updated{font-size:.8rem;white-space:nowrap;align-self:center}
 @media (min-width:768px){.pos-wrap .cart-panel{top:1rem}}
 .menu-item{position:relative}
 .menu-thumb{height:84px;width:100%;object-fit:cover;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--bark),var(--coffee-deep) 55%,var(--muted))}

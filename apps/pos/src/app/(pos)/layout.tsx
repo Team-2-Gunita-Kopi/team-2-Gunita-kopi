@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { AppShell, IdleLogout, NavItem, OverlayProvider, useConfirm, useToast } from "@gunita/ui";
@@ -11,9 +11,7 @@ import { useConnectivity } from "@/lib/connectivity";
 import { mockRpc } from "@/lib/mock-db";
 import { QueryProvider } from "@/lib/query";
 import { USE_MOCKS } from "@/lib/use-mocks";
-import { getPendingSyncCount } from "@/offline/outbox";
-import { syncOutboxOrders } from "@/offline/sync";
-import { initSyncTriggers } from "@/offline/triggers";
+import { useSync } from "@/features/pos/hooks/use-sync";
 
 const POS_NAV_ITEMS: NavItem[] = [
   { label: "POS", short: "POS", href: "/pos", icon: "cart" },
@@ -31,33 +29,24 @@ function PosShell({ children }: { children: React.ReactNode }) {
   const toast = useToast();
   const { online, simulatedOffline, setSimulatedOffline } = useConnectivity();
   const [userName, setUserName] = useState("Barista");
-  const [pending, setPending] = useState(0);
-
-  const refreshPending = useCallback(async () => setPending(await getPendingSyncCount()), []);
+  const { pendingCount, failedCount, syncNow, isSyncing } = useSync();
 
   useEffect(() => {
     const session = getSession();
     if (session?.fullName) setUserName(session.fullName);
   }, []);
 
-  useEffect(() => {
-    void refreshPending();
-    return initSyncTriggers(() => void refreshPending());
-  }, [refreshPending]);
-
   const handleLogout = async () => {
     await signOut();
     router.push("/login");
   };
 
-  // Full outbox sync wiring (progress, errors, retry) lands in Task 20; this runs the existing sync once.
-  const syncNow = async () => {
+  const handleSyncNow = async () => {
     try {
-      await syncOutboxOrders();
+      await syncNow();
     } catch (e) {
       toast(e instanceof Error ? e.message : "Sync failed.", true);
     }
-    await refreshPending();
   };
 
   const resetDemo = async () => {
@@ -87,9 +76,10 @@ function PosShell({ children }: { children: React.ReactNode }) {
     { label: "Sign out", onSelect: handleLogout },
   ];
 
+  const unsynced = pendingCount + failedCount;
   const warning =
-    pending > 0
-      ? `You have ${pending} unsynced order${pending === 1 ? "" : "s"}. They stay on this device and will sync after you sign in again.`
+    unsynced > 0
+      ? `You have ${unsynced} unsynced order${unsynced === 1 ? "" : "s"}. They stay on this device and will sync after you sign in again.`
       : undefined;
 
   return (
@@ -104,7 +94,7 @@ function PosShell({ children }: { children: React.ReactNode }) {
           userName,
           roleLabel: "Barista",
           onLogout: handleLogout,
-          statusSlot: <SyncIndicator pending={pending} onSync={syncNow} />,
+          statusSlot: <SyncIndicator pending={pendingCount} failed={failedCount} syncing={isSyncing} onSync={handleSyncNow} />,
           menuItems,
         }}
       >
