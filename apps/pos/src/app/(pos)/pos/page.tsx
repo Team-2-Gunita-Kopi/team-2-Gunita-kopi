@@ -8,12 +8,15 @@ import { PosSearch } from "@/features/pos/components/PosSearch";
 import { MenuGrid } from "@/features/pos/components/MenuGrid";
 import { CartPanel } from "@/features/pos/components/CartPanel";
 import { CartFab } from "@/features/pos/components/CartFab";
+import { CustomizeModal } from "@/features/pos/components/CustomizeModal";
 
 export default function PosPage() {
   const { data, isPending, error, refetch } = useCatalog();
   const [category, setCategory] = useState(ALL);
   const [query, setQuery] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [customizeId, setCustomizeId] = useState<string | null>(null);
+  const lines = useCartStore((s) => s.lines);
   const add = useCartStore((s) => s.add);
   const count = useCartStore(selectCount);
   const total = useCartStore(selectTotal);
@@ -26,6 +29,13 @@ export default function PosPage() {
         (p) => (category === ALL || p.category === category) && (!query || p.name.toLowerCase().includes(query)),
       ),
     [data, category, query],
+  );
+
+  const customizeLine = lines.find((l) => l.lineId === customizeId);
+  const customizeProduct = customizeLine && data?.products.find((p) => p.id === customizeLine.productId);
+  const stockById = useMemo(
+    () => Object.fromEntries((data?.ingredients ?? []).map((i) => [i.id, i.currentStock])),
+    [data],
   );
 
   return (
@@ -50,7 +60,16 @@ export default function PosPage() {
           <MenuGrid products={products} ingredients={data.ingredients} onAdd={add} />
         )}
       </div>
-      <CartPanel open={sheetOpen} />
+      <CartPanel open={sheetOpen} onCustomize={setCustomizeId} />
+      {customizeLine && customizeProduct ? (
+        <CustomizeModal
+          key={customizeLine.lineId}
+          line={customizeLine}
+          product={customizeProduct}
+          stockById={stockById}
+          onClose={() => setCustomizeId(null)}
+        />
+      ) : null}
       <CartFab count={count} total={total} onClick={() => setSheetOpen((o) => !o)} />
     </div>
   );
