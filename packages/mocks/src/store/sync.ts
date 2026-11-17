@@ -14,12 +14,12 @@ export function syncOrders(state: MockState, payload: SyncPayload, user: Actor, 
   for (const item of payload.orders) {
     const seen = state.orders.find((o) => o.clientTxId === item.transactionId);
     if (seen) {
-      results.push({ transactionId: item.transactionId, orderId: seen.id, status: "duplicate" });
+      results.push({ transactionId: item.transactionId, orderId: seen.id, orderNumber: seen.orderNumber, status: "duplicate" });
       continue;
     }
     try {
       const order = placeOrder(state, { ...item.order, clientTxId: item.transactionId }, user, now, when(item.createdAt, now));
-      results.push({ transactionId: item.transactionId, orderId: order.id, status: "synced" });
+      results.push({ transactionId: item.transactionId, orderId: order.id, orderNumber: order.orderNumber, status: "synced" });
     } catch (e) {
       if (!(e instanceof MockError)) throw e;
       results.push({ transactionId: item.transactionId, status: "failed", error: e.message });

@@ -13,6 +13,7 @@ import { PaymentModal } from "@/features/pos/components/PaymentModal";
 import { ReceiptModal } from "@/features/pos/components/ReceiptModal";
 import { checkout, recordToOrder } from "@/features/pos/checkout";
 import { getSession } from "@/features/auth";
+import { formatTime } from "@gunita/ui";
 import type { Order } from "@gunita/contracts";
 
 export default function PosPage() {
@@ -71,6 +72,7 @@ export default function PosPage() {
         <div className="pos-tools">
           <CategoryTabs active={category} onChange={setCategory} />
           <PosSearch onSearch={onSearch} />
+          {data?.updatedAt ? <span className="muted pos-updated">Last updated {formatTime(data.updatedAt)}</span> : null}
         </div>
         {isPending ? (
           <p className="muted" role="status">

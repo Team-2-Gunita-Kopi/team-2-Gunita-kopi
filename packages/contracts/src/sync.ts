@@ -27,6 +27,8 @@ export type SyncPayload = z.infer<typeof SyncPayloadSchema>;
 export const SyncResultItemSchema = z.object({
   transactionId: z.string(),
   orderId: z.string().optional(),
+  /** Real queue number assigned by the server (optional; clients may fetch the order instead). */
+  orderNumber: z.string().optional(),
   status: z.enum(["synced", "duplicate", "failed"]),
   error: z.string().optional(),
 });

@@ -13,7 +13,10 @@ vi.mock("next/navigation", () => ({
 }));
 
 const pending = vi.hoisted(() => ({ count: 0 }));
-vi.mock("@/offline/outbox", () => ({ getPendingSyncCount: async () => pending.count }));
+vi.mock("@/offline/outbox", async (orig) => ({
+  ...(await orig<typeof import("@/offline/outbox")>()),
+  getOutboxCounts: async () => ({ pending: pending.count, failed: 0 }),
+}));
 vi.mock("@/offline/triggers", () => ({ initSyncTriggers: () => () => {} }));
 vi.mock("@/offline/sync", () => ({ syncOutboxOrders: vi.fn(async () => {}) }));
 
