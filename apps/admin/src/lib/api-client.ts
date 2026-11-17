@@ -49,3 +49,9 @@ export async function apiClient<T>(
     };
   }
 }
+
+/** Returns `res.data`, or throws the API error message. */
+export function unwrap<T>(res: ApiResponse<T>): T {
+  if (!res.success) throw new Error(res.error?.message ?? "Request failed");
+  return res.data as T;
+}
