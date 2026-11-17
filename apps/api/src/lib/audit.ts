@@ -35,3 +35,21 @@ export async function logAuditEvent(event: CreateAuditEvent): Promise<void> {
     });
   }
 }
+
+/** Audit entry for a privileged action by the signed-in user (NFR-11). */
+export function auditAction(
+  user: { id: string; role: string },
+  action: string,
+  resource: string,
+  resourceId: number | string,
+  details?: object,
+): Promise<void> {
+  return logAuditEvent({
+    action,
+    userId: user.id,
+    userRole: user.role,
+    resource,
+    resourceId: String(resourceId),
+    details: details ? { ...details } : undefined,
+  });
+}

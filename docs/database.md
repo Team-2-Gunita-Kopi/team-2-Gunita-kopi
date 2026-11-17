@@ -32,6 +32,27 @@ returns the existing order if `client_tx_id` was already saved, rechecks prices 
 takes the next `order_id` from `order_id_seq`, writes order rows and the payment, and writes stock-out rows from recipes and add-ons (`STOCK_CONFLICT` rolls everything back).
 The acting user comes from `auth.uid()`, never from the payload.
 
+## Phase 2 additions (`20261119000000_phase2_core.sql`)
+
+- **Order status transitions** (trigger `orders_status_transition`): `pending -> preparing -> completed`, and `pending`/`preparing -> cancelled`. `completed` and `cancelled` are final. Anything else raises `INVALID_TRANSITION` (API: 409).
+- **Product costing** (`recalculate_product_costing`, triggers on `product_ingredients` and on `ingredients.unit_cost`): `product_costing.ingredient_cost` is always `round(sum(quantity_needed * unit_cost), 2)`; a missing `unit_cost` counts as 0. `total_cost` stays the generated column `ingredient_cost + packaging_cost`. Only `packaging_cost` is entered by the Owner.
+- **Recipe replace** (`set_product_recipe(product_id, items jsonb)`): deletes, updates and inserts recipe lines in one transaction. Owner only (`FORBIDDEN` otherwise, so RLS never turns it into a silent no-op).
+- **`v_inventory_status`** gains `supplier_id`, `supplier_name`, `unit_cost`, `date_updated` (appended). Suppliers are Owner-only by RLS, so a barista sees `supplier_name` as NULL.
+- No table or column changes. All new functions are `SECURITY INVOKER` with `search_path = ''`.
+
+### Testing the database rules locally
+
+`supabase/tests/phase2_core.test.sql` checks costing, recipe replace, stock rules, checkout (totals, recipe deduction, add-ons, idempotency, rollback on stale price, short stock and underpayment), status transitions, report totals and RLS. Run it on plain PostgreSQL 15 in Docker:
+
+```bash
+docker run -d --name gk-pg -e POSTGRES_PASSWORD=test postgres:15
+docker cp supabase gk-pg:/sb
+docker exec gk-pg sh -c 'cd /sb && for f in tests/supabase-stub.sql migrations/*.sql tests/phase2_core.test.sql; do psql -q -v ON_ERROR_STOP=1 -U postgres -f $f || exit 1; done'
+docker rm -f gk-pg
+```
+
+`supabase-stub.sql` creates the few Supabase objects the migrations need (`anon`, `authenticated`, `service_role`, `auth.users`, `auth.uid()`). With `supabase start`, skip the stub and run only the test file.
+
 ## Security
 
 - RLS on every table. `app_role()` / `app_user_id()` read the caller's **active** profile.
@@ -119,6 +140,11 @@ JSON logs, no passwords, tokens or setup codes. Sign-in events: `auth.login_fail
 The Owner then creates barista accounts through `POST /api/admin/employees` (username, password, full name, role `barista` only; no email).
 
 ## Open items
+
+- Cancelling an order does not return its ingredients to stock. The SRS does not define a rule (stock may already be used); record a stock-in if needed until one is agreed.
+- `orders` has no column for who changed the status; the API writes it to `audit_logs` (`order.status`).
+- `ingredients` has no `status` column (SRS FR-21 lists one); the API exposes the derived stock status from `v_inventory_status`.
+- `packages/db-types` was updated by hand for `20261119000000` (two functions, four view columns). Run `pnpm db:types` against a linked project after the migration is applied to confirm.
 
 - `app_metadata.role` is not updated when an owner changes a role or deactivates a user; the API and RLS still block them, but the site routing will not until the next provisioning flow handles it.
 - Storage buckets (product images, receipts) are not created yet.

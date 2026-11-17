@@ -1,44 +1,28 @@
-import { NextRequest } from "next/server";
 import { requireRole } from "@/lib/auth";
-import { errorResponse, notImplementedResponse } from "@/lib/response";
-import { listOrders, createOrder } from "@/modules/orders/service";
-import { CreateOrderRequestSchema } from "@/modules/orders/schema";
+import { jsonResponse, route } from "@/lib/response";
+import { readJson, readQuery } from "@/lib/request";
+import {
+  CreateOrderRequestSchema,
+  OrderListQuerySchema,
+} from "@gunita/contracts";
+import { checkout, getOrder, listOrders } from "@/modules/orders/service";
 
-export async function GET(req: NextRequest) {
-  try {
-    const user = await requireRole(req, ["barista", "owner_admin"]);
-    await listOrders(user);
-    return notImplementedResponse("GET /api/orders");
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "statusCode" in error &&
-      (error as { statusCode: number }).statusCode === 501
-    ) {
-      return notImplementedResponse("GET /api/orders");
-    }
-    return errorResponse(error);
-  }
-}
+// Order board and queue (FR-10), both roles.
+export const GET = route(async (req) => {
+  const user = await requireRole(req, ["owner_admin", "barista"]);
+  return jsonResponse(
+    await listOrders(user, readQuery(req, OrderListQuerySchema)),
+  );
+});
 
-export async function POST(req: NextRequest) {
-  try {
-    const user = await requireRole(req, ["barista", "owner_admin"]);
-    const body = await req.json();
-    const validated = CreateOrderRequestSchema.parse(body);
-
-    await createOrder(user, validated);
-    return notImplementedResponse("POST /api/orders");
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "statusCode" in error &&
-      (error as { statusCode: number }).statusCode === 501
-    ) {
-      return notImplementedResponse("POST /api/orders");
-    }
-    return errorResponse(error);
-  }
-}
+// Online checkout (FR-01 to FR-13). Order entry and payment are Barista functions (SRS 2.3).
+// Same atomic database function as POST /api/sync; a repeated clientTxId returns the first order.
+export const POST = route(async (req) => {
+  const user = await requireRole(req, "barista");
+  const body = await readJson(req, CreateOrderRequestSchema);
+  const { orderId, duplicate } = await checkout(user, body);
+  return jsonResponse(
+    { duplicate, order: await getOrder(user, orderId) },
+    { status: duplicate ? 200 : 201 },
+  );
+});

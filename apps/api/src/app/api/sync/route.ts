@@ -1,17 +1,12 @@
-import { NextRequest } from "next/server";
 import { requireRole } from "@/lib/auth";
-import { errorResponse, jsonResponse } from "@/lib/response";
+import { jsonResponse, route } from "@/lib/response";
+import { readJson } from "@/lib/request";
 import { processSyncOrders } from "@/modules/sync/service";
 import { SyncPayloadSchema } from "@/modules/sync/schema";
 
-export async function POST(req: NextRequest) {
-  try {
-    const user = await requireRole(req, "barista");
-    const body = await req.json();
-    const validated = SyncPayloadSchema.parse(body);
-
-    return jsonResponse(await processSyncOrders(user, validated));
-  } catch (error) {
-    return errorResponse(error);
-  }
-}
+// Offline outbox sync (FR-57 to FR-60). Per-order results; see SyncResultItem.
+export const POST = route(async (req) => {
+  const user = await requireRole(req, "barista");
+  const body = await readJson(req, SyncPayloadSchema);
+  return jsonResponse(await processSyncOrders(user, body));
+});

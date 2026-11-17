@@ -23,11 +23,13 @@ describe("Contracts Schema Validation", () => {
     expect(OrderStatusSchema.safeParse("delivered").success).toBe(false);
   });
 
-  it("validates exact four order types", () => {
-    const validTypes = ["dine-in", "take-out", "online", "pre-order"];
+  it("validates exactly the order types the orders table accepts", () => {
+    // Online/Facebook orders are entered as pre-orders (FR-01); orders.order_type has no 'online'.
+    const validTypes = ["dine-in", "take-out", "pre-order"];
     validTypes.forEach((type) => {
       expect(OrderTypeSchema.safeParse(type).success).toBe(true);
     });
+    expect(OrderTypeSchema.safeParse("online").success).toBe(false);
     expect(OrderTypeSchema.safeParse("delivery").success).toBe(false);
   });
 
