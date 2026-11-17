@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { screen, waitFor } from "@testing-library/react";
 import { createOwnerMockDb, createPosView } from "@gunita/mocks/owner";
-import { addLine, lineTotal } from "@gunita/contracts";
+import { addLine, lineTotal, type OrderAddon } from "@gunita/contracts";
 import type { PosCatalog } from "@/features/pos";
 import { useCartStore } from "@/features/pos/cart.store";
 import { CustomizeModal } from "@/features/pos/components/CustomizeModal";
@@ -14,13 +14,14 @@ function seedCatalog(): PosCatalog {
   return createPosView(db).listCatalog() as PosCatalog;
 }
 
-function setup(opts: { category: string; stock?: (s: Record<string, number>) => void; qty?: number }) {
+function setup(opts: { category: string; stock?: (s: Record<string, number>) => void; qty?: number; addons?: OrderAddon[] }) {
   const catalog = seedCatalog();
   const product = catalog.products.find((p) => p.category === opts.category && (p.ingredients ?? []).some((i) => i.ingredientId === "i-beans")) ?? catalog.products.find((p) => p.category === opts.category)!;
   const stockById = Object.fromEntries(catalog.ingredients.map((i) => [i.id, i.currentStock]));
   opts.stock?.(stockById);
   const lines = addLine([], product, () => "line-1");
   lines[0]!.quantity = opts.qty ?? 1;
+  lines[0]!.addons = opts.addons ?? [];
   useCartStore.setState({ lines });
   const onClose = vi.fn();
   renderWithProviders(<CustomizeModal line={lines[0]!} product={product} stockById={stockById} onClose={onClose} />);
@@ -67,6 +68,25 @@ describe("customize modal", () => {
     expect(screen.getByText("Not enough stock")).toBeInTheDocument();
     await userEvent.click(milk);
     expect(milk).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("shows add-on prices as pesos", () => {
+    setup({ category: "Hot Beverages" });
+    expect(screen.getByRole("button", { name: /Extra shot · \+₱25\.00/ })).toBeInTheDocument();
+  });
+
+  it("an already-selected add-on that is now out of stock can still be removed", async () => {
+    setup({
+      category: "Hot Beverages",
+      stock: (st) => (st["i-milk"] = 0),
+      addons: [{ ingredientId: "i-milk", label: "Extra milk", quantity: 60, price: 15 }],
+    });
+    const milk = screen.getByRole("button", { name: /Extra milk/ });
+    expect(milk).toBeEnabled();
+    expect(milk).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(milk);
+    expect(milk).toHaveAttribute("aria-pressed", "false");
+    expect(milk).toBeDisabled();
   });
 
   it("renders <b>hi</b> in instructions literally", async () => {

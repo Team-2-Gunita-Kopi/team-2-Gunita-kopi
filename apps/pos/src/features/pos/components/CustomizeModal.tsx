@@ -71,11 +71,11 @@ export function CustomizeModal({
                   type="button"
                   className="opt"
                   aria-pressed={on}
-                  disabled={a.disabled}
+                  disabled={a.disabled && !on}
                   onClick={() => toggleAddon(a)}
                 >
-                  {a.label} · +{a.price}
-                  {a.disabled ? <span className="opt-note">Not enough stock</span> : null}
+                  {a.label} · +{formatPeso(a.price)}
+                  {a.disabled && !on ? <span className="opt-note">Not enough stock</span> : null}
                 </button>
               );
             })
