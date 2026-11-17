@@ -1,6 +1,7 @@
-import { SyncPayload, SyncResponse } from "@gunita/contracts";
+import type { SyncPayload } from "@gunita/contracts";
 import { getPendingOutboxOrders, markOrderStatus } from "./outbox";
-import { apiClient } from "@/lib/api-client";
+import { posData } from "@/features/pos";
+import { getSession } from "@/features/auth";
 
 export interface SyncExecutionResult {
   total: number;
@@ -9,7 +10,7 @@ export interface SyncExecutionResult {
 }
 
 /**
- * Reads pending outbox orders and transmits them to POST /api/sync.
+ * Reads pending outbox orders and transmits them through the POS data layer (POST /api/sync).
  * Updates local Dexie status based on API commit confirmation.
  */
 export async function syncOutboxOrders(): Promise<SyncExecutionResult> {
@@ -35,33 +36,16 @@ export async function syncOutboxOrders(): Promise<SyncExecutionResult> {
 
   // TODO: Implement batch chunking if pending count exceeds 50 orders
   try {
-    const res = await apiClient<SyncResponse>("/api/sync", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.success || !res.data) {
-      // Revert in-flight orders back to failed on network/server error
-      for (const item of pendingOrders) {
-        await markOrderStatus(
-          item.clientTxId,
-          "failed",
-          res.error?.message || "Sync failed",
-        );
-      }
-      return {
-        total: pendingOrders.length,
-        synced: 0,
-        failed: pendingOrders.length,
-      };
-    }
+    const session = getSession();
+    const actor = { id: session?.userId ?? "", fullName: session?.fullName ?? "" };
+    const res = await posData.syncOrders(payload, actor);
 
     let syncedCount = 0;
     let failedCount = 0;
 
-    for (const result of res.data.results) {
+    for (const result of res.results) {
       if (result.status === "synced" || result.status === "duplicate") {
-        await markOrderStatus(result.transactionId, "synced");
+        await markOrderStatus(result.transactionId, "synced", undefined, result.orderId);
         syncedCount++;
       } else {
         await markOrderStatus(result.transactionId, "failed", result.error);

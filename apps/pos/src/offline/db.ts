@@ -11,6 +11,15 @@ export interface OutboxOrderRecord {
   createdAt: string;
   updatedAt: string;
   syncedAt?: string;
+  /** Provisional queue number (OFF-001) shown until the server assigns the real one. */
+  provisionalNo?: string;
+  /** Server order id once synced. */
+  serverOrderId?: string;
+}
+
+export interface MetaRecord {
+  key: string;
+  value: unknown;
 }
 
 export interface CachedProduct {
@@ -34,6 +43,7 @@ export class GunitaPosDB extends Dexie {
   ordersOutbox!: EntityTable<OutboxOrderRecord, "clientTxId">;
   productsCache!: EntityTable<CachedProduct, "id">;
   ingredientsCache!: EntityTable<CachedIngredient, "id">;
+  meta!: EntityTable<MetaRecord, "key">;
 
   constructor() {
     super("GunitaPosDB");
@@ -41,6 +51,12 @@ export class GunitaPosDB extends Dexie {
       ordersOutbox: "clientTxId, status, createdAt",
       productsCache: "id, category, name",
       ingredientsCache: "id, name",
+    });
+    this.version(2).stores({
+      ordersOutbox: "clientTxId, status, createdAt",
+      productsCache: "id, category, name",
+      ingredientsCache: "id, name",
+      meta: "key",
     });
   }
 }
