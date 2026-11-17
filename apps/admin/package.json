@@ -14,6 +14,7 @@
     "@gunita/config": "workspace:*",
     "@gunita/contracts": "workspace:*",
     "@gunita/ui": "workspace:*",
+    "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "^2.49.1",
     "next": "^15.1.7",
     "react": "^19.0.0",

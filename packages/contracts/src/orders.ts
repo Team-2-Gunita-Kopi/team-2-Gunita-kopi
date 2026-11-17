@@ -16,15 +16,24 @@ export const OrderTypeSchema = z.enum([
 ]);
 export type OrderType = z.infer<typeof OrderTypeSchema>;
 
-export const OrderItemSchema = z.object({
-  id: z.string().optional(),
-  productId: z.string(),
-  productName: z.string(),
-  quantity: z.number().int().positive(),
-  unitPrice: z.number().nonnegative(),
-  subtotal: z.number().nonnegative(),
-  notes: z.string().optional(),
-});
+// One order row (SDS 3.5.8). Add-on rows carry ingredientId instead of productId.
+export const OrderItemSchema = z
+  .object({
+    id: z.string().optional(),
+    productId: z.string().optional(),
+    productName: z.string(),
+    isAddon: z.boolean().optional(),
+    ingredientId: z.string().optional(),
+    quantity: z.number().int().positive(),
+    unitPrice: z.number().nonnegative(),
+    subtotal: z.number().nonnegative(),
+    customization: z.string().max(255).optional(),
+    specialInstructions: z.string().max(255).optional(),
+    notes: z.string().optional(),
+  })
+  .refine((i) => (i.isAddon ? !!i.ingredientId : !!i.productId), {
+    message: "Add-on rows need ingredientId; product rows need productId",
+  });
 export type OrderItem = z.infer<typeof OrderItemSchema>;
 
 export const OrderSchema = z.object({
@@ -47,7 +56,7 @@ export const OrderSchema = z.object({
 export type Order = z.infer<typeof OrderSchema>;
 
 export const CreateOrderRequestSchema = z.object({
-  clientTxId: z.string().min(1, "Transaction ID is required for idempotency"),
+  clientTxId: z.string().uuid("Transaction ID must be a UUID for idempotency"),
   type: OrderTypeSchema,
   items: z
     .array(OrderItemSchema)

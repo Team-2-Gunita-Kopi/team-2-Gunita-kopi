@@ -3,7 +3,6 @@
 import React from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AppShell, NavItem } from "@gunita/ui";
-import { supabaseBrowser } from "@/lib/supabase-browser";
 
 const ADMIN_NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard" },
@@ -24,8 +23,10 @@ export default function AdminAppLayout({
   const router = useRouter();
 
   const handleLogout = async () => {
-    await supabaseBrowser.auth.signOut();
-    router.push("/login");
+    // The server revokes the session and clears the HttpOnly cookie.
+    await fetch("/auth/logout", { method: "POST" }).catch(() => undefined);
+    router.replace("/login");
+    router.refresh();
   };
 
   return (

@@ -56,7 +56,7 @@ export default function PosPage() {
 
   const handleCheckout = async () => {
     // Generate a unique client transaction ID for safe retry / idempotency
-    const clientTxId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const clientTxId = crypto.randomUUID();
 
     const orderPayload: CreateOrderRequest = {
       clientTxId,

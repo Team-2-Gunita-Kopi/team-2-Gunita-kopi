@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { Database } from "@gunita/db-types";
+import { AppError } from "./errors";
 
 export interface IdempotencyCheckResult {
   isDuplicate: boolean;
@@ -7,8 +8,9 @@ export interface IdempotencyCheckResult {
 }
 
 /**
- * Checks if an order with the provided clientTxId already exists in the database.
- * Enables safe offline retries without duplicate billing or double inventory deduction.
+ * Checks if a sale with the provided clientTxId was already saved.
+ * payments.client_tx_id is unique (one payment per sale), so it is the idempotency key.
+ * process_checkout_transaction repeats this check atomically; this is the cheap pre-check.
  */
 export async function checkTransactionIdempotency(
   supabase: SupabaseClient<Database>,
@@ -18,15 +20,17 @@ export async function checkTransactionIdempotency(
     return { isDuplicate: false };
   }
 
-  // TODO: Replace with query on orders table when schema is migrated
-  // const { data, error } = await supabase
-  //   .from('orders')
-  //   .select('id, client_tx_id')
-  //   .eq('client_tx_id', clientTxId)
-  //   .maybeSingle();
+  const { data, error } = await supabase
+    .from("payments")
+    .select("order_id")
+    .eq("client_tx_id", clientTxId)
+    .maybeSingle();
 
-  // Placeholder check: safely returns not duplicate for scaffolding
-  return {
-    isDuplicate: false,
-  };
+  if (error) {
+    throw new AppError(error.message, 500, "DATABASE_ERROR");
+  }
+
+  return data
+    ? { isDuplicate: true, existingOrderId: String(data.order_id) }
+    : { isDuplicate: false };
 }

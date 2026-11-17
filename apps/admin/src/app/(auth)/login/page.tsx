@@ -2,10 +2,10 @@
 
 import React, { useState } from "react";
 import { Button, Input } from "@gunita/ui";
-import { supabaseBrowser } from "@/lib/supabase-browser";
+import { apiClient } from "@/lib/api-client";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -16,22 +16,19 @@ export default function LoginPage() {
     setErrorMessage("");
 
     try {
-      const { data, error } = await supabaseBrowser.auth.signInWithPassword({
-        email,
-        password,
+      // This site's server signs in through the API and sets an HttpOnly session cookie.
+      const res = await apiClient<null>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
       });
-
-      if (error) {
-        setErrorMessage(error.message);
-        setIsLoading(false);
+      if (!res.success) {
+        setErrorMessage(res.error?.message ?? "Sign in failed");
         return;
       }
 
       // TODO: Implement Multi-Factor Authentication (MFA) challenge verification for owner_admin accounts
 
-      if (data?.session) {
-        window.location.href = "/dashboard";
-      }
+      window.location.href = "/dashboard";
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -62,12 +59,13 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin} className="space-y-4">
           <Input
-            label="Email Address"
-            type="email"
+            label="Username"
+            type="text"
+            autoComplete="username"
             required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="owner@gunitakopi.com"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="owner username"
           />
 
           <Input
@@ -84,7 +82,13 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-gray-400">
+        <p className="mt-4 text-center text-xs">
+          <a href="/forgot-password" className="text-[#0F2F24] underline">
+            Forgot password?
+          </a>
+        </p>
+
+        <p className="mt-4 text-center text-xs text-gray-400">
           Private authorized access only. Registration is handled internally.
         </p>
       </div>

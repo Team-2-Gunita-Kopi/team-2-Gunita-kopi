@@ -1,83 +1,106 @@
-import { describe, it, expect } from "vitest";
-import { requireUser, requireRole } from "../src/lib/auth";
-import { UnauthorizedError, ForbiddenError } from "../src/lib/errors";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-function createMockJwt(claims: Record<string, unknown>): string {
-  const header = Buffer.from(
-    JSON.stringify({ alg: "HS256", typ: "JWT" }),
-  ).toString("base64");
-  const payload = Buffer.from(JSON.stringify(claims)).toString("base64");
-  return `${header}.${payload}.mockSignature`;
+// Fake Supabase: tokens map to auth users, auth users map to profile rows.
+const authUsers: Record<string, { id: string; email: string }> = {
+  "owner-token": { id: "auth-owner", email: "owner@gunitakopi.com" },
+  "barista-token": { id: "auth-barista", email: "barista@gunitakopi.com" },
+  "inactive-token": { id: "auth-inactive", email: "old@gunitakopi.com" },
+  "no-profile-token": { id: "auth-orphan", email: "orphan@gunitakopi.com" },
+};
+const profiles: Record<
+  string,
+  { user_id: number; role: string; status: string }
+> = {
+  "auth-owner": { user_id: 1, role: "owner_admin", status: "active" },
+  "auth-barista": { user_id: 2, role: "barista", status: "active" },
+  "auth-inactive": { user_id: 3, role: "owner_admin", status: "inactive" },
+};
+
+vi.mock("../src/lib/supabase-user", () => ({
+  createScopedUserClient: () => ({
+    auth: {
+      getUser: async (token: string) =>
+        authUsers[token]
+          ? { data: { user: authUsers[token] }, error: null }
+          : { data: { user: null }, error: { message: "invalid JWT" } },
+    },
+    from: () => ({
+      select: () => ({
+        eq: (_col: string, authId: string) => ({
+          maybeSingle: async () => ({
+            data: profiles[authId] ?? null,
+            error: null,
+          }),
+        }),
+      }),
+    }),
+  }),
+}));
+
+const { requireUser, requireRole } = await import("../src/lib/auth");
+const { UnauthorizedError, ForbiddenError } = await import("../src/lib/errors");
+
+function req(token?: string) {
+  return new NextRequest("http://localhost:3002/api/products", {
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+  });
+}
+
+function forgedJwt(claims: Record<string, unknown>): string {
+  const b64 = (o: unknown) =>
+    Buffer.from(JSON.stringify(o)).toString("base64url");
+  return `${b64({ alg: "HS256", typ: "JWT" })}.${b64(claims)}.forged`;
 }
 
 describe("API Server Authorization Guard", () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it("throws UnauthorizedError when Authorization header is missing", async () => {
-    const req = new NextRequest("http://localhost:3002/api/products");
-    await expect(requireUser(req)).rejects.toThrow(UnauthorizedError);
+    await expect(requireUser(req())).rejects.toThrow(UnauthorizedError);
   });
 
-  it("throws UnauthorizedError when Bearer token has invalid claims", async () => {
-    const invalidToken = createMockJwt({ sub: "user_123" }); // missing role in app_metadata
-    const req = new NextRequest("http://localhost:3002/api/products", {
-      headers: {
-        authorization: `Bearer ${invalidToken}`,
-      },
+  it("rejects a forged token that claims owner_admin", async () => {
+    const forged = forgedJwt({
+      sub: "x",
+      app_metadata: { role: "owner_admin" },
     });
-
-    await expect(requireUser(req)).rejects.toThrow(UnauthorizedError);
+    await expect(requireRole(req(forged), "owner_admin")).rejects.toThrow(
+      UnauthorizedError,
+    );
   });
 
-  it("rejects barista trying to access owner_admin protected route with 403 Forbidden", async () => {
-    const baristaToken = createMockJwt({
-      sub: "barista_usr_01",
-      email: "barista@gunitakopi.com",
-      app_metadata: { role: "barista" },
-    });
-
-    const req = new NextRequest("http://localhost:3002/api/products", {
-      headers: {
-        authorization: `Bearer ${baristaToken}`,
-      },
-    });
-
-    await expect(requireRole(req, "owner_admin")).rejects.toThrow(
+  it("rejects an inactive account with 403", async () => {
+    await expect(requireUser(req("inactive-token"))).rejects.toThrow(
       ForbiddenError,
     );
   });
 
-  it("allows owner_admin to access owner_admin protected route", async () => {
-    const ownerToken = createMockJwt({
-      sub: "owner_usr_01",
-      email: "owner@gunitakopi.com",
-      app_metadata: { role: "owner_admin" },
-    });
+  it("rejects a sign-in with no employee profile with 403", async () => {
+    await expect(requireUser(req("no-profile-token"))).rejects.toThrow(
+      ForbiddenError,
+    );
+  });
 
-    const req = new NextRequest("http://localhost:3002/api/products", {
-      headers: {
-        authorization: `Bearer ${ownerToken}`,
-      },
-    });
+  it("rejects barista on an owner_admin route with 403", async () => {
+    await expect(
+      requireRole(req("barista-token"), "owner_admin"),
+    ).rejects.toThrow(ForbiddenError);
+  });
 
-    const user = await requireRole(req, "owner_admin");
-    expect(user.id).toBe("owner_usr_01");
+  it("allows owner_admin and takes the role from the profile", async () => {
+    const user = await requireRole(req("owner-token"), "owner_admin");
+    expect(user.id).toBe("auth-owner");
+    expect(user.userId).toBe(1);
     expect(user.role).toBe("owner_admin");
   });
 
-  it("allows barista to access shared barista route", async () => {
-    const baristaToken = createMockJwt({
-      sub: "barista_usr_02",
-      email: "barista@gunitakopi.com",
-      app_metadata: { role: "barista" },
-    });
-
-    const req = new NextRequest("http://localhost:3002/api/orders", {
-      headers: {
-        authorization: `Bearer ${baristaToken}`,
-      },
-    });
-
-    const user = await requireRole(req, ["barista", "owner_admin"]);
+  it("allows barista on a shared route", async () => {
+    const user = await requireRole(req("barista-token"), [
+      "barista",
+      "owner_admin",
+    ]);
     expect(user.role).toBe("barista");
+    expect(user.userId).toBe(2);
   });
 });

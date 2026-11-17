@@ -1,39 +1,26 @@
 import { ApiResponse } from "@gunita/contracts";
-import { supabaseBrowser } from "./supabase-browser";
-import { env } from "./env";
 
-export interface ApiClientOptions extends RequestInit {
-  token?: string;
-}
+export type ApiClientOptions = RequestInit;
 
 /**
  * Typed fetch client for the Admin website to communicate with @gunita/api.
- * Automatically attaches Supabase Auth Bearer token if session exists.
+ * Calls this site's same-origin /api proxy, which attaches the session from the HttpOnly
+ * cookie on the server. Page scripts never handle access tokens.
  */
 export async function apiClient<T>(
   endpoint: string,
   options: ApiClientOptions = {},
 ): Promise<ApiResponse<T>> {
-  const { token, headers: customHeaders, ...restOptions } = options;
-
-  let authToken = token;
-  if (!authToken) {
-    const { data } = await supabaseBrowser.auth.getSession();
-    authToken = data.session?.access_token;
-  }
-
-  const headers = new Headers(customHeaders);
+  const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
-  if (authToken) {
-    headers.set("Authorization", `Bearer ${authToken}`);
-  }
 
-  const url = `${env.apiUrl}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+  const url = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
 
   try {
     const response = await fetch(url, {
-      ...restOptions,
+      ...options,
       headers,
+      credentials: "same-origin",
     });
 
     const data = (await response.json()) as ApiResponse<T>;

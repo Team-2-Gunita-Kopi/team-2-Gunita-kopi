@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AppShell, NavItem, StatusBadge } from "@gunita/ui";
-import { supabaseBrowser } from "@/lib/supabase-browser";
 import { initSyncTriggers } from "@/offline/triggers";
 import { getPendingSyncCount } from "@/offline/outbox";
 
@@ -48,8 +47,10 @@ export default function PosAppLayout({
   }, []);
 
   const handleLogout = async () => {
-    await supabaseBrowser.auth.signOut();
-    router.push("/login");
+    // The server revokes the session and clears the HttpOnly cookie.
+    await fetch("/auth/logout", { method: "POST" }).catch(() => undefined);
+    router.replace("/login");
+    router.refresh();
   };
 
   const connectionBadge = isOnline ? (

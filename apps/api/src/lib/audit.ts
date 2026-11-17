@@ -1,10 +1,11 @@
-import { supabaseAdmin as _supabaseAdmin } from "./supabase-admin";
+import { supabaseAdmin } from "./supabase-admin";
 import { CreateAuditEvent } from "@gunita/contracts";
+import { Json } from "@gunita/db-types";
 import { logger } from "./logger";
 
 /**
  * Records an audit log event using the privileged service role client.
- * Audit logs cannot be modified by users or baristas.
+ * Audit logs cannot be read or modified by users or baristas (no RLS policies on audit_logs).
  */
 export async function logAuditEvent(event: CreateAuditEvent): Promise<void> {
   logger.info("Audit event logged", {
@@ -15,15 +16,22 @@ export async function logAuditEvent(event: CreateAuditEvent): Promise<void> {
     resourceId: event.resourceId,
   });
 
-  // TODO: Insert audit log record into audit_logs table via supabaseAdmin once schema migration is applied
-  // await supabaseAdmin.from('audit_logs').insert({
-  //   action: event.action,
-  //   user_id: event.userId,
-  //   user_role: event.userRole,
-  //   resource: event.resource,
-  //   resource_id: event.resourceId,
-  //   details: event.details as any,
-  //   ip_address: event.ipAddress,
-  //   user_agent: event.userAgent
-  // });
+  const { error } = await supabaseAdmin.from("audit_logs").insert({
+    action: event.action,
+    user_id: event.userId,
+    user_role: event.userRole,
+    resource: event.resource,
+    resource_id: event.resourceId ?? null,
+    details: (event.details ?? null) as Json,
+    ip_address: event.ipAddress ?? null,
+    user_agent: event.userAgent ?? null,
+  });
+
+  // An audit write failure must not undo the action already performed; log it loudly instead.
+  if (error) {
+    logger.error("Audit log insert failed", {
+      action: event.action,
+      error: error.message,
+    });
+  }
 }

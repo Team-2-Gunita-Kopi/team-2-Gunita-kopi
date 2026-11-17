@@ -1,19 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
-import {
-  Button,
-  DataTable,
-  Dialog,
-  Input,
-  Select,
-  StatusBadge,
-} from "@gunita/ui";
+import { Button, DataTable, Dialog, Input, StatusBadge } from "@gunita/ui";
+import type { EmployeeResponse } from "@gunita/contracts";
+import { apiClient } from "@/lib/api-client";
 
 interface UserRow extends Record<string, unknown> {
   id: string;
   fullName: string;
-  email: string;
+  username: string;
   role: string;
   isActive: boolean;
 }
@@ -22,14 +17,14 @@ const sampleUsers: UserRow[] = [
   {
     id: "u-1",
     fullName: "Store Owner",
-    email: "owner@gunitakopi.com",
+    username: "owner",
     role: "owner_admin",
     isActive: true,
   },
   {
     id: "u-2",
     fullName: "Maria Santos",
-    email: "maria.barista@gunitakopi.com",
+    username: "maria",
     role: "barista",
     isActive: true,
   },
@@ -38,16 +33,25 @@ const sampleUsers: UserRow[] = [
 export default function UsersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState("barista");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const handleCreateEmployee = (e: React.FormEvent) => {
+  // Barista accounts only: username sign-in, no email. The Owner account comes from /setup.
+  const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In real implementation: calls POST /api/admin/employees via apiClient
+    setErrorMessage("");
+    const res = await apiClient<EmployeeResponse>("/api/admin/employees", {
+      method: "POST",
+      body: JSON.stringify({ username, password, fullName, role: "barista" }),
+    });
+    if (!res.success) {
+      setErrorMessage(res.error?.message ?? "Could not create the account");
+      return;
+    }
     setIsModalOpen(false);
     setFullName("");
-    setEmail("");
+    setUsername("");
     setPassword("");
   };
 
@@ -69,7 +73,7 @@ export default function UsersPage() {
       <DataTable<UserRow>
         columns={[
           { key: "fullName", header: "Name" },
-          { key: "email", header: "Email" },
+          { key: "username", header: "Username" },
           {
             key: "role",
             header: "Role",
@@ -97,9 +101,14 @@ export default function UsersPage() {
       <Dialog
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Create Employee Account"
+        title="Create Barista Account"
       >
         <form onSubmit={handleCreateEmployee} className="space-y-4">
+          {errorMessage && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">
+              {errorMessage}
+            </div>
+          )}
           <Input
             label="Full Name"
             required
@@ -108,21 +117,12 @@ export default function UsersPage() {
             placeholder="Barista Name"
           />
           <Input
-            label="Email Address"
-            type="email"
+            label="Username"
             required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="barista@gunitakopi.com"
-          />
-          <Select
-            label="System Role"
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            options={[
-              { value: "barista", label: "Barista (POS Access)" },
-              { value: "owner_admin", label: "Owner Admin (Full Access)" },
-            ]}
+            autoComplete="off"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="e.g. maria"
           />
           <Input
             label="Temporary Password"

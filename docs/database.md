@@ -1,83 +1,127 @@
-# Database Architecture & Migration Plan
+# Database
 
-This document outlines the database schema, views, security design, and migration plan for the Gunita Kopi Supabase PostgreSQL database. This document serves as the implementation specification for the upcoming database phase.
+Supabase PostgreSQL. The schema follows SDS v3 section 3 (9 tables, 6 views) plus the pure web changes in SDS 3.11.
+Source of truth: `supabase/migrations/` (`20261116000000_initial_schema.sql`, then `20261117000000_role_grants.sql`, which grants table privileges explicitly because new Supabase projects no longer do, then `20261118000000_owner_email.sql` for the Owner email and privilege hardening, then `20261118000100_login_throttle.sql` for sign-in rate limiting). TypeScript types: `packages/db-types`.
 
-## Planned Tables (9 Core Domain Tables + 1 Audit Table)
+## Tables
 
-1. **`users`**
-   - Application profile record corresponding to Supabase Auth accounts.
-   - Contains employee details, assigned role, phone number, and active flag.
+| Table                 | Key                     | Notes                                                                                                                                                                                                                                                                               |
+| --------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`               | `user_id`               | Employee profile. `auth_user_id` links to `auth.users`. No password column: Supabase Auth owns credentials. `role` is `owner_admin` or `barista`; `status` is `active` or `inactive`. `email`: Owner only (required), NULL for baristas; trimmed, lowercased, unique ignoring case. |
+| `suppliers`           | `supplier_id`           |                                                                                                                                                                                                                                                                                     |
+| `ingredients`         | `ingredient_id`         | Stock items and add-ons. `current_stock` is maintained by `stock_transactions`. `unit_cost` is the add-on price basis.                                                                                                                                                              |
+| `products`            | `product_id`            | `created_by` → `users`.                                                                                                                                                                                                                                                             |
+| `product_ingredients` | `product_ingredient_id` | Recipe. Unique `(product_id, ingredient_id)`.                                                                                                                                                                                                                                       |
+| `product_costing`     | `costing_id`            | One row per product. `total_cost` is generated (`ingredient_cost + packaging_cost`).                                                                                                                                                                                                |
+| `stock_transactions`  | `stock_trans_id`        | Append-only. A trigger updates `ingredients.current_stock`, sets `remaining_stock`, and raises `STOCK_CONFLICT` instead of going negative.                                                                                                                                          |
+| `orders`              | `order_line_id`         | One row per item; rows of one sale share `order_id` (the queue number) and `client_tx_id`. A CHECK enforces: add-on rows have `ingredient_id`, product rows have `product_id`.                                                                                                      |
+| `payments`            | `payment_id`            | `order_id` is indexed, not a FK (SDS 3.8). `client_tx_id` is unique: the database-level idempotency key.                                                                                                                                                                            |
+| `audit_logs`          | `audit_id`              | Privileged actions. Service role only.                                                                                                                                                                                                                                              |
 
-2. **`suppliers`**
-   - Directory of coffee bean and ingredient suppliers.
-   - Holds business name, contact person, phone number, email address, physical address, and notes.
+On-delete rules follow SDS 3.6 (set null for user/supplier links, cascade for recipe/costing, restrict for history).
 
-3. **`ingredients`**
-   - Inventory tracking for all raw consumables (coffee beans, milk, syrups, cups, lids, packaging).
-   - Tracks SKU, measurement unit (e.g. grams, ml, pcs), current on-hand quantity, minimum safety threshold, and unit purchase cost.
+## Views
 
-4. **`products`**
-   - Beverage and food items offered on the point-of-sale menu.
-   - Tracks SKU, category (Coffee, Non-Coffee, Pastry, Beans), retail selling price, and active catalog availability.
+`v_sales`, `v_order_totals`, `v_daily_sales`, `v_monthly_sales`, `v_best_sellers`, `v_inventory_status`.
+All use `security_invoker`, so the caller's RLS applies. The four sales report views return rows to `owner_admin` only (FR-30). Dates are grouped in `Asia/Manila`.
 
-5. **`product_ingredients`**
-   - Recipe bill of materials mapping each product to its component ingredients.
-   - Defines the precise ingredient quantity depleted per serving.
+## Checkout
 
-6. **`product_costing`**
-   - Automated financial metrics per product calculated from component ingredient costs.
-   - Maintains total Cost of Goods Sold (COGS), selling price, and real-time gross profit margin percentage.
+`process_checkout_transaction(p_order jsonb)` is the only way to create orders and payments. In one transaction it:
+returns the existing order if `client_tx_id` was already saved, rechecks prices (`PRICE_CONFLICT`),
+takes the next `order_id` from `order_id_seq`, writes order rows and the payment, and writes stock-out rows from recipes and add-ons (`STOCK_CONFLICT` rolls everything back).
+The acting user comes from `auth.uid()`, never from the payload.
 
-7. **`stock_transactions`**
-   - Complete ledger of inventory additions, reductions, waste events, and cycle counts.
-   - Records movement type (`stock_in`, `stock_out`, `waste`, `adjustment`, `order_deduction`), quantity change, previous balance, new balance, and barista/admin reference.
+## Security
 
-8. **`orders`**
-   - Sales transaction headers generated either online or synchronized from offline POS outboxes.
-   - Records order status, order type (`dine-in`, `take-out`, `online`, `pre-order`), financial summary, payment method, and cashier attribution.
+- RLS on every table. `app_role()` / `app_user_id()` read the caller's **active** profile.
+- Both roles read catalog, inventory, orders and payments. Owner writes catalog, inventory, suppliers and costing.
+- Barista may insert `stock_transactions` of type `out` only, and update only `orders.status`.
+- `anon` has no access. `audit_logs` has no policies.
+- `users`: a barista reads only their own row, so never the Owner's email. Signed-in users may update only `full_name` and `status` (RLS: Owner only); `role`, `email`, `username` and `auth_user_id` change only through the API, so nobody can grant themselves `owner_admin`.
+- `provision_initial_owner()` is executable by `service_role` only. An advisory lock makes concurrent setup requests create at most one Owner.
+- No Storage buckets exist yet, so there are no Storage policies to update.
+- `sync_owner_email_from_auth` (trigger on `auth.users`) copies a confirmed Auth email change to the Owner's `users.email`, so username sign-in keeps working. It is the only new `SECURITY DEFINER` function; all new functions pin `search_path = ''`.
+- `authenticated` has no `TRUNCATE`, `REFERENCES`, `TRIGGER` or `MAINTAIN` on any table. `20261118000000` revokes them on existing tables and in the default privileges of `postgres` (the migration role) in `public`. Live has no global default-privilege entries. Tables created by `supabase_admin` follow that role's own defaults, which `postgres` cannot change.
+- `login_throttle` and its functions (`login_throttle_blocked`, `login_throttle_fail`, `login_throttle_success`): RLS on, no policies, no grants to `anon`/`authenticated`; only the API (service role) uses them.
+- The API verifies every token with Supabase Auth and reads role and status from `users` (`apps/api/src/lib/auth.ts`). `app_metadata.role` is set at provisioning only so the Admin/POS sites can route; it is not used for authorization.
 
-9. **`payments`**
-   - Payment transaction records associated with finalized orders.
-   - Tracks payment method (cash, card, QR code), payment amount, payment provider references, and confirmation timestamp.
+## Workflow
 
-10. **`audit_logs`**
-    - Immutable security and administrative audit log.
-    - Records user identity, administrative actions, targeted entity, IP address, and payload snapshots.
+```bash
+npx supabase login
+npx supabase link --project-ref <project-ref>
+npx supabase db push          # apply migrations
+pnpm db:types                 # regenerate packages/db-types from the linked project
+```
 
-## Planned Views (6 Reporting Views)
+## Sign in
 
-1. **`v_sales`**
-   - Flattened sales order ledger joining order header information with payment confirmation timestamps.
+Everyone signs in with **username + password** (SRS FR-41). The login page posts to its own site (`/auth/login`), which calls `apps/api` `POST /api/auth/login`. The API looks up the username in `users`, picks the Auth email, and signs in with Supabase Auth. The site stores the session in an HttpOnly cookie; the browser never sees a token or the Auth email.
 
-2. **`v_order_totals`**
-   - Order-level aggregation calculating item counts, subtotal sums, discounts, taxes, and final payable amounts.
+- **Owner/Admin:** Auth email is the real address in `users.email`. Supports email verification and "Forgot password" (Admin site `/forgot-password` then `/reset-password`).
+- **Barista:** Auth email is the internal `<username>@staff.gunitakopi.local` (`usernameToAuthEmail` in `@gunita/auth`); `users.email` is NULL. No mail is sent; the Owner resets barista passwords.
 
-3. **`v_daily_sales`**
-   - Daily roll-up summarizing aggregate daily revenue, total transactions processed, average ticket value, estimated COGS, and daily gross margin.
+Wrong password, unknown username and inactive account all return the same `401`. An unverified Owner gets `403 EMAIL_NOT_CONFIRMED` (Supabase reports this only after the password matched).
 
-4. **`v_monthly_sales`**
-   - Calendar month financial summaries tracking gross sales volume, ticket volumes, and seasonal trajectory.
+### Session (HttpOnly, server-managed)
 
-5. **`v_best_sellers`**
-   - Product ranking analytics ordering menu items by total unit volume sold, total revenue generated, and profit margin contribution.
+The browser never holds a Supabase token. Each site (Admin, POS) has three server routes from `createSessionHandlers` in `@gunita/auth/session-server`:
 
-6. **`v_inventory_status`**
-   - Operational inventory dashboard view comparing current ingredient stock against minimum reorder points, providing real-time low stock indicators.
+- `POST /auth/login`: forwards username and password to `apps/api` `POST /api/auth/login` (server to server, with the client IP in `x-gunita-client-ip` and `INTERNAL_PROXY_SECRET`), checks the role is allowed on this site, then stores the session in an **HttpOnly, SameSite=Lax** cookie (`Secure` in production). The response body has no token. A barista signing in to the Owner portal gets 403 and the issued session is revoked.
+- `POST /auth/logout`: revokes the session in Supabase Auth and deletes the cookie (local-only clear if Auth is unreachable).
+- `/api/*`: same-origin proxy to `apps/api`. It reads the cookie, refreshes an expiring token (rewriting the cookie), and adds `Authorization: Bearer`. It never proxies `/api/auth/login`.
 
-## Planned Key Architectural Changes
+Cookie names: `sb-gunita-admin-auth` (Admin) and `sb-gunita-pos-auth` (POS), so the two sites stay separate on one host. State-changing requests to these routes must come from the site's own origin (CSRF check on the `Origin` header). Each site's `middleware.ts` (`createAuthMiddleware`) reads the same cookie, refreshes it, verifies the JWT with `getClaims` (local check with the project's ES256 signing key), and redirects to `/login` when there is no valid session or the role does not fit. `apps/api` still verifies every token itself (`requireUser`).
 
-1. **`auth_user_id` Column on `users`**:
-   - Replaces custom auth identifiers by foreign keying directly to Supabase Auth's `auth.users(id)`.
-2. **No Password Column on Application Tables**:
-   - Zero credential storage in the application schema; all passwords, salts, and credential flows are strictly managed within Supabase Auth (`auth.users`).
-3. **Client Transaction ID (`client_tx_id`) on Every Order Row**:
-   - Unique UUID generated client-side at order creation time before being queued to IndexedDB.
-   - Provides safe idempotency and prevents duplicate orders upon network retries or batch sync.
-4. **Final Order ID Issued by API at Sync**:
-   - System assigns the definitive sequential/formatted order number and database primary key upon confirmation of the transaction commit.
-5. **Dedicated `audit_logs` Table**:
-   - Separate append-only table accessible exclusively by the service role for security and compliance tracking.
-6. **Unified PostgreSQL Function for Checkout (`process_checkout_transaction`)**:
-   - Single atomic stored procedure called via Supabase RPC that creates order records, inserts payment logs, and decrements recipe ingredient inventory inside a single ACID database transaction.
-7. **Strict System Roles**:
-   - Application roles strictly restricted to `owner_admin` and `barista`, stored in Supabase `app_metadata` to prevent client modification.
+Password recovery is the only browser-side Supabase use: the Admin `/forgot-password` and `/reset-password` pages use a separate short-lived cookie (`sb-gunita-admin-recovery`), cleared after the new password is saved.
+
+Server-only settings (never `NEXT_PUBLIC_`): `INTERNAL_PROXY_SECRET` (same value in api, admin and pos), `API_URL` (admin and pos; defaults to `NEXT_PUBLIC_API_URL`).
+
+### Client IP
+
+Read only from a header the hosting platform sets (`@gunita/auth/client-ip`):
+
+- Vercel (`VERCEL=1`): `x-real-ip`. Vercel overwrites client-sent values, so a spoofed `X-Forwarded-For` is ignored.
+- Own reverse proxy: set `TRUSTED_CLIENT_IP_HEADER` to the header it sets.
+- Local development: `127.0.0.1`.
+- Production with no trusted source: sign-in returns 503 (no shared "unknown" bucket).
+
+`apps/api` accepts the forwarded `x-gunita-client-ip` only with a matching `INTERNAL_PROXY_SECRET`; a forwarded IP without it is refused (503).
+
+### Rate limiting
+
+`apps/api/src/lib/login-throttle.ts` with table `login_throttle` (shared by all serverless instances). Keys are SHA-256 hashes of the normalized username and the client IP:
+
+| Key           | Limit (15 min) | Effect                                                                                      |
+| ------------- | -------------- | ------------------------------------------------------------------------------------------- |
+| username + IP | 5 failures     | locks that pair                                                                             |
+| IP            | 20 failures    | locks that IP for every username                                                            |
+| username      | 10 failures    | locks the username **only for IPs without a successful sign-in for it in the last 30 days** |
+
+- Locks start at 15 minutes and double on each repeated lockout of the same key, up to 24 hours.
+- A correct password clears the pair counter and marks the IP as trusted for that username, so failures from other IPs cannot lock staff out of a terminal they already use.
+- Unknown and inactive usernames are counted exactly like real ones; every lock returns the same `429 TOO_MANY_ATTEMPTS`.
+- Fail closed: if a throttle read or write fails, sign-in returns `503` and the error is logged.
+- Housekeeping runs inside each failure: at most 100 idle rows (1 day; trusted rows 30 days) without an active lock, `SKIP LOCKED`. No extension or scheduler needed.
+
+### Logging
+
+JSON logs, no passwords, tokens or setup codes. Sign-in events: `auth.login_failed` (reason), `auth.login_blocked`, `auth.lockout`, `auth.login_succeeded`, `auth.throttle_unavailable`, `auth.proxy_secret_rejected`, `auth.client_ip_unavailable`. Usernames and IPs are logged only as short hash prefixes. Server errors (5xx) are logged as `request.failed`; clients get a generic message.
+
+## First owner account (one time)
+
+1. Set `OWNER_SETUP_TOKEN` (32+ random characters) in the API environment.
+2. Open the Admin site at `/setup`. Enter the setup code, email, full name, username, password and confirmation.
+3. `POST /api/setup/owner` (header `X-Setup-Token`) creates the Auth account on the real email (unconfirmed), then calls `provision_initial_owner()` to add the `owner_admin` profile. The role is set by the API; the request has no role field. Supabase sends the confirmation email.
+4. After the Owner exists, setup returns `409 SETUP_COMPLETE`. Remove `OWNER_SETUP_TOKEN` to switch the endpoint off.
+
+The Owner then creates barista accounts through `POST /api/admin/employees` (username, password, full name, role `barista` only; no email).
+
+## Open items
+
+- `app_metadata.role` is not updated when an owner changes a role or deactivates a user; the API and RLS still block them, but the site routing will not until the next provisioning flow handles it.
+- Storage buckets (product images, receipts) are not created yet.
+- Supabase's own sign-in rate limit is per IP, and every sign-in comes from the API server. Raise it in the Dashboard so the app-level throttle is the one that trips.
+- During a distributed attack on a username, a new device or IP (not yet trusted) cannot sign in to that username until the lock expires; known terminals keep working.
+- Live Auth settings: turn off "Allow new users to sign up" (it is on), add the Admin `/reset-password` URL to Redirect URLs, and set up custom SMTP (the built-in sender only mails project team members).
