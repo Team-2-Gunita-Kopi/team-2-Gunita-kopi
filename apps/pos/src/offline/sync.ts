@@ -16,6 +16,9 @@ const EMPTY: SyncExecutionResult = { total: 0, synced: 0, failed: 0 };
 async function runSync(): Promise<SyncExecutionResult> {
   // Nothing is attempted (and nothing is marked failed) while the device is offline.
   if (!isOnline()) return EMPTY;
+  // Runs are serialized, so any record still `syncing` was left by an interrupted run (tab closed/crashed).
+  const stale = await posDb.ordersOutbox.where("status").equals("syncing").toArray();
+  for (const r of stale) await markOrderStatus(r.clientTxId, "pending");
   const pendingOrders = await getPendingOutboxOrders();
   if (pendingOrders.length === 0) return EMPTY;
 

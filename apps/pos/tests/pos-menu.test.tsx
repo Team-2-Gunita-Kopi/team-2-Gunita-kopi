@@ -137,7 +137,7 @@ describe("pos menu", () => {
   it("shows the error message and retries when the catalog fails to load", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ json: async () => ({ ok: false, error: { code: "X", message: "boom" } }) }) as Response));
     renderWithProviders(<PosPage />);
-    expect(await screen.findByText("boom")).toBeInTheDocument();
+    expect(await screen.findByText("No saved menu yet. Connect to the internet once to download it.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });

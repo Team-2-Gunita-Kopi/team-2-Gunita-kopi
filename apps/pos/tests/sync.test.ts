@@ -117,6 +117,15 @@ describe("outbox sync", () => {
     expect(done.orderNumber).toMatch(/^20261116-A-/);
   });
 
+  it("a record left in syncing by an interrupted run is synced on the next run", async () => {
+    const record = await offlineCheckout();
+    await posDb.ordersOutbox.update(record.clientTxId, { status: "syncing" });
+    await syncOutboxOrders();
+    const done = (await posDb.ordersOutbox.get(record.clientTxId))!;
+    expect(done.status).toBe("synced");
+    expect(syncCalls()).toBe(1);
+  });
+
   it("discardOrder only removes failed records", async () => {
     const record = await offlineCheckout();
     await discardOrder(record.clientTxId);
