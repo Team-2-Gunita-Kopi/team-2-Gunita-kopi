@@ -379,6 +379,9 @@ body.auth-mode .main{padding:0}
 .offline-banner{position:fixed;top:0;left:0;right:0;z-index:90;display:none;align-items:center;justify-content:center;gap:.5rem;background:var(--bark);color:var(--fg);padding:.5rem;font-size:.85rem;border-bottom:1px solid var(--coffee-deep)}
 .offline-banner.show{display:flex}
 .offline-banner svg{width:16px;height:16px;color:var(--warn)}
+.sync-indicator{display:inline-flex;align-items:center;gap:.5rem;font-size:.85rem}
+.sync-indicator .btn{min-height:44px}
+.tb-menu button{min-height:44px}
 
 /* order cards + order form */
 .card-acts{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.6rem}
