@@ -107,6 +107,9 @@ create trigger ingredients_unit_cost_recost
 
 revoke execute on function public.product_ingredients_recost(), public.ingredients_recost()
   from public, anon, authenticated, service_role;
+-- New functions get EXECUTE for PUBLIC (so anon) by default; a schema-level default-privilege
+-- revoke cannot remove that built-in grant, so revoke it explicitly.
+revoke execute on function public.recalculate_product_costing(integer) from public, anon;
 -- Called from the trigger functions, which run as the signed-in Owner.
 grant execute on function public.recalculate_product_costing(integer) to authenticated, service_role;
 
@@ -142,4 +145,5 @@ begin
   on conflict (product_id, ingredient_id) do update set quantity_needed = excluded.quantity_needed;
 end $$;
 
+revoke execute on function public.set_product_recipe(integer, jsonb) from public, anon;
 grant execute on function public.set_product_recipe(integer, jsonb) to authenticated;
