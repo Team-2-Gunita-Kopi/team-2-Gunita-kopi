@@ -44,3 +44,4 @@ supabase/.branches/
 
 # Local Claude Code settings
 .claude/
+apps/api/.mock-data/

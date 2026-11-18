@@ -1,97 +1,84 @@
 "use client";
 
 import React, { useState } from "react";
-import { Button, Input } from "@gunita/ui";
-import { apiClient } from "@/lib/api-client";
+import { useRouter } from "next/navigation";
+import { CreateAccountForm, ForgotPasswordForm, LoginForm } from "@gunita/ui";
+import { registerOwner, requestPasswordRecovery, resetPassword, signIn, verifyRecoveryCode } from "@/features/auth";
+
+const HOME = "/dashboard";
+
+/** Same-origin paths only: resolve against our origin and compare (handles "/\evil", tabs, etc.). */
+function safeRedirect(value: string | null): string {
+  if (!value) return HOME;
+  try {
+    const u = new URL(value, window.location.origin);
+    if (u.origin !== window.location.origin) return HOME;
+    const path = u.pathname + u.search + u.hash;
+    // "//host" would be protocol-relative; "/login" would loop back here.
+    return path.startsWith("//") || path.startsWith("/login") ? HOME : path;
+  } catch {
+    return HOME;
+  }
+}
+
+type View = "login" | "forgot" | "create";
 
 export default function LoginPage() {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
+  const router = useRouter();
+  const [view, setView] = useState<View>("login");
+  const [notice, setNotice] = useState("");
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setErrorMessage("");
-
-    try {
-      // This site's server signs in through the API and sets an HttpOnly session cookie.
-      const res = await apiClient<null>("/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ username, password }),
-      });
-      if (!res.success) {
-        setErrorMessage(res.error?.message ?? "Sign in failed");
-        return;
-      }
-
-      // TODO: Implement Multi-Factor Authentication (MFA) challenge verification for owner_admin accounts
-
-      window.location.href = "/dashboard";
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : "Login failed");
-    } finally {
-      setIsLoading(false);
-    }
+  const backToLogin = (message = "") => {
+    setNotice(message);
+    setView("login");
   };
 
+  const onSubmit = async (identifier: string, password: string): Promise<string | null> => {
+    try {
+      await signIn(identifier, password);
+    } catch (err) {
+      return err instanceof Error ? err.message : "Sign in failed";
+    }
+    router.replace(safeRedirect(new URLSearchParams(window.location.search).get("redirect")));
+    return null;
+  };
+
+  if (view === "forgot") {
+    return (
+      <ForgotPasswordForm
+        roleLabel="Owner"
+        onRequestCode={requestPasswordRecovery}
+        onVerifyCode={verifyRecoveryCode}
+        onResetPassword={resetPassword}
+        onDone={() => backToLogin("Password updated. Sign in with your new password.")}
+        onBack={() => backToLogin()}
+      />
+    );
+  }
+
+  if (view === "create") {
+    return (
+      <CreateAccountForm
+        onCreate={registerOwner}
+        onDone={() => backToLogin("Account created. You can now sign in.")}
+        onBack={() => backToLogin()}
+      />
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#0F2F24] text-white font-bold text-xl mb-3">
-            GK
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-            Owner Portal
-          </h1>
-          <p className="text-xs text-gray-500 mt-1">
-            Gunita Kopi Management & Inventory
-          </p>
-        </div>
-
-        {errorMessage && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">
-            {errorMessage}
-          </div>
-        )}
-
-        <form onSubmit={handleLogin} className="space-y-4">
-          <Input
-            label="Username"
-            type="text"
-            autoComplete="username"
-            required
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="owner username"
-          />
-
-          <Input
-            label="Password"
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-          />
-
-          <Button type="submit" className="w-full mt-2" disabled={isLoading}>
-            {isLoading ? "Signing In..." : "Sign In as Owner"}
-          </Button>
-        </form>
-
-        <p className="mt-4 text-center text-xs">
-          <a href="/forgot-password" className="text-[#0F2F24] underline">
-            Forgot password?
-          </a>
-        </p>
-
-        <p className="mt-4 text-center text-xs text-gray-400">
-          Private authorized access only. Registration is handled internally.
-        </p>
-      </div>
-    </div>
+    <LoginForm
+      roleLabel="Owner"
+      onSubmit={onSubmit}
+      notice={notice}
+      onForgotPassword={() => {
+        setNotice("");
+        setView("forgot");
+      }}
+      onCreateAccount={() => {
+        setNotice("");
+        setView("create");
+      }}
+    />
   );
 }

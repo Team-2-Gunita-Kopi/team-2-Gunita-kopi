@@ -1,4 +1,4 @@
-import { session } from "@/lib/session";
+import { session } from "@/lib/session-handlers";
 
 // Same-origin proxy to apps/api; adds the Bearer token from the HttpOnly session cookie.
 export const GET = session.proxy;

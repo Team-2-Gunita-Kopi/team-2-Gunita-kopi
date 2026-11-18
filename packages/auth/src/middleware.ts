@@ -11,6 +11,8 @@ export interface AuthMiddlewareOptions {
   allowedRoles: readonly Role[];
   /** Exact paths, or prefixes ending in "/", that need no session. */
   publicPaths: readonly string[];
+  /** Signed in with the wrong role: show this page (rewrite) instead of redirecting to /login. */
+  restrictedPath?: string;
 }
 
 /**
@@ -62,7 +64,14 @@ export function createAuthMiddleware(opts: AuthMiddlewareOptions) {
 
     if (!data?.claims) return redirectToLogin("redirect", pathname);
     if (!hasRole(data.claims.app_metadata?.role, opts.allowedRoles)) {
-      return redirectToLogin("error", "unauthorized_role");
+      if (!opts.restrictedPath) {
+        return redirectToLogin("error", "unauthorized_role");
+      }
+      const restricted = NextResponse.rewrite(
+        new URL(opts.restrictedPath, request.url),
+      );
+      response.cookies.getAll().forEach((c) => restricted.cookies.set(c));
+      return restricted;
     }
     return response;
   };

@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import { CreateOrderRequest, OutboxStatus } from "@gunita/contracts";
+import type { CreateOrderRequest, OutboxStatus, PosIngredient, PosProduct } from "@gunita/contracts/ui";
 
 export interface OutboxOrderRecord {
   id?: number;
@@ -11,29 +11,26 @@ export interface OutboxOrderRecord {
   createdAt: string;
   updatedAt: string;
   syncedAt?: string;
+  /** Provisional queue number (OFF-001) shown until the server assigns the real one. */
+  provisionalNo?: string;
+  /** Server order id once synced. */
+  serverOrderId?: string;
+  /** Real queue number returned by the server on sync. */
+  orderNumber?: string;
+  /** True when the server rejected the order (e.g. stock gone); not resubmitted until retryOrder. */
+  rejected?: boolean;
 }
 
-export interface CachedProduct {
-  id: string;
-  name: string;
-  category: string;
-  sellingPrice: number;
-  imageUrl?: string;
-  cachedAt: string;
-}
-
-export interface CachedIngredient {
-  id: string;
-  name: string;
-  currentStock: number;
-  unit: string;
-  cachedAt: string;
+export interface MetaRecord {
+  key: string;
+  value: unknown;
 }
 
 export class GunitaPosDB extends Dexie {
   ordersOutbox!: EntityTable<OutboxOrderRecord, "clientTxId">;
-  productsCache!: EntityTable<CachedProduct, "id">;
-  ingredientsCache!: EntityTable<CachedIngredient, "id">;
+  productsCache!: EntityTable<PosProduct, "id">;
+  ingredientsCache!: EntityTable<PosIngredient, "id">;
+  meta!: EntityTable<MetaRecord, "key">;
 
   constructor() {
     super("GunitaPosDB");
@@ -41,6 +38,20 @@ export class GunitaPosDB extends Dexie {
       ordersOutbox: "clientTxId, status, createdAt",
       productsCache: "id, category, name",
       ingredientsCache: "id, name",
+    });
+    this.version(2).stores({
+      ordersOutbox: "clientTxId, status, createdAt",
+      productsCache: "id, category, name",
+      ingredientsCache: "id, name",
+      meta: "key",
+    });
+    // v3: productsCache/ingredientsCache now hold the full PosProduct (incl. recipe) / PosIngredient.
+    // Index definitions are unchanged, so existing outbox/meta rows are kept as they are.
+    this.version(3).stores({
+      ordersOutbox: "clientTxId, status, createdAt",
+      productsCache: "id, category, name",
+      ingredientsCache: "id, name",
+      meta: "key",
     });
   }
 }

@@ -116,3 +116,10 @@ export function extractEmailFromToken(token: string): string | null {
   const payload = decodeJwtPayload(token);
   return payload?.email ?? null;
 }
+
+export {
+  MOCK_SESSION_COOKIE,
+  encodeMockSession,
+  decodeMockSession,
+  type MockSession,
+} from "./mock-session";
