@@ -7,6 +7,7 @@ const config: Config = {
     "./src/**/*.{js,ts,jsx,tsx,mdx}",
     "../../packages/ui/src/**/*.{js,ts,jsx,tsx}",
   ],
+  corePlugins: { preflight: false },
   theme: {
     extend: {},
   },

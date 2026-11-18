@@ -1,13 +1,11 @@
-import { ADMIN_SESSION_COOKIE } from "@gunita/auth";
-import { createSessionHandlers } from "@gunita/auth/session-server";
-import { env } from "./env";
+import type { NextRequest } from "next/server";
+import { MOCK_SESSION_COOKIE, decodeMockSession, type Role } from "@gunita/auth";
 
-// Server-side session handlers: the HttpOnly cookie never reaches page scripts.
-export const session = createSessionHandlers({
-  supabaseUrl: env.supabaseUrl,
-  supabaseKey: env.supabaseAnonKey,
-  cookieName: ADMIN_SESSION_COOKIE,
-  apiUrl: process.env.API_URL || env.apiUrl,
-  proxySecret: process.env.INTERNAL_PROXY_SECRET ?? "",
-  allowedRoles: ["owner_admin"],
-});
+/**
+ * Demo mode only: resolves the role from the unsigned mock cookie. Real sessions are verified by
+ * createAuthMiddleware (HttpOnly Supabase cookie), never decoded here.
+ */
+export function resolveRole(request: NextRequest, useMocks: boolean): Role | null {
+  if (!useMocks) return null;
+  return decodeMockSession(request.cookies.get(MOCK_SESSION_COOKIE)?.value)?.role ?? null;
+}

@@ -29,6 +29,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   transpilePackages: [
     "@gunita/contracts",
+    "@gunita/mocks",
     "@gunita/auth",
     "@gunita/ui",
     "@gunita/config",

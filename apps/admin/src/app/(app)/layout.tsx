@@ -1,47 +1,87 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { AppShell, NavItem } from "@gunita/ui";
+import { useQueryClient } from "@tanstack/react-query";
+import { AppShell, IdleLogout, NavItem, OverlayProvider, useConfirm, useToast } from "@gunita/ui";
+import { getSession, signOut } from "@/features/auth";
+import { mockRpc } from "@/lib/mock-db";
+import { QueryProvider } from "@/lib/query";
+import { USE_MOCKS } from "@/lib/use-mocks";
 
 const ADMIN_NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard" },
-  { label: "Orders", href: "/orders" },
-  { label: "Products", href: "/products" },
-  { label: "Inventory", href: "/inventory" },
-  { label: "Suppliers", href: "/suppliers" },
-  { label: "Reports", href: "/reports" },
-  { label: "Users", href: "/users" },
+  { label: "Dashboard", short: "Home", href: "/dashboard", icon: "home" },
+  { label: "Orders", short: "Orders", href: "/orders", icon: "receipt" },
+  { label: "Products", short: "Menu", href: "/products", icon: "cup" },
+  { label: "Inventory", short: "Stock", href: "/inventory", icon: "box" },
+  { label: "Suppliers", short: "Suppliers", href: "/suppliers", icon: "truck" },
+  { label: "Reports", short: "Reports", href: "/reports", icon: "chart" },
+  { label: "Users", short: "Users", href: "/users", icon: "users" },
 ];
 
-export default function AdminAppLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+const IDLE_MS = 5 * 60 * 1000;
+
+function OwnerShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [userName, setUserName] = useState("Owner");
+
+  useEffect(() => {
+    const session = getSession();
+    if (session?.fullName) setUserName(session.fullName);
+  }, []);
 
   const handleLogout = async () => {
-    // The server revokes the session and clears the HttpOnly cookie.
-    await fetch("/auth/logout", { method: "POST" }).catch(() => undefined);
-    router.replace("/login");
-    router.refresh();
+    await signOut();
+    router.push("/login");
   };
 
+  const resetDemo = async () => {
+    const ok = await confirm({
+      title: "Reset demo data",
+      message: "Reset all demo data for both Owner and Barista?",
+      confirmLabel: "Reset",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await mockRpc("reset");
+      await queryClient.invalidateQueries();
+      toast("Demo data reset.");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Reset failed.", true);
+    }
+  };
+
+  const menuItems = [
+    ...(USE_MOCKS ? [{ label: "Reset demo data", onSelect: resetDemo }] : []),
+    { label: "Sign out", onSelect: handleLogout },
+  ];
+
   return (
-    <AppShell
-      navItems={ADMIN_NAV_ITEMS}
-      currentPath={pathname}
-      onNavigate={(href) => router.push(href)}
-      topBarProps={{
-        appName: "Admin Portal",
-        userName: "Store Owner",
-        role: "owner_admin",
-        onLogout: handleLogout,
-      }}
-    >
-      {children}
-    </AppShell>
+    <>
+      <AppShell
+        navItems={ADMIN_NAV_ITEMS}
+        currentPath={pathname}
+        onNavigate={(href) => router.push(href)}
+        topBarProps={{ title: "Admin Portal", userName, roleLabel: "Owner", onLogout: handleLogout, menuItems }}
+      >
+        {children}
+      </AppShell>
+      <IdleLogout timeoutMs={IDLE_MS} onLogout={handleLogout} />
+    </>
+  );
+}
+
+export default function AdminAppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <QueryProvider>
+      <OverlayProvider>
+        <OwnerShell>{children}</OwnerShell>
+      </OverlayProvider>
+    </QueryProvider>
   );
 }

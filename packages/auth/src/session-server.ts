@@ -108,7 +108,19 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
       await client.auth.signOut();
       return fail(403, "FORBIDDEN", "This account cannot use this site");
     }
-    return apply(NextResponse.json({ success: true }));
+    // Display details only; never tokens.
+    const meta = data.user.user_metadata ?? {};
+    return apply(
+      NextResponse.json({
+        success: true,
+        data: {
+          userId: data.user.id,
+          role: data.user.app_metadata?.role,
+          fullName: typeof meta.full_name === "string" ? meta.full_name : "",
+          username: typeof meta.username === "string" ? meta.username : "",
+        },
+      }),
+    );
   }
 
   async function logout(req: NextRequest) {
