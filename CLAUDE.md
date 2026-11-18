@@ -67,7 +67,7 @@ Some docs (`README.md`, `docs/architecture/README.md`) still describe the older 
 
 ### Database
 
-- Source of truth: `supabase/migrations/` in timestamp order; `docs/database.md` explains tables, views, functions and security. Check the remote history before editing a migration: applied migrations are never edited, add a new one.
+- Source of truth: `supabase/migrations/` in timestamp order; `docs/database.md` explains tables, views, functions and security. Check the remote history before editing a migration: applied migrations are never edited, add a new one. New migration timestamps must be higher than the newest file in `supabase/migrations/` (some are future-dated, e.g. `20261119000000`); if `supabase migration new` produces a lower one, rename the file, or `db push` will refuse it.
 - Conventions the existing migrations follow: RLS on every table; views `with (security_invoker = true)`; new functions `SECURITY INVOKER` with `set search_path = ''` and schema-qualified names (`SECURITY DEFINER` only when unavoidable, e.g. the `auth.users` email-sync trigger); `revoke execute ... from public, anon, authenticated` then explicit grants.
 - The live project does not auto-grant table privileges to `authenticated` / `service_role`, so every table a migration adds needs explicit `grant`s (see `20261117000000_role_grants.sql`), plus revokes of default `TRUNCATE/REFERENCES/TRIGGER/MAINTAIN`.
 - Roles: `owner_admin` and `barista` only. `app_role()` / `app_user_id()` read the caller's active profile for RLS.
