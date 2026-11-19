@@ -15,7 +15,8 @@ const SELECT =
 
 /**
  * SRS 2.3 and FR-15/FR-16: the Owner records stock-in, the Barista records stock-out.
- * (RLS also lets the Owner insert 'out'; the API applies the stricter SRS rule.)
+ * RLS (stock_insert, migration 20261120000000) enforces the same rule; checkout stock-out goes
+ * through process_checkout_transaction instead.
  */
 const ROLE_FOR_TYPE = { in: "owner_admin", out: "barista" } as const;
 

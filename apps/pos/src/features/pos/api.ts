@@ -1,26 +1,71 @@
-import type { Order, SyncResponse } from "@gunita/contracts/ui";
-import { apiClient } from "@/lib/api-client";
+import {
+  IngredientSchema,
+  OrderSchema,
+  ProductSchema,
+  SyncResponseSchema,
+  pageOf,
+  type SyncOrderItem as ApiSyncOrderItem,
+} from "@gunita/contracts";
+import type { SyncResponse, SyncResultItem } from "@gunita/contracts/ui";
+import { apiAllPages, apiData } from "@/lib/api-client";
 import { getCatalogWithCache } from "@/offline/catalog-cache";
+import {
+  UnmappableOrderError,
+  toApiOrder,
+  toPosIngredient,
+  toPosProduct,
+  toUiOrder,
+  toUiSyncResult,
+} from "./api-mappers";
 import type { PosData } from "./types";
 
-/**
- * The real API has no barista-readable catalog endpoint yet (`GET /api/products` is
- * owner-only and answers 501; `GET /api/ingredients` answers 501 too). Wire `getCatalog` to a
- * POS catalog endpoint once the backend provides one; the Dexie fallback is already in place.
- */
+// Receipt and idle-logout settings. The SRS leaves the inactivity period open (OI-06); 5 minutes
+// matches the POS layout's IdleLogout.
+const SETTINGS = {
+  shopName: "Gunita Kopi",
+  receiptFooter: "Salamat po! Come again.",
+  queuePrefix: "",
+  autoLogoutMin: 5,
+};
+
 export const data: PosData = {
+  // FR-05/FR-55: available products and the inventory (for stock badges), cached for offline use.
   getCatalog: () =>
     getCatalogWithCache(async () => {
-      throw new Error("Catalog API is not available yet.");
+      const [products, ingredients] = await Promise.all([
+        apiAllPages("/api/products?available=true", pageOf(ProductSchema)),
+        apiAllPages("/api/ingredients", pageOf(IngredientSchema)),
+      ]);
+      return {
+        products: products.map(toPosProduct),
+        ingredients: ingredients.map(toPosIngredient),
+        settings: SETTINGS,
+        updatedAt: new Date().toISOString(),
+      };
     }),
+
+  // FR-56 to FR-60: outbox orders go to POST /api/sync, which saves each once (clientTxId).
   syncOrders: async (payload) => {
-    const res = await apiClient<SyncResponse>("/api/sync", { method: "POST", body: JSON.stringify(payload) });
-    if (!res.success || !res.data) throw new Error(res.error?.message || "Sync failed");
-    return res.data;
+    const sendable: ApiSyncOrderItem[] = [];
+    const local: SyncResultItem[] = [];
+    for (const o of payload.orders) {
+      try {
+        sendable.push({ transactionId: o.transactionId, order: toApiOrder(o.order), createdAt: o.createdAt });
+      } catch (e) {
+        if (!(e instanceof UnmappableOrderError)) throw e;
+        local.push({ transactionId: o.transactionId, status: "failed", error: e.message });
+      }
+    }
+    if (sendable.length === 0) return { processedCount: local.length, results: local };
+    const res = await apiData("/api/sync", SyncResponseSchema, {
+      method: "POST",
+      body: JSON.stringify({ batchId: payload.batchId, orders: sendable }),
+    });
+    const results = [...res.results.map(toUiSyncResult), ...local];
+    return { processedCount: results.length, results } satisfies SyncResponse;
   },
-  getOrder: async (id) => {
-    const res = await apiClient<Order>(`/api/orders/${encodeURIComponent(id)}`);
-    if (!res.success || !res.data) throw new Error(res.error?.message || "Could not load the order");
-    return res.data;
-  },
+
+  // FR-08/FR-09: receipt and order slip data.
+  getOrder: async (id) =>
+    toUiOrder(await apiData(`/api/orders/${encodeURIComponent(id)}`, OrderSchema)),
 };

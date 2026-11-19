@@ -11,4 +11,8 @@ export const requestPasswordRecovery = impl.requestPasswordRecovery;
 export const verifyRecoveryCode = impl.verifyRecoveryCode;
 export const resetPassword = impl.resetPassword;
 export const registerOwner = impl.registerOwner;
+// Real sessions only: demo mode has no second sign-in step.
+export const startMfa = real.startMfa;
+export const verifyMfa = real.verifyMfa;
+export type { MfaStart } from "./api";
 export type { RegisterOwnerRequest } from "./mock";

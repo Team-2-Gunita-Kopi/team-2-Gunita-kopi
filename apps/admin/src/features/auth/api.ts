@@ -1,14 +1,14 @@
 import type { MockSession } from "@gunita/auth";
 import { apiClient } from "@/lib/api-client";
-import { supabaseBrowser } from "@/lib/supabase-browser";
 
-type SessionUser = MockSession;
+/** mfaRequired: the Owner still has to complete the second sign-in step at /mfa. */
+type SessionUser = MockSession & { mfaRequired?: boolean };
 
 /**
  * Real sign-in: this site's server (/auth/login) signs in through apps/api and keeps the session
  * in an HttpOnly cookie. The browser receives display details only, never tokens.
  */
-export async function signIn(identifier: string, password: string): Promise<MockSession> {
+export async function signIn(identifier: string, password: string): Promise<SessionUser> {
   const res = await apiClient<SessionUser>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ username: identifier, password }),
@@ -39,22 +39,34 @@ export interface RegisterOwnerRequest {
   password: string;
 }
 
-/** Supabase emails a recovery OTP (the "Reset password" template must include {{ .Token }}). */
-export async function requestPasswordRecovery(email: string): Promise<void> {
-  const { error } = await supabaseBrowser.auth.resetPasswordForEmail(email);
-  if (error) throw new Error(error.message);
+// Password recovery runs on this site's server (/auth/recovery): the recovery session stays in an
+// HttpOnly cookie. Supabase emails a 6-digit code (the "Reset password" template needs {{ .Token }}).
+const recovery = async (body: Record<string, string>) => {
+  const res = await apiClient<null>("/auth/recovery", { method: "POST", body: JSON.stringify(body) });
+  if (!res.success) throw new Error(res.error?.message ?? "Password recovery failed.");
+};
+
+export const requestPasswordRecovery = (email: string) => recovery({ step: "request", email });
+
+export const verifyRecoveryCode = (email: string, code: string) =>
+  recovery({ step: "verify", email, code });
+
+/** Runs after verifyRecoveryCode. Signs out every session of the account; sign in again after. */
+export const resetPassword = (_email: string, _code: string, password: string) =>
+  recovery({ step: "reset", password });
+
+export type MfaStart = { step: "verify" } | { step: "enroll"; qrCode: string; secret: string };
+
+/** Second sign-in step (SDS 2.4): enroll a TOTP app the first time, otherwise ask for a code. */
+export async function startMfa(): Promise<MfaStart> {
+  const res = await apiClient<MfaStart>("/auth/mfa", { method: "POST", body: JSON.stringify({ action: "start" }) });
+  if (!res.success || !res.data) throw new Error(res.error?.message ?? "Could not start the second step.");
+  return res.data;
 }
 
-export async function verifyRecoveryCode(email: string, code: string): Promise<void> {
-  const { error } = await supabaseBrowser.auth.verifyOtp({ email, token: code, type: "recovery" });
-  if (error) throw new Error("That recovery code is invalid or has expired.");
-}
-
-/** Runs after verifyRecoveryCode, which signed the user in with a recovery session. */
-export async function resetPassword(_email: string, _code: string, password: string): Promise<void> {
-  const { error } = await supabaseBrowser.auth.updateUser({ password });
-  if (error) throw new Error(error.message);
-  await supabaseBrowser.auth.signOut();
+export async function verifyMfa(code: string): Promise<void> {
+  const res = await apiClient<null>("/auth/mfa", { method: "POST", body: JSON.stringify({ action: "verify", code }) });
+  if (!res.success) throw new Error(res.error?.message ?? "That code is not valid.");
 }
 
 /**

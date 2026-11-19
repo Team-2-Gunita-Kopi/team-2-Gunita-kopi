@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { hasRole, type Role } from "./index";
+import { hasRole, needsSecondFactor, type Role } from "./index";
 import { sessionCookieOptions } from "./cookies";
 
 export interface AuthMiddlewareOptions {
@@ -13,6 +13,11 @@ export interface AuthMiddlewareOptions {
   publicPaths: readonly string[];
   /** Signed in with the wrong role: show this page (rewrite) instead of redirecting to /login. */
   restrictedPath?: string;
+  /**
+   * Second sign-in step page (Admin: "/mfa"). An Owner session below aal2 may open only this page;
+   * every other page redirects here. Without it, sessions are accepted at any assurance level.
+   */
+  mfaPath?: string;
 }
 
 /**
@@ -72,6 +77,17 @@ export function createAuthMiddleware(opts: AuthMiddlewareOptions) {
       );
       response.cookies.getAll().forEach((c) => restricted.cookies.set(c));
       return restricted;
+    }
+    if (
+      opts.mfaPath &&
+      pathname !== opts.mfaPath &&
+      needsSecondFactor(data.claims.app_metadata?.role, data.claims.aal)
+    ) {
+      const url = new URL(opts.mfaPath, request.url);
+      url.searchParams.set("redirect", pathname);
+      const redirect = NextResponse.redirect(url);
+      response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
+      return redirect;
     }
     return response;
   };

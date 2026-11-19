@@ -10,6 +10,8 @@ export interface ReceiptProps {
   footer: string;
   cashierName: string;
   pendingSync?: boolean;
+  /** FR-09 order slip for the staff: the same order without prices or payment. */
+  slip?: boolean;
 }
 
 function methodLabel(m: string): string {
@@ -18,7 +20,7 @@ function methodLabel(m: string): string {
 }
 
 /** Layout from receiptModal() in apps/admin/app.js. */
-export function Receipt({ order, shopName, footer, cashierName, pendingSync }: ReceiptProps) {
+export function Receipt({ order, shopName, footer, cashierName, pendingSync, slip }: ReceiptProps) {
   const small = { fontSize: ".78rem" } as const;
   return (
     <div className="print-area">
@@ -26,7 +28,7 @@ export function Receipt({ order, shopName, footer, cashierName, pendingSync }: R
         <div className="bay-head" lang="tl-Tglg" aria-hidden="true">
           ᜃᜓᜉᜒ
         </div>
-        <h3 style={{ textAlign: "center", margin: ".2rem 0" }}>{shopName}</h3>
+        <h3 style={{ textAlign: "center", margin: ".2rem 0" }}>{slip ? "Order slip" : shopName}</h3>
         <div className="queue-num" style={{ textAlign: "center" }}>
           {order.orderNumber ?? order.id}
         </div>
@@ -48,7 +50,13 @@ export function Receipt({ order, shopName, footer, cashierName, pendingSync }: R
                     <React.Fragment key={a.ingredientId}>
                       <br />
                       <span className="muted addon-line">
-                        + {a.label} <span className="num">{formatPeso(a.price * a.quantity)}</span>
+                        {slip ? (
+                          <>+ {a.quantity}× {a.label}</>
+                        ) : (
+                          <>
+                            + {a.label} <span className="num">{formatPeso(a.price * a.quantity)}</span>
+                          </>
+                        )}
                       </span>
                     </React.Fragment>
                   ))}
@@ -65,9 +73,11 @@ export function Receipt({ order, shopName, footer, cashierName, pendingSync }: R
                     </>
                   ) : null}
                 </td>
-                <td className="r">{formatPeso(it.subtotal)}</td>
+                {slip ? null : <td className="r">{formatPeso(it.subtotal)}</td>}
               </tr>
             ))}
+            {slip ? null : (
+            <>
             <tr className="tot">
               <td><strong>Total</strong></td>
               <td className="r"><strong>{formatPeso(order.totalAmount)}</strong></td>
@@ -89,10 +99,14 @@ export function Receipt({ order, shopName, footer, cashierName, pendingSync }: R
                 <td className="r muted">Unpaid</td>
               </tr>
             )}
+            </>
+            )}
           </tbody>
         </table>
         <p className="muted" style={{ ...small, margin: ".5rem 0 0" }}>Served by {cashierName}</p>
-        <p className="muted" style={{ ...small, textAlign: "center", margin: ".3rem 0 0" }}>{footer}</p>
+        {slip ? null : (
+          <p className="muted" style={{ ...small, textAlign: "center", margin: ".3rem 0 0" }}>{footer}</p>
+        )}
       </div>
     </div>
   );

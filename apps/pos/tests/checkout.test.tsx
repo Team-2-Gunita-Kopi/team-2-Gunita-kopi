@@ -109,6 +109,23 @@ describe("checkout", () => {
     expect(rpcCalls).not.toContain("syncOrders");
   });
 
+  it("FR-09: order slip shows the same order for staff without prices or payment", async () => {
+    const dialog = await openPayment();
+    await userEvent.type(within(dialog).getByLabelText("Amount paid"), "300");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    const receipt = await screen.findByRole("dialog", { name: "Receipt" });
+    const queue = (await within(receipt).findByText(/^20261116-A-/)).textContent;
+    expect(within(receipt).getByText("Total")).toBeInTheDocument();
+    await userEvent.click(within(receipt).getByRole("button", { name: "Order slip" }));
+    expect(within(receipt).getByText("Order slip")).toBeInTheDocument();
+    expect(within(receipt).getByText(queue!)).toBeInTheDocument();
+    expect(within(receipt).queryByText("Total")).not.toBeInTheDocument();
+    expect(within(receipt).queryByText("Change")).not.toBeInTheDocument();
+    expect(within(receipt).queryByText(/₱/)).not.toBeInTheDocument();
+    await userEvent.click(within(receipt).getByRole("button", { name: "Show receipt" }));
+    expect(within(receipt).getByText("Total")).toBeInTheDocument();
+  });
+
   it("Print calls window.print", async () => {
     const print = vi.spyOn(window, "print").mockImplementation(() => {});
     const dialog = await openPayment();

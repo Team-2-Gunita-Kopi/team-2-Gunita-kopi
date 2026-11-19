@@ -13,10 +13,19 @@ export const CAT_ICONS: Record<string, IconName> = {
 
 export const ALL = "All";
 
-export function CategoryTabs({ active, onChange }: { active: string; onChange: (c: string) => void }) {
+/** `categories` defaults to the demo categories; real mode passes the saved products' categories. */
+export function CategoryTabs({
+  active,
+  onChange,
+  categories = PRODUCT_CATEGORIES,
+}: {
+  active: string;
+  onChange: (c: string) => void;
+  categories?: readonly string[];
+}) {
   return (
     <div className="cat-tabs">
-      {[ALL, ...PRODUCT_CATEGORIES].map((c) => (
+      {[ALL, ...categories].map((c) => (
         <button key={c} type="button" className="opt" aria-pressed={active === c} onClick={() => onChange(c)}>
           {CAT_ICONS[c] ? <Icon name={CAT_ICONS[c]} width={16} height={16} /> : null} {c}
         </button>

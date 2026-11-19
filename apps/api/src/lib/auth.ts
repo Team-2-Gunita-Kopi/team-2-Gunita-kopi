@@ -1,5 +1,10 @@
 import { NextRequest } from "next/server";
-import { Role, RoleSchema } from "@gunita/auth";
+import {
+  decodeJwtPayload,
+  needsSecondFactor,
+  Role,
+  RoleSchema,
+} from "@gunita/auth";
 import { AppError, UnauthorizedError, ForbiddenError } from "./errors";
 import { createScopedUserClient } from "./supabase-user";
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -63,6 +68,15 @@ export async function requireUser(
   const role = RoleSchema.safeParse(profile.role);
   if (!role.success) {
     throw new ForbiddenError("Account has an unrecognized role");
+  }
+  // SDS 2.4: an Owner session counts only after the second sign-in step. The token was verified
+  // by getUser above, so its aal claim can be read without another check.
+  if (needsSecondFactor(role.data, decodeJwtPayload(token)?.aal)) {
+    throw new AppError(
+      "Complete the second sign-in step first",
+      403,
+      "MFA_REQUIRED",
+    );
   }
 
   return {

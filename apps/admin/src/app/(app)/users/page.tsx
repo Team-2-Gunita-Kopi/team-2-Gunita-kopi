@@ -1,9 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import { Button, DataTable, Dialog, Input, StatusBadge } from "@gunita/ui";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, DataTable, Dialog, Input, StatusBadge, useConfirm, useToast } from "@gunita/ui";
 import type { EmployeeResponse } from "@gunita/contracts";
 import { apiClient } from "@/lib/api-client";
+import { USE_MOCKS } from "@/lib/use-mocks";
+import { listUsers, setUserStatus } from "@/features/users/api";
 
 interface UserRow extends Record<string, unknown> {
   id: string;
@@ -36,6 +39,42 @@ export default function UsersPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const toast = useToast();
+  const confirm = useConfirm();
+  const client = useQueryClient();
+  const users = useQuery({ queryKey: ["users"], enabled: !USE_MOCKS, queryFn: listUsers });
+
+  const rows: UserRow[] = USE_MOCKS
+    ? sampleUsers
+    : (users.data ?? []).map((u) => ({
+        id: String(u.id),
+        fullName: u.fullName,
+        username: u.username,
+        role: u.role,
+        isActive: u.status === "active",
+      }));
+
+  // FR-45 to FR-47: an inactive account is refused on its next request. The Owner account
+  // itself is not deactivated here (there is only one).
+  const toggleStatus = async (row: UserRow) => {
+    if (
+      row.isActive &&
+      !(await confirm({
+        title: "Deactivate account",
+        message: `Deactivate ${row.fullName}? They lose access to the POS immediately.`,
+        confirmLabel: "Deactivate",
+        danger: true,
+      }))
+    ) {
+      return;
+    }
+    try {
+      await setUserStatus(Number(row.id), row.isActive ? "inactive" : "active");
+      await client.invalidateQueries({ queryKey: ["users"] });
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not update the account.", true);
+    }
+  };
 
   // Barista accounts only: username sign-in, no email. The Owner account comes from /setup.
   const handleCreateEmployee = async (e: React.FormEvent) => {
@@ -53,6 +92,7 @@ export default function UsersPage() {
     setFullName("");
     setUsername("");
     setPassword("");
+    await client.invalidateQueries({ queryKey: ["users"] });
   };
 
   return (
@@ -93,8 +133,18 @@ export default function UsersPage() {
               />
             ),
           },
+          {
+            key: "actions",
+            header: "",
+            render: (row) =>
+              row.role === "barista" ? (
+                <Button size="sm" variant="outline" disabled={USE_MOCKS} onClick={() => void toggleStatus(row)}>
+                  {row.isActive ? "Deactivate" : "Activate"}
+                </Button>
+              ) : null,
+          },
         ]}
-        data={sampleUsers}
+        data={rows}
         keyExtractor={(row) => row.id}
       />
 

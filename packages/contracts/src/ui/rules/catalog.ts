@@ -49,6 +49,21 @@ export function addonsFor(
   ).map((a) => ({ ...a, disabled: (stockById[a.ingredientId] ?? 0) < a.quantity }));
 }
 
+/**
+ * Real-mode add-ons: inventory ingredients configured as POS add-ons (one selection each). The
+ * caller offers them for drinks only. Disabled when the stock left is below one selection; checkout
+ * rechecks configuration, price and stock on the server.
+ */
+export function inventoryAddons(
+  ingredients: { id: string; name: string; currentStock: number; addon?: { price: number; quantity: number } }[],
+): { ingredientId: string; label: string; quantity: number; price: number; disabled: boolean }[] {
+  return ingredients.flatMap((i) =>
+    i.addon
+      ? [{ ingredientId: i.id, label: i.name, quantity: 1, price: i.addon.price, disabled: i.currentStock < i.addon.quantity }]
+      : [],
+  );
+}
+
 export const QUICK_CHIPS: Record<ProductCategory, string[]> = {
   "Iced Coffee Drinks": ["Sugar 0%", "Sugar 25%", "Sugar 50%", "Sugar 75%", "Sugar 100%", "Less ice", "No ice"],
   "Hot Beverages": ["Sugar 0%", "Sugar 25%", "Sugar 50%", "Sugar 75%", "Sugar 100%", "Extra hot"],

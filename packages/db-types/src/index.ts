@@ -51,10 +51,13 @@ export type Database = {
       };
       ingredients: {
         Row: {
+          addon_quantity: number | null;
+          addon_selling_price: number | null;
           current_stock: number;
           date_updated: string;
           ingredient_id: number;
           ingredient_name: string;
+          is_addon: boolean;
           reorder_level: number;
           supplier_id: number | null;
           unit: string | null;
@@ -62,20 +65,26 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          addon_quantity?: number | null;
+          addon_selling_price?: number | null;
           current_stock?: number;
           date_updated?: string;
           ingredient_id?: never;
           ingredient_name: string;
+          is_addon?: boolean;
           reorder_level?: number;
           supplier_id?: number | null;
           unit?: string | null;
           unit_cost?: number | null;
         };
         Update: {
+          addon_quantity?: number | null;
+          addon_selling_price?: number | null;
           current_stock?: number;
           date_updated?: string;
           ingredient_id?: never;
           ingredient_name?: string;
+          is_addon?: boolean;
           reorder_level?: number;
           supplier_id?: number | null;
           unit?: string | null;
@@ -533,16 +542,18 @@ export type Database = {
       };
       v_inventory_status: {
         Row: {
+          addon_quantity: number | null;
+          addon_selling_price: number | null;
           current_stock: number;
           date_updated: string;
           ingredient_id: number;
           ingredient_name: string;
+          is_addon: boolean;
           reorder_level: number;
           stock_status: string | null;
           supplier_id: number | null;
           supplier_name: string | null;
           unit: string | null;
-          unit_cost: number | null;
         };
         ComputedFields: never;
         Relationships: [];
@@ -635,6 +646,10 @@ export type Database = {
     Functions: {
       app_role: { Args: Record<PropertyKey, never>; Returns: string };
       app_user_id: { Args: Record<PropertyKey, never>; Returns: number };
+      ingredient_unit_costs: {
+        Args: Record<PropertyKey, never>;
+        Returns: { ingredient_id: number; unit_cost: number }[];
+      };
       login_throttle_blocked: {
         Args: {
           p_account_key: string;

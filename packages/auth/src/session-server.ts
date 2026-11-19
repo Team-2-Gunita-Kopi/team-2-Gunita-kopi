@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { hasRole, type Role } from "./index";
+import {
+  decodeJwtPayload,
+  hasRole,
+  needsSecondFactor,
+  type Role,
+} from "./index";
 import { sessionCookieOptions } from "./cookies";
 import { trustedClientIp } from "./client-ip";
 
@@ -13,7 +18,16 @@ export interface SessionHandlerOptions {
   /** Shared with apps/api (INTERNAL_PROXY_SECRET); lets the API trust the forwarded client IP. */
   proxySecret: string;
   allowedRoles: readonly Role[];
+  /**
+   * Admin only: cookie for the short-lived password-recovery session (HttpOnly). Enables
+   * POST /auth/recovery. Never read by the page guard or the /api proxy.
+   */
+  recoveryCookieName?: string;
 }
+
+const CODE = /^\d{6}$/;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD = 8;
 
 type Cookie = {
   name: string;
@@ -23,6 +37,10 @@ type Cookie = {
 
 const fail = (status: number, code: string, message: string) =>
   NextResponse.json({ success: false, error: { code, message } }, { status });
+
+// Status and error code only: never emails, codes or tokens.
+const logError = (message: string, status?: number, code?: string) =>
+  console.error(JSON.stringify({ level: "error", message, status, code }));
 
 const unavailable = () =>
   fail(503, "SERVICE_UNAVAILABLE", "Sign-in is temporarily unavailable");
@@ -39,10 +57,14 @@ const sameOrigin = (req: NextRequest) =>
  * - /api/*:            same-origin proxy to apps/api that adds the Bearer token from the cookie.
  */
 export function createSessionHandlers(opts: SessionHandlerOptions) {
-  const session = (req: NextRequest) => {
+  const session = (
+    req: NextRequest,
+    cookieName = opts.cookieName,
+    maxAge?: number,
+  ) => {
     const pending: Cookie[] = [];
     const client = createServerClient(opts.supabaseUrl, opts.supabaseKey, {
-      cookieOptions: sessionCookieOptions(opts.cookieName),
+      cookieOptions: sessionCookieOptions(cookieName),
       cookies: {
         getAll: () => req.cookies.getAll(),
         setAll: (cookies) => {
@@ -52,7 +74,15 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
     });
     const apply = (res: NextResponse) => {
       pending.forEach(({ name, value, options }) =>
-        res.cookies.set(name, value, options),
+        res.cookies.set(
+          name,
+          value,
+          // @supabase/ssr always writes its own 400-day lifetime; a short session overrides it.
+          // Removals (empty value, Max-Age 0) are kept as they are.
+          maxAge && value
+            ? { ...options, maxAge, expires: undefined }
+            : options,
+        ),
       );
       res.headers.set("cache-control", "private, no-store");
       return res;
@@ -118,9 +148,199 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
           role: data.user.app_metadata?.role,
           fullName: typeof meta.full_name === "string" ? meta.full_name : "",
           username: typeof meta.username === "string" ? meta.username : "",
+          // Owner: the page guard and the API refuse this session until POST /auth/mfa succeeds.
+          mfaRequired: needsSecondFactor(
+            data.user.app_metadata?.role,
+            decodeJwtPayload(payload.data.accessToken)?.aal,
+          ),
         },
       }),
     );
+  }
+
+  /**
+   * POST /auth/mfa, second sign-in step for the Owner (SDS 2.4, 2.8), on the HttpOnly session:
+   * - { action: "start" }: "verify" when a TOTP factor is set up; otherwise enrolls a new one and
+   *   returns its QR code and secret once (first-time setup, any unfinished setup is replaced).
+   * - { action: "verify", code }: checks the 6-digit code; on success Supabase upgrades the
+   *   session to aal2 and the cookie is rewritten. Tokens never reach the browser.
+   */
+  async function mfa(req: NextRequest) {
+    if (!sameOrigin(req))
+      return fail(403, "FORBIDDEN", "Cross-site request refused");
+    const body = (await req.json().catch(() => null)) as {
+      action?: string;
+      code?: string;
+    } | null;
+    const { client, apply } = session(req);
+    const { data: claims } = await client.auth.getClaims();
+    if (
+      !claims?.claims ||
+      !hasRole(claims.claims.app_metadata?.role, opts.allowedRoles)
+    )
+      return apply(fail(401, "UNAUTHORIZED", "Sign in first"));
+
+    const { data: factors, error } = await client.auth.mfa.listFactors();
+    if (error) return apply(unavailable());
+    const verified = factors.totp[0];
+
+    if (body?.action === "start") {
+      if (verified)
+        return apply(
+          NextResponse.json({ success: true, data: { step: "verify" } }),
+        );
+      for (const f of factors.all) {
+        if (f.factor_type === "totp" && f.status !== "verified")
+          await client.auth.mfa.unenroll({ factorId: f.id });
+      }
+      const { data: enrolled, error: enrollError } =
+        await client.auth.mfa.enroll({
+          factorType: "totp",
+          friendlyName: `Gunita Kopi Owner ${new Date().toISOString()}`,
+        });
+      if (enrollError) return apply(unavailable());
+      return apply(
+        NextResponse.json({
+          success: true,
+          data: {
+            step: "enroll",
+            qrCode: enrolled.totp.qr_code,
+            secret: enrolled.totp.secret,
+          },
+        }),
+      );
+    }
+
+    if (
+      body?.action === "verify" &&
+      typeof body.code === "string" &&
+      CODE.test(body.code)
+    ) {
+      const factor =
+        verified ??
+        factors.all
+          .filter((f) => f.factor_type === "totp")
+          .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+      if (!factor)
+        return apply(
+          fail(409, "MFA_NOT_STARTED", "Set up the authenticator app first"),
+        );
+      const { error: verifyError } = await client.auth.mfa.challengeAndVerify({
+        factorId: factor.id,
+        code: body.code,
+      });
+      if (verifyError) {
+        return apply(
+          (verifyError.status ?? 0) === 429 || (verifyError.status ?? 0) >= 500
+            ? unavailable()
+            : fail(
+                400,
+                "INVALID_CODE",
+                "That code is not valid. Try the current code.",
+              ),
+        );
+      }
+      return apply(NextResponse.json({ success: true }));
+    }
+    return apply(fail(400, "VALIDATION_ERROR", "Invalid request"));
+  }
+
+  /**
+   * POST /auth/recovery, Owner password recovery by emailed 6-digit code ({{ .Token }}), all on
+   * the server so no recovery token reaches page scripts:
+   * - { step: "request", email }: same answer whether or not the address has an account.
+   * - { step: "verify", email, code }: keeps the recovery session in an HttpOnly cookie that no
+   *   page or API call accepts.
+   * - { step: "reset", password }: saves the password, then signs out every session of the account
+   *   (scope global). The user signs in again, including the second step.
+   */
+  async function recovery(req: NextRequest) {
+    if (!opts.recoveryCookieName) return fail(404, "NOT_FOUND", "Not found");
+    if (!sameOrigin(req))
+      return fail(403, "FORBIDDEN", "Cross-site request refused");
+    const body = (await req.json().catch(() => null)) as {
+      step?: string;
+      email?: string;
+      code?: string;
+      password?: string;
+    } | null;
+    const email =
+      typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+    // 15 minutes to choose the new password; the cookie is dropped after that.
+    const { client, apply } = session(req, opts.recoveryCookieName, 15 * 60);
+    const generic = () =>
+      fail(
+        400,
+        "INVALID_CODE",
+        "That recovery code is invalid or has expired.",
+      );
+
+    if (body?.step === "request" && EMAIL.test(email)) {
+      const { error } = await client.auth.resetPasswordForEmail(email);
+      if (error?.status === 429)
+        return fail(429, "RATE_LIMITED", "Too many requests. Try again later.");
+      // Any other failure (for example mail delivery) answers like success: no account probing.
+      if (error) logError("auth.recovery_request_failed", error.status);
+      return NextResponse.json({ success: true });
+    }
+
+    if (
+      body?.step === "verify" &&
+      EMAIL.test(email) &&
+      typeof body.code === "string" &&
+      CODE.test(body.code)
+    ) {
+      const { data, error } = await client.auth.verifyOtp({
+        email,
+        token: body.code,
+        type: "recovery",
+      });
+      if (error?.status === 429)
+        return fail(429, "RATE_LIMITED", "Too many attempts. Try again later.");
+      if (error || !data.user) return generic();
+      if (!hasRole(data.user.app_metadata?.role, opts.allowedRoles)) {
+        // Revoke the recovery session just issued; no cookie is written.
+        await client.auth.signOut();
+        return generic();
+      }
+      return apply(NextResponse.json({ success: true }));
+    }
+
+    if (body?.step === "reset" && typeof body.password === "string") {
+      if (body.password.length < MIN_PASSWORD)
+        return fail(
+          400,
+          "VALIDATION_ERROR",
+          `Password must be at least ${MIN_PASSWORD} characters.`,
+        );
+      const { data } = await client.auth.getUser();
+      if (!data.user)
+        return apply(
+          fail(401, "RECOVERY_EXPIRED", "Start the password reset again."),
+        );
+      const { error } = await client.auth.updateUser({
+        password: body.password,
+      });
+      if (error) {
+        logError("auth.recovery_update_failed", error.status, error.code);
+        return apply(
+          error.code === "weak_password" || error.code === "same_password"
+            ? fail(400, "WEAK_PASSWORD", error.message)
+            : fail(
+                400,
+                "RESET_FAILED",
+                "The password could not be changed. Start again.",
+              ),
+        );
+      }
+      // Ends the recovery session and any other session of this account.
+      const { error: outError } = await client.auth.signOut({
+        scope: "global",
+      });
+      if (outError) await client.auth.signOut({ scope: "local" });
+      return apply(NextResponse.json({ success: true }));
+    }
+    return fail(400, "VALIDATION_ERROR", "Invalid request");
   }
 
   async function logout(req: NextRequest) {
@@ -179,5 +399,5 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
     );
   }
 
-  return { login, logout, proxy };
+  return { login, logout, proxy, mfa, recovery };
 }
