@@ -53,5 +53,14 @@ export interface Page<T> {
   total: number;
 }
 
+/** Response schema of a paginated list endpoint, for validating API responses in the sites. */
+export const pageOf = <T extends z.ZodTypeAny>(item: T) =>
+  z.object({
+    items: z.array(item),
+    page: z.number().int(),
+    pageSize: z.number().int(),
+    total: z.number().int(),
+  });
+
 export const StatusSchema = z.enum(["active", "inactive"]);
 export type Status = z.infer<typeof StatusSchema>;

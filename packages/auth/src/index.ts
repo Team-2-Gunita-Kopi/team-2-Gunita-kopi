@@ -17,7 +17,10 @@ export const STAFF_EMAIL_DOMAIN = "staff.gunitakopi.local";
  */
 export const ADMIN_SESSION_COOKIE = "sb-gunita-admin-auth";
 export const POS_SESSION_COOKIE = "sb-gunita-pos-auth";
-/** Short-lived browser session used only by the Admin password-recovery pages. */
+/**
+ * Short-lived recovery session (HttpOnly, set by the Admin server between "verify code" and
+ * "save new password"). Never read by the page guard or the /api proxy, so it grants no access.
+ */
 export const ADMIN_RECOVERY_COOKIE = "sb-gunita-admin-recovery";
 
 export function usernameToAuthEmail(username: string): string {
@@ -39,8 +42,18 @@ export interface SupabaseJwtPayload {
     [key: string]: unknown;
   };
   role?: string;
+  /** Authenticator assurance level: "aal2" after the second sign-in step (MFA). */
+  aal?: string;
   exp?: number;
   iat?: number;
+}
+
+/**
+ * SDS 2.4 / 2.8: the Owner account needs a second sign-in step (TOTP MFA). A session counts for
+ * this role only at aal2; the database (app_role) and apps/api enforce the same rule.
+ */
+export function needsSecondFactor(role: unknown, aal: unknown): boolean {
+  return role === ROLES.OWNER_ADMIN && aal !== "aal2";
 }
 
 /**

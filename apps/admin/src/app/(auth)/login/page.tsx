@@ -4,22 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CreateAccountForm, ForgotPasswordForm, LoginForm } from "@gunita/ui";
 import { registerOwner, requestPasswordRecovery, resetPassword, signIn, verifyRecoveryCode } from "@/features/auth";
-
-const HOME = "/dashboard";
-
-/** Same-origin paths only: resolve against our origin and compare (handles "/\evil", tabs, etc.). */
-function safeRedirect(value: string | null): string {
-  if (!value) return HOME;
-  try {
-    const u = new URL(value, window.location.origin);
-    if (u.origin !== window.location.origin) return HOME;
-    const path = u.pathname + u.search + u.hash;
-    // "//host" would be protocol-relative; "/login" would loop back here.
-    return path.startsWith("//") || path.startsWith("/login") ? HOME : path;
-  } catch {
-    return HOME;
-  }
-}
+import { safeRedirect } from "@/lib/safe-redirect";
 
 type View = "login" | "forgot" | "create";
 
@@ -34,12 +19,16 @@ export default function LoginPage() {
   };
 
   const onSubmit = async (identifier: string, password: string): Promise<string | null> => {
+    let mfaRequired = false;
     try {
-      await signIn(identifier, password);
+      const session = await signIn(identifier, password);
+      mfaRequired = "mfaRequired" in session && session.mfaRequired === true;
     } catch (err) {
       return err instanceof Error ? err.message : "Sign in failed";
     }
-    router.replace(safeRedirect(new URLSearchParams(window.location.search).get("redirect")));
+    const target = safeRedirect(new URLSearchParams(window.location.search).get("redirect"));
+    // SDS 2.4: the Owner finishes the second sign-in step before any page opens.
+    router.replace(mfaRequired ? `/mfa?redirect=${encodeURIComponent(target)}` : target);
     return null;
   };
 

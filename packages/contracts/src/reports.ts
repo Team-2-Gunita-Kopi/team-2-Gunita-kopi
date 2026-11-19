@@ -71,3 +71,13 @@ export type Report =
     }
   | { type: "best-sellers"; rows: BestSellerRow[] }
   | { type: "stock-status"; rows: StockStatusRow[] };
+
+const ReportTotalsSchema = z.object({ orderCount: z.number(), totalSales: z.number() });
+
+/** Response of GET /api/reports/[type], for validating it in the Admin site. */
+export const ReportSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("daily"), rows: z.array(DailySalesRowSchema), totals: ReportTotalsSchema }),
+  z.object({ type: z.literal("monthly"), rows: z.array(MonthlySalesRowSchema), totals: ReportTotalsSchema }),
+  z.object({ type: z.literal("best-sellers"), rows: z.array(BestSellerRowSchema) }),
+  z.object({ type: z.literal("stock-status"), rows: z.array(StockStatusRowSchema) }),
+]);

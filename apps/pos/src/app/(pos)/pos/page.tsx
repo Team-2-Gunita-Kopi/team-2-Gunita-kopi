@@ -14,6 +14,7 @@ import { ReceiptModal } from "@/features/pos/components/ReceiptModal";
 import { checkout, recordToOrder } from "@/features/pos/checkout";
 import { getSession } from "@/features/auth";
 import { formatTime } from "@gunita/ui";
+import { USE_MOCKS } from "@/lib/use-mocks";
 import type { Order } from "@gunita/contracts/ui";
 
 export default function PosPage() {
@@ -37,6 +38,12 @@ export default function PosPage() {
         (p) => (category === ALL || p.category === category) && (!query || p.name.toLowerCase().includes(query)),
       ),
     [data, category, query],
+  );
+
+  // Real mode: the categories the saved products use (the official menu's), in the order they arrive.
+  const categories = useMemo(
+    () => (USE_MOCKS ? undefined : [...new Set((data?.products ?? []).map((p) => p.category))]),
+    [data],
   );
 
   const customizeLine = lines.find((l) => l.lineId === customizeId);
@@ -70,7 +77,7 @@ export default function PosPage() {
     <div className="pos-wrap">
       <div className="pos-menu">
         <div className="pos-tools">
-          <CategoryTabs active={category} onChange={setCategory} />
+          <CategoryTabs active={category} onChange={setCategory} categories={categories} />
           <PosSearch onSearch={onSearch} />
           {data?.updatedAt ? <span className="muted pos-updated">Last updated {formatTime(data.updatedAt)}</span> : null}
         </div>
@@ -96,6 +103,7 @@ export default function PosPage() {
           line={customizeLine}
           product={customizeProduct}
           stockById={stockById}
+          ingredients={data?.ingredients}
           onClose={() => setCustomizeId(null)}
         />
       ) : null}

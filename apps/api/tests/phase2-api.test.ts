@@ -16,11 +16,14 @@ interface Call {
   filters: [string, unknown[]][];
 }
 
+// Owner sessions are verified tokens after MFA (aal2); apps/api reads the aal claim.
+const OWNER = `e30.${Buffer.from(JSON.stringify({ aal: "aal2" })).toString("base64url")}.sig`;
+
 const profiles: Record<
   string,
   { user_id: number; role: string; status: string }
 > = {
-  "owner-token": { user_id: 1, role: "owner_admin", status: "active" },
+  [OWNER]: { user_id: 1, role: "owner_admin", status: "active" },
   "barista-token": { user_id: 2, role: "barista", status: "active" },
   "inactive-token": { user_id: 3, role: "barista", status: "inactive" },
 };
@@ -29,6 +32,10 @@ let onQuery: (c: Call) => Result = () => ({ data: [] });
 let onRpc: (name: string, args: unknown) => Result = () => ({ data: null });
 const calls: Call[] = [];
 const rpcCalls: { name: string; args: unknown }[] = [];
+const storageCalls: Record<string, unknown>[] = [];
+const PNG = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
+]);
 
 function builder(table: string, token: string) {
   const call: Call = { table, op: "select", filters: [] };
@@ -80,6 +87,28 @@ vi.mock("../src/lib/supabase-user", () => ({
           : { data: { user: null }, error: { message: "invalid JWT" } },
     },
     from: (table: string) => builder(table, token),
+    storage: {
+      from: (bucket: string) => ({
+        upload: async (path: string, body: Uint8Array, opts: unknown) => {
+          storageCalls.push({
+            op: "upload",
+            bucket,
+            path,
+            opts,
+            size: body.length,
+          });
+          return { data: { path }, error: null };
+        },
+        remove: async (paths: string[]) => {
+          storageCalls.push({ op: "remove", bucket, path: paths[0] });
+          return { data: [], error: null };
+        },
+        download: async (path: string) => {
+          storageCalls.push({ op: "download", bucket, path });
+          return { data: new Blob([PNG]), error: null };
+        },
+      }),
+    },
     rpc: async (name: string, args: unknown) => {
       rpcCalls.push({ name, args });
       return { error: null, ...onRpc(name, args) };
@@ -94,7 +123,13 @@ vi.mock("../src/lib/audit", () => ({
 
 const products = await import("../src/app/api/products/route");
 const productById = await import("../src/app/api/products/[id]/route");
+const productImage = await import("../src/app/api/products/[id]/image/route");
 const stock = await import("../src/app/api/stock-transactions/route");
+const ingredientList = await import("../src/app/api/ingredients/route");
+const ingredientById = await import("../src/app/api/ingredients/[id]/route");
+const costingRoute = await import("../src/app/api/products/[id]/costing/route");
+const recipeRoute = await import("../src/app/api/products/[id]/recipe/route");
+const costingList = await import("../src/app/api/products/costing/route");
 const orders = await import("../src/app/api/orders/route");
 const orderById = await import("../src/app/api/orders/[id]/route");
 const sync = await import("../src/app/api/sync/route");
@@ -210,6 +245,7 @@ const payment7: Result = {
 beforeEach(() => {
   calls.length = 0;
   rpcCalls.length = 0;
+  storageCalls.length = 0;
   audits.length = 0;
   onQuery = () => ({ data: [] });
   onRpc = () => ({ data: null });
@@ -276,20 +312,14 @@ describe("authentication and authorization", () => {
     expect(
       (
         await call(
-          sync.POST(
-            req("POST", "/api/sync", "owner-token", { orders: [] }),
-            undefined,
-          ),
+          sync.POST(req("POST", "/api/sync", OWNER, { orders: [] }), undefined),
         )
       ).status,
     ).toBe(403);
     expect(
       (
         await call(
-          orders.POST(
-            req("POST", "/api/orders", "owner-token", sale(1)),
-            undefined,
-          ),
+          orders.POST(req("POST", "/api/orders", OWNER, sale(1)), undefined),
         )
       ).status,
     ).toBe(403);
@@ -303,10 +333,7 @@ describe("products", () => {
     [{ name: "Latte", price: 1.234 }, "three decimals"],
   ])("rejects %j (%s)", async (body) => {
     const r = await call(
-      products.POST(
-        req("POST", "/api/products", "owner-token", body),
-        undefined,
-      ),
+      products.POST(req("POST", "/api/products", OWNER, body), undefined),
     );
     expect(r.status).toBe(400);
     expect(r.body.error.code).toBe("VALIDATION_ERROR");
@@ -314,15 +341,12 @@ describe("products", () => {
 
   it("rejects malformed JSON and non-numeric ids with 400", async () => {
     const bad = await call(
-      products.POST(
-        req("POST", "/api/products", "owner-token", "{nope"),
-        undefined,
-      ),
+      products.POST(req("POST", "/api/products", OWNER, "{nope"), undefined),
     );
     expect(bad.body.error.code).toBe("INVALID_JSON");
     const id = await call(
       productById.GET(
-        req("GET", "/api/products/abc", "owner-token"),
+        req("GET", "/api/products/abc", OWNER),
         params({ id: "abc" }),
       ),
     );
@@ -344,7 +368,7 @@ describe("products", () => {
     onQuery = () => ({ data: row });
     const created = await call(
       products.POST(
-        req("POST", "/api/products", "owner-token", {
+        req("POST", "/api/products", OWNER, {
           name: "Latte",
           price: 120,
           createdBy: 99,
@@ -360,7 +384,7 @@ describe("products", () => {
 
     const updated = await call(
       productById.PATCH(
-        req("PATCH", "/api/products/5", "owner-token", { isAvailable: false }),
+        req("PATCH", "/api/products/5", OWNER, { isAvailable: false }),
         params({ id: "5" }),
       ),
     );
@@ -369,6 +393,123 @@ describe("products", () => {
       is_available: false,
     });
     expect(updated.body.data.isAvailable).toBe(false);
+  });
+});
+
+describe("product images (FR-50)", () => {
+  const OLD = "5/11111111-2222-4333-8444-555555555555.jpg";
+  const row = (image: string | null) => ({
+    product_id: 5,
+    product_name: "Latte",
+    description: null,
+    category: "Coffee",
+    price: 120,
+    is_available: true,
+    image,
+    created_by: 1,
+    date_created: "2026-11-17",
+  });
+  const put = (token: string, body: Uint8Array) =>
+    call(
+      productImage.PUT(
+        new NextRequest("http://localhost:3002/api/products/5/image", {
+          method: "PUT",
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "image/png",
+          },
+          body: new Blob([body as Uint8Array<ArrayBuffer>]),
+        }),
+        params({ id: "5" }),
+      ),
+    );
+
+  it("Owner upload: server-generated path, product points at it, old stored file removed", async () => {
+    let image: string | null = OLD;
+    onQuery = (c) => {
+      if (c.op === "update") image = (c.payload as { image: string }).image;
+      return { data: row(image) };
+    };
+    const r = await put(OWNER, PNG);
+    expect(r.status).toBe(200);
+    const upload = storageCalls.find((c) => c.op === "upload")!;
+    expect(upload.bucket).toBe("product-images");
+    expect(upload.path).toMatch(/^5\/[0-9a-f-]{36}\.png$/);
+    expect(upload.opts).toMatchObject({
+      contentType: "image/png",
+      upsert: false,
+    });
+    expect(r.body.data.image).toBe(upload.path);
+    expect(storageCalls).toContainEqual({
+      op: "remove",
+      bucket: "product-images",
+      path: OLD,
+    });
+  });
+
+  it("rejects a barista, a non-image and an oversized file", async () => {
+    onQuery = () => ({ data: row(null) });
+    expect((await put("barista-token", PNG)).status).toBe(403);
+    const html = await put(
+      OWNER,
+      new TextEncoder().encode("<script>alert(1)</script>"),
+    );
+    expect(html.status).toBe(415);
+    expect(html.body.error.code).toBe("UNSUPPORTED_IMAGE");
+    const big = new Uint8Array(2 * 1024 * 1024 + 1);
+    big.set(PNG);
+    expect((await put(OWNER, big)).body.error.code).toBe("IMAGE_TOO_LARGE");
+    expect(storageCalls.some((c) => c.op === "upload")).toBe(false);
+  });
+
+  it("serves a stored image to both roles; no stored image or a foreign path is a 404", async () => {
+    onQuery = () => ({ data: row(OLD) });
+    const res = await productImage.GET(
+      req("GET", "/api/products/5/image", "barista-token"),
+      params({ id: "5" }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+
+    for (const image of [
+      null,
+      "https://example.com/a.png",
+      "6/11111111-2222-4333-8444-555555555555.png",
+      "5/../x.png",
+    ]) {
+      onQuery = () => ({ data: row(image) });
+      const r = await productImage.GET(
+        req("GET", "/api/products/5/image", OWNER),
+        params({ id: "5" }),
+      );
+      expect(r.status).toBe(404);
+    }
+    expect(
+      (
+        await productImage.GET(
+          req("GET", "/api/products/5/image"),
+          params({ id: "5" }),
+        )
+      ).status,
+    ).toBe(401);
+  });
+
+  it("Owner removes the image: column cleared and stored file deleted", async () => {
+    onQuery = (c) => ({ data: row(c.op === "update" ? null : OLD) });
+    const r = await call(
+      productImage.DELETE(
+        req("DELETE", "/api/products/5/image", OWNER),
+        params({ id: "5" }),
+      ),
+    );
+    expect(r.status).toBe(200);
+    expect(r.body.data.image).toBeNull();
+    expect(storageCalls).toContainEqual({
+      op: "remove",
+      bucket: "product-images",
+      path: OLD,
+    });
   });
 });
 
@@ -389,7 +530,7 @@ describe("inventory", () => {
       (
         await call(
           stock.POST(
-            req("POST", "/api/stock-transactions", "owner-token", tx("out")),
+            req("POST", "/api/stock-transactions", OWNER, tx("out")),
             undefined,
           ),
         )
@@ -424,8 +565,10 @@ describe("inventory", () => {
               stock_status: "low-stock",
               supplier_id: null,
               supplier_name: null,
-              unit_cost: 0.1,
               date_updated: "x",
+              is_addon: false,
+              addon_selling_price: null,
+              addon_quantity: null,
             },
           }
         : {
@@ -452,6 +595,325 @@ describe("inventory", () => {
       type: "out",
       quantity: 5,
     });
+  });
+});
+
+describe("ingredient costs and add-on configuration", () => {
+  const beans = {
+    ingredient_id: 21,
+    ingredient_name: "Espresso Beans",
+    unit: "g",
+    current_stock: 200,
+    reorder_level: 20,
+    stock_status: "available",
+    supplier_id: 1,
+    supplier_name: null,
+    date_updated: "2026-11-19T00:00:00Z",
+    is_addon: true,
+    addon_selling_price: 25,
+    addon_quantity: 18,
+  };
+  const inventory = (c: Call): Result =>
+    c.op === "select"
+      ? { data: [beans], count: 1 }
+      : { data: { ingredient_id: 21 } };
+  const single = (c: Call): Result =>
+    c.op === "select" ? { data: beans } : { data: { ingredient_id: 21 } };
+  // Owner reads go through ingredient_unit_costs(); an empty list unless a test sets costs.
+  beforeEach(() => {
+    onRpc = () => ({ data: [] });
+  });
+
+  it("never sends ingredient costs to a barista", async () => {
+    onQuery = inventory;
+    const list = await call(
+      ingredientList.GET(
+        req("GET", "/api/ingredients", "barista-token"),
+        undefined,
+      ),
+    );
+    expect(list.status).toBe(200);
+    expect(list.body.data.items[0]).not.toHaveProperty("unitCost");
+    expect(list.body.data.items[0]).toMatchObject({
+      isAddon: true,
+      addonSellingPrice: 25,
+      addonQuantity: 18,
+    });
+    onQuery = single;
+    const one = await call(
+      ingredientById.GET(
+        req("GET", "/api/ingredients/21", "barista-token"),
+        params({ id: "21" }),
+      ),
+    );
+    expect(one.body.data).not.toHaveProperty("unitCost");
+    expect(rpcCalls.map((r) => r.name)).not.toContain("ingredient_unit_costs");
+    expect(JSON.stringify([list.body, one.body])).not.toMatch(/cost/i);
+  });
+
+  it("gives the Owner unit costs from ingredient_unit_costs()", async () => {
+    onQuery = inventory;
+    onRpc = (name) =>
+      name === "ingredient_unit_costs"
+        ? { data: [{ ingredient_id: 21, unit_cost: 1.25 }] }
+        : { data: null };
+    const r = await call(
+      ingredientList.GET(req("GET", "/api/ingredients", OWNER), undefined),
+    );
+    expect(r.body.data.items[0].unitCost).toBe(1.25);
+    // The view no longer has the column; nothing selects it directly.
+    expect(JSON.stringify(calls)).not.toContain("unit_cost");
+  });
+
+  it.each([
+    [
+      "recipe",
+      () =>
+        recipeRoute.GET(
+          req("GET", "/api/products/1/recipe", "barista-token"),
+          params({ id: "1" }),
+        ),
+    ],
+    [
+      "costing",
+      () =>
+        costingRoute.GET(
+          req("GET", "/api/products/1/costing", "barista-token"),
+          params({ id: "1" }),
+        ),
+    ],
+    [
+      "reports",
+      () =>
+        reports.GET(
+          req("GET", "/api/reports/best-sellers", "barista-token"),
+          params({ type: "best-sellers" }),
+        ),
+    ],
+    [
+      "dashboard",
+      () =>
+        dashboard.GET(req("GET", "/api/dashboard", "barista-token"), undefined),
+    ],
+  ])("refuses %s to a barista (403)", async (_name, run) => {
+    expect((await call(run())).status).toBe(403);
+  });
+
+  it("still computes Owner costing from unit costs", async () => {
+    onQuery = (c) =>
+      c.table === "products"
+        ? {
+            data: {
+              product_id: 1,
+              product_name: "Latte",
+              description: null,
+              category: "Iced Coffee",
+              price: 120,
+              is_available: true,
+              image: null,
+              created_by: 1,
+              date_created: "x",
+            },
+          }
+        : c.table === "product_ingredients"
+          ? {
+              data: [
+                {
+                  quantity_needed: 18,
+                  ingredients: {
+                    ingredient_id: 21,
+                    ingredient_name: "Beans",
+                    unit: "g",
+                  },
+                },
+              ],
+            }
+          : {
+              data: {
+                ingredient_cost: 18,
+                packaging_cost: 2,
+                date_updated: "x",
+              },
+            };
+    onRpc = () => ({ data: [{ ingredient_id: 21, unit_cost: 1 }] });
+    const r = await call(
+      costingRoute.GET(
+        req("GET", "/api/products/1/costing", OWNER),
+        params({ id: "1" }),
+      ),
+    );
+    expect(r.status).toBe(200);
+    expect(r.body.data).toMatchObject({
+      totalCost: 20,
+      margin: 100,
+      missingUnitCost: [],
+    });
+    expect(r.body.data.lines[0]).toMatchObject({ unitCost: 1, cost: 18 });
+  });
+
+  it("lists every product's costing in one request, Owner only", async () => {
+    onQuery = (c) =>
+      c.table === "products"
+        ? {
+            data: [
+              { product_id: 1, product_name: "Latte", price: 120 },
+              { product_id: 2, product_name: "Silog", price: 80 },
+            ],
+          }
+        : c.table === "product_ingredients"
+          ? {
+              data: [
+                {
+                  product_id: 1,
+                  quantity_needed: 18,
+                  ingredients: {
+                    ingredient_id: 21,
+                    ingredient_name: "Beans",
+                    unit: "g",
+                  },
+                },
+              ],
+            }
+          : {
+              data: [
+                {
+                  product_id: 1,
+                  ingredient_cost: 18,
+                  packaging_cost: 2,
+                  date_updated: "x",
+                },
+              ],
+            };
+    onRpc = () => ({ data: [{ ingredient_id: 21, unit_cost: 1 }] });
+    rpcCalls.length = 0;
+    const r = await call(
+      costingList.GET(req("GET", "/api/products/costing", OWNER), undefined),
+    );
+    expect(r.status).toBe(200);
+    expect(r.body.data).toHaveLength(2);
+    expect(r.body.data[0]).toMatchObject({
+      productId: 1,
+      totalCost: 20,
+      margin: 100,
+    });
+    expect(r.body.data[0].lines[0]).toMatchObject({ unitCost: 1, cost: 18 });
+    // No recipe and no costing row: genuinely 0.
+    expect(r.body.data[1]).toMatchObject({
+      productId: 2,
+      totalCost: 0,
+      lines: [],
+    });
+    expect(
+      rpcCalls.filter((c) => c.name === "ingredient_unit_costs"),
+    ).toHaveLength(1);
+
+    const barista = await call(
+      costingList.GET(
+        req("GET", "/api/products/costing", "barista-token"),
+        undefined,
+      ),
+    );
+    expect(barista.status).toBe(403);
+    expect(barista.body.data).toBeUndefined();
+  });
+
+  it("fails the costing list instead of returning zero costs when a read fails", async () => {
+    onQuery = (c) =>
+      c.table === "product_costing"
+        ? { error: { code: "XX000", message: "boom" } }
+        : { data: [] };
+    onRpc = () => ({ data: [] });
+    const r = await call(
+      costingList.GET(req("GET", "/api/products/costing", OWNER), undefined),
+    );
+    expect(r.status).toBe(500);
+    expect(r.body.success).toBe(false);
+  });
+
+  it("saves an add-on with the fixed price, never a client price", async () => {
+    onQuery = single;
+    const r = await call(
+      ingredientList.POST(
+        req("POST", "/api/ingredients", OWNER, {
+          name: "Espresso Beans",
+          unit: "g",
+          isAddon: true,
+          addonQuantity: 18,
+          addonSellingPrice: 30,
+        }),
+        undefined,
+      ),
+    );
+    expect(r.status).toBe(201);
+    expect(calls.find((c) => c.op === "insert")!.payload).toMatchObject({
+      is_addon: true,
+      addon_selling_price: 25,
+      addon_quantity: 18,
+    });
+  });
+
+  it("saves a regular ingredient as is_addon false with empty add-on fields", async () => {
+    onQuery = single;
+    await call(
+      ingredientList.POST(
+        req("POST", "/api/ingredients", OWNER, { name: "Rice" }),
+        undefined,
+      ),
+    );
+    expect(calls.find((c) => c.op === "insert")!.payload).toMatchObject({
+      is_addon: false,
+      addon_selling_price: null,
+      addon_quantity: null,
+    });
+  });
+
+  it.each([
+    [{ name: "X", isAddon: true }],
+    [{ name: "X", isAddon: true, addonQuantity: 0 }],
+    [{ name: "X", isAddon: true, addonQuantity: -2 }],
+    [{ name: "X", addonQuantity: 5 }],
+  ])("rejects an incomplete add-on configuration %j", async (body) => {
+    const r = await call(
+      ingredientList.POST(
+        req("POST", "/api/ingredients", OWNER, body),
+        undefined,
+      ),
+    );
+    expect(r.status).toBe(400);
+    expect(calls.some((c) => c.op === "insert")).toBe(false);
+  });
+
+  it("disabling an add-on clears its configuration and touches nothing else", async () => {
+    onQuery = single;
+    const r = await call(
+      ingredientById.PATCH(
+        req("PATCH", "/api/ingredients/21", OWNER, { isAddon: false }),
+        params({ id: "21" }),
+      ),
+    );
+    expect(r.status).toBe(200);
+    const update = calls.find((c) => c.op === "update")!;
+    expect(update.table).toBe("ingredients");
+    expect(update.payload).toEqual({
+      is_addon: false,
+      addon_selling_price: null,
+      addon_quantity: null,
+    });
+    expect(
+      calls.some((c) => ["stock_transactions", "orders"].includes(c.table)),
+    ).toBe(false);
+  });
+
+  it("does not let a barista change add-on configuration (403)", async () => {
+    const r = await call(
+      ingredientById.PATCH(
+        req("PATCH", "/api/ingredients/21", "barista-token", {
+          isAddon: false,
+        }),
+        params({ id: "21" }),
+      ),
+    );
+    expect(r.status).toBe(403);
   });
 });
 
@@ -670,7 +1132,7 @@ describe("reports", () => {
     });
     const r = await call(
       reports.GET(
-        req("GET", "/api/reports/daily?from=2026-11-01", "owner-token"),
+        req("GET", "/api/reports/daily?from=2026-11-01", OWNER),
         params({ type: "daily" }),
       ),
     );
@@ -686,7 +1148,7 @@ describe("reports", () => {
   it("rejects an unknown report type", async () => {
     const r = await call(
       reports.GET(
-        req("GET", "/api/reports/profit", "owner-token"),
+        req("GET", "/api/reports/profit", OWNER),
         params({ type: "profit" }),
       ),
     );

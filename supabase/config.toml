@@ -29,6 +29,14 @@ additional_redirect_urls = ["http://localhost:3001"]
 jwt_expiry = 3600
 enable_signup = false
 
+# Owner sign-in needs a second step (SDS 2.4); the API refuses an Owner session below aal2.
+[auth.mfa]
+max_enrolled_factors = 10
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
 [storage]
 enabled = true
 port = 54323

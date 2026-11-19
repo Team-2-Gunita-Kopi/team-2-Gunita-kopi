@@ -4,6 +4,7 @@ import {
   MoneySchema,
   NonNegativeQuantitySchema,
   PaginationQuerySchema,
+  QuantitySchema,
   optionalText,
 } from "./common";
 
@@ -15,42 +16,82 @@ export const StockStatusSchema = z.enum([
 ]);
 export type StockStatus = z.infer<typeof StockStatusSchema>;
 
-// INGREDIENTS (FR-21). Also the add-on items: unit_cost is the add-on price basis (SDS 3.5.3).
+/**
+ * Confirmed client decision: every POS add-on sells for PHP 25.00. The database enforces the same
+ * value (ingredients_addon_config_check); clients never send a price for the configuration.
+ */
+export const ADDON_SELLING_PRICE = 25;
+
+// INGREDIENTS (FR-21). An ingredient may also be a POS add-on (is_addon): one selection sells for
+// addonSellingPrice and uses addonQuantity of the ingredient's own unit.
 export const IngredientSchema = z.object({
   id: z.number().int(),
   name: z.string(),
   unit: z.string().nullable(),
   currentStock: z.number(),
   reorderLevel: z.number(),
-  unitCost: z.number().nullable(),
+  /** Owner only (null when not entered). Barista responses never contain this key. */
+  unitCost: z.number().nullable().optional(),
   stockStatus: StockStatusSchema,
   supplierId: z.number().int().nullable(),
   /** Null for baristas: supplier records are Owner-only. */
   supplierName: z.string().nullable(),
   updatedAt: z.string(),
+  isAddon: z.boolean(),
+  /** ADDON_SELLING_PRICE when isAddon, else null. */
+  addonSellingPrice: z.number().nullable(),
+  /** Amount used per add-on selection, in `unit`; null when not an add-on. */
+  addonQuantity: z.number().nullable(),
 });
 export type Ingredient = z.infer<typeof IngredientSchema>;
+
+/** An add-on needs a quantity per selection; a regular ingredient has none. */
+const addonRule = (
+  v: { isAddon?: boolean; addonQuantity?: number | null },
+  ctx: z.RefinementCtx,
+) => {
+  if (v.isAddon && v.addonQuantity == null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["addonQuantity"],
+      message: "Enter the quantity used per add-on selection",
+    });
+  } else if (!v.isAddon && v.addonQuantity != null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["addonQuantity"],
+      message: "Only a POS add-on has a quantity per selection",
+    });
+  }
+};
 
 /**
  * New ingredients start at 0 stock: every stock change must be a stock transaction (FR-17),
  * so the opening quantity is recorded with a stock-in.
  */
-export const CreateIngredientRequestSchema = z.object({
+const IngredientFieldsSchema = z.object({
   name: z.string().trim().min(1, "Ingredient name is required").max(100),
   unit: optionalText(20),
   supplierId: IdSchema.nullable().optional(),
   reorderLevel: NonNegativeQuantitySchema.default(0),
   unitCost: MoneySchema.nullable().optional(),
+  /** Available as a POS add-on. The selling price is always ADDON_SELLING_PRICE. */
+  isAddon: z.boolean().default(false),
+  /** Required (> 0) when isAddon; must be empty otherwise. */
+  addonQuantity: QuantitySchema.nullable().optional(),
 });
+
+export const CreateIngredientRequestSchema =
+  IngredientFieldsSchema.superRefine(addonRule);
 export type CreateIngredientRequest = z.infer<
   typeof CreateIngredientRequestSchema
 >;
 
 /** Partial update. current_stock is not here: it changes only through stock transactions. */
-export const UpdateIngredientRequestSchema =
-  CreateIngredientRequestSchema.partial()
-    .extend({ reorderLevel: NonNegativeQuantitySchema.optional() })
-    .refine((v) => Object.keys(v).length > 0, "Nothing to update");
+export const UpdateIngredientRequestSchema = IngredientFieldsSchema.partial()
+  .extend({ reorderLevel: NonNegativeQuantitySchema.optional() })
+  .refine((v) => Object.keys(v).length > 0, "Nothing to update")
+  .superRefine(addonRule);
 export type UpdateIngredientRequest = z.infer<
   typeof UpdateIngredientRequestSchema
 >;

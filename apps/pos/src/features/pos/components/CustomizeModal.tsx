@@ -1,9 +1,20 @@
 "use client";
 
 import React, { useId, useState } from "react";
-import { QUICK_CHIPS, addonsFor, type CartLine, type OrderAddon, type PosProduct, type ProductCategory } from "@gunita/contracts/ui";
+import { ADDON_DRINK_CATEGORIES, ADDON_SELLING_PRICE } from "@gunita/contracts";
+import {
+  QUICK_CHIPS,
+  addonsFor,
+  inventoryAddons,
+  type CartLine,
+  type OrderAddon,
+  type PosIngredient,
+  type PosProduct,
+  type ProductCategory,
+} from "@gunita/contracts/ui";
 import { Button, Modal, formatPeso } from "@gunita/ui";
 import { useCartStore } from "../cart.store";
+import { USE_MOCKS } from "@/lib/use-mocks";
 
 const splitChips = (s: string): string[] =>
   s
@@ -15,15 +26,24 @@ export function CustomizeModal({
   line,
   product,
   stockById,
+  ingredients = [],
   onClose,
 }: {
   line: CartLine;
   product: PosProduct;
   stockById: Record<string, number>;
+  /** Catalog inventory; real-mode add-ons come from it. */
+  ingredients?: PosIngredient[];
   onClose: () => void;
 }) {
   const ids = useId();
-  const addons = addonsFor(product.category, product.ingredients ?? [], stockById);
+  // Demo mode keeps its fixture menu. Real mode: ingredients configured as add-ons, the same list for
+  // every drink, nothing for food (client decision); the server rechecks price and stock at checkout.
+  const addons = USE_MOCKS
+    ? addonsFor(product.category, product.ingredients ?? [], stockById)
+    : ADDON_DRINK_CATEGORIES.includes(product.category)
+      ? inventoryAddons(ingredients)
+      : [];
   const chips = QUICK_CHIPS[product.category as ProductCategory] ?? [];
   const [picked, setPicked] = useState<OrderAddon[]>(line.addons);
   const [customization, setCustomization] = useState(line.customization);
@@ -58,7 +78,9 @@ export function CustomizeModal({
         <span className="num">{formatPeso(product.sellingPrice)}</span> base
       </p>
       <div className="opt-group">
-        <span className="lbl">Add-ons</span>
+        <span className="lbl">
+          {USE_MOCKS || addons.length === 0 ? "Add-ons" : `Add-ons — ${formatPeso(ADDON_SELLING_PRICE)} each`}
+        </span>
         <div className="opt-row">
           {addons.length === 0 ? (
             <span className="muted">No add-ons for this item.</span>

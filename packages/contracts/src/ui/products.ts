@@ -19,7 +19,15 @@ export const ProductSchema = z.object({
   costPrice: z.number().nonnegative().default(0),
   profitMarginPercent: z.number().optional(),
   description: z.string().optional(),
-  imageUrl: z.string().url().optional(),
+  // An http(s) URL, or a same-origin API path for images stored privately (productImageSrc).
+  imageUrl: z
+    .string()
+    .refine(
+      (v) =>
+        /^\/api\/products\/\d+\/image(\?|$)/.test(v) ||
+        z.string().url().safeParse(v).success,
+    )
+    .optional(),
   isActive: z.boolean().default(true),
   ingredients: z.array(RecipeIngredientSchema).optional(),
   createdAt: z.string(),

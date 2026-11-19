@@ -21,6 +21,51 @@ export const ProductSchema = z.object({
 });
 export type Product = z.infer<typeof ProductSchema>;
 
+/**
+ * Drink categories of the official menu (migration 20261120000300). Client decision: the general
+ * add-on list is offered for every drink and for nothing else. Products are classified by category,
+ * never by id.
+ */
+export const ADDON_DRINK_CATEGORIES: readonly string[] = [
+  "Iced Coffee",
+  "Non-Coffee",
+];
+
+/** FR-50 product images: private Supabase Storage bucket, files managed only by apps/api. */
+export const PRODUCT_IMAGE_BUCKET = "product-images";
+export const PRODUCT_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+export const PRODUCT_IMAGE_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+] as const;
+
+/** True when `image` is a file apps/api stored for this product: "<id>/<uuid>.<png|jpg|webp>". */
+export function isStoredProductImage(
+  productId: number,
+  image: string | null,
+): image is string {
+  return (
+    !!image &&
+    new RegExp(
+      `^${productId}/[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\\.(png|jpg|webp)$`,
+    ).test(image)
+  );
+}
+
+/**
+ * Where a page loads a product image from: stored files through the same-origin API proxy
+ * (authorized), older http(s) URLs as they are, nothing otherwise.
+ */
+export function productImageSrc(
+  p: Pick<Product, "id" | "image">,
+): string | undefined {
+  // ?v= changes with every upload, so a replaced image is not served from an old cache entry.
+  if (isStoredProductImage(p.id, p.image))
+    return `/api/products/${p.id}/image?v=${p.image.slice(p.image.indexOf("/") + 1)}`;
+  return p.image && /^https?:\/\//i.test(p.image) ? p.image : undefined;
+}
+
 export const CreateProductRequestSchema = z.object({
   name: z.string().trim().min(1, "Product name is required").max(100),
   description: optionalText(5000),

@@ -8,8 +8,9 @@ import { USE_MOCKS } from "@/lib/use-mocks";
 const REQUIRED_ROLE = "owner_admin";
 
 // Owner portal. Public: sign in, wrong-role notice, session routes, one-time Owner setup,
-// password recovery.
+// password recovery. /mfa needs a signed-in Owner; every other page needs the second step (aal2).
 const guard = createAuthMiddleware({
+  mfaPath: "/mfa",
   supabaseUrl: env.supabaseUrl,
   supabaseKey: env.supabaseAnonKey,
   cookieName: ADMIN_SESSION_COOKIE,
@@ -20,7 +21,6 @@ const guard = createAuthMiddleware({
     "/auth/",
     "/setup",
     "/forgot-password",
-    "/reset-password",
     "/robots.txt",
   ],
   restrictedPath: "/restricted",

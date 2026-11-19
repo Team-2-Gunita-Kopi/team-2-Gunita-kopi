@@ -1,4 +1,4 @@
-import { ADMIN_SESSION_COOKIE } from "@gunita/auth";
+import { ADMIN_RECOVERY_COOKIE, ADMIN_SESSION_COOKIE } from "@gunita/auth";
 import { createSessionHandlers } from "@gunita/auth/session-server";
 import { env } from "./env";
 
@@ -10,4 +10,5 @@ export const session = createSessionHandlers({
   apiUrl: process.env.API_URL || env.apiUrl,
   proxySecret: process.env.INTERNAL_PROXY_SECRET ?? "",
   allowedRoles: ["owner_admin"],
+  recoveryCookieName: ADMIN_RECOVERY_COOKIE,
 });

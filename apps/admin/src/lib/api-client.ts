@@ -12,7 +12,9 @@ export async function apiClient<T>(
   options: ApiClientOptions = {},
 ): Promise<ApiResponse<T>> {
   const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
+  // JSON unless the caller sends something else (product image upload).
+  if (!headers.has("Content-Type"))
+    headers.set("Content-Type", "application/json");
 
   const url = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
 
@@ -41,4 +43,43 @@ export async function apiClient<T>(
 export function unwrap<T>(res: ApiResponse<T>): T {
   if (!res.success) throw new Error(res.error?.message ?? "Request failed");
   return res.data as T;
+}
+
+/** Any schema with zod's safeParse (the API contracts in @gunita/contracts). */
+export interface ResponseSchema<T> {
+  safeParse(value: unknown): { success: true; data: T } | { success: false };
+}
+
+/**
+ * Calls the API and validates `data` against the API contract. Throws the API's own (generic)
+ * message on failure, or a fixed message when the response does not match the contract.
+ */
+export async function apiData<T>(
+  endpoint: string,
+  schema: ResponseSchema<T>,
+  options: ApiClientOptions = {},
+): Promise<T> {
+  const res = await apiClient<unknown>(endpoint, options);
+  if (!res.success) throw new Error(res.error?.message ?? "Request failed");
+  const parsed = schema.safeParse(res.data);
+  if (!parsed.success) throw new Error("Unexpected response from the server");
+  return parsed.data;
+}
+
+/** Reads every page of a list endpoint (the API caps pageSize at 100). */
+export async function apiAllPages<T>(
+  endpoint: string,
+  schema: ResponseSchema<{ items: T[]; total: number }>,
+): Promise<T[]> {
+  const sep = endpoint.includes("?") ? "&" : "?";
+  const items: T[] = [];
+  for (let page = 1; page <= 50; page++) {
+    const res = await apiData(
+      `${endpoint}${sep}page=${page}&pageSize=100`,
+      schema,
+    );
+    items.push(...res.items);
+    if (items.length >= res.total || res.items.length === 0) break;
+  }
+  return items;
 }
