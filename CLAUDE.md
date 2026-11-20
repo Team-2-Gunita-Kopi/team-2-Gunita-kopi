@@ -392,13 +392,10 @@ Written 2026-11-20 for the `testing/local-supabase-handover` branch. Details and
   - `20261120000300_official_menu_catalog`
   - `20261120000400_official_menu_catalog_additions`
   - `20261120000700_barista_stock_in` (applied and recorded through Supabase SQL Editor)
-- **Pending on live:**
-  - `20261120000000_owner_mfa_and_stock_roles`
-  - `20261120000100_product_images`
-  - `20261120000500_payments_cash_only`
-  - `20261120000600_owner_stock_out`
-  - `20261120000800_restore_barista_stock_in`
-  - `20261120001100_owner_email_otp` (local only; replaces the `aal2` Owner rule of `0000`)
+- **Applied on live 2026-11-20** (one `db push --include-all` from a temporary workdir holding only applied + approved files, after a dry run listed exactly these; verified read-only afterwards):
+  - `20261120000000_owner_mfa_and_stock_roles`, `20261120000100_product_images`, `20261120000500_payments_cash_only`, `20261120000600_owner_stock_out`, `20261120000800_restore_barista_stock_in`, `20261120001100_owner_email_otp`
+- **Pending on live (need separate approval):** `20261120000900_barista_add_basic_ingredient`, `20261120001000_barista_ingredient_supplier`.
+- **Connecting from this network:** the direct host `db.<ref>.supabase.co` is IPv6-only and does not resolve here; use the session pooler `aws-0-ap-southeast-1.pooler.supabase.com:5432`, user `postgres.<ref>` (URL in gitignored `supabase/.env.local`).
 - **Audit result:** an ordering issue in migration history, not a demonstrated schema dependency.
   - The pending files touch only `app_role()`/`app_user_id()`, the `stock_insert` policy, Storage, and one `payments` CHECK.
   - `0200`–`0400` do not create or replace any of these.
