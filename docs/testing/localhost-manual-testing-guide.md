@@ -29,6 +29,7 @@ npx -y pnpm@12.21.0 install --frozen-lockfile
 docker ps
 
 # 4. Local Supabase: applies every migration in supabase/migrations, in order
+cp -n supabase/.env.example supabase/.env      # email settings for the local stack (codes go to http://127.0.0.1:54326)
 npx -y supabase@2.122.1 start
 
 # 5. Synthetic data, test accounts and local env files (Git Bash)
@@ -66,6 +67,7 @@ change to the script.
 
 ```bash
 cd C:/Users/Meynard/team-2-Gunita-kopi
+cp -n supabase/.env.example supabase/.env      # email settings for the local stack (codes go to http://127.0.0.1:54326)
 npx -y supabase@2.122.1 start      # first run downloads images and applies every file in supabase/migrations
 npx -y supabase@2.122.1 status     # API URL must be http://127.0.0.1:54321
 ```
@@ -150,6 +152,7 @@ start with "test", order `client_tx_id` values start with `5e000000-`, and remar
 
 ```bash
 npx -y supabase@2.122.1 stop       # keeps the database volume
+cp -n supabase/.env.example supabase/.env      # email settings for the local stack (codes go to http://127.0.0.1:54326)
 npx -y supabase@2.122.1 start
 npx -y pnpm@12.21.0 dev
 ```
