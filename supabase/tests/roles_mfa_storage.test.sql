@@ -31,6 +31,21 @@ insert into public.product_ingredients (product_id, ingredient_id, quantity_need
 -- Owner session that apps/api did not approve (password only, or an email code used directly
 -- against Supabase Auth): no data access, no writes.
 -- ---------------------------------------------------------------------------
+-- Fixture rows use fixed ids, which do not advance identity sequences. Move every sequence past the
+-- existing rows so rows created by the functions under test get fresh ids, also when the test files
+-- run one after another in one database (CI).
+do $$
+declare r record; v bigint;
+begin
+  for r in select c.table_name, c.column_name from information_schema.columns c
+            where c.table_schema = 'public' and c.is_identity = 'YES' loop
+    execute format('select max(%I) from public.%I', r.column_name, r.table_name) into v;
+    if v is not null then
+      perform setval(pg_get_serial_sequence(format('public.%I', r.table_name), r.column_name), v);
+    end if;
+  end loop;
+end $$;
+
 select set_config('request.jwt.claims', json_build_object('sub', :owner, 'session_id', '00000000-0000-4000-8000-00000000dead')::text, false);
 set role authenticated;
 

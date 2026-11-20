@@ -32,6 +32,21 @@ insert into public.products (product_id, product_name, category, price, created_
 -- ---------------------------------------------------------------------------
 -- Owner: recipe and costing (an approved Owner session, migration 20261120001100)
 -- ---------------------------------------------------------------------------
+-- Fixture rows use fixed ids, which do not advance identity sequences. Move every sequence past the
+-- existing rows so rows created by the functions under test get fresh ids, also when the test files
+-- run one after another in one database (CI).
+do $$
+declare r record; v bigint;
+begin
+  for r in select c.table_name, c.column_name from information_schema.columns c
+            where c.table_schema = 'public' and c.is_identity = 'YES' loop
+    execute format('select max(%I) from public.%I', r.column_name, r.table_name) into v;
+    if v is not null then
+      perform setval(pg_get_serial_sequence(format('public.%I', r.table_name), r.column_name), v);
+    end if;
+  end loop;
+end $$;
+
 select set_config('request.jwt.claims', json_build_object('sub', :owner, 'session_id', :owner)::text, false);
 set role authenticated;
 
@@ -95,9 +110,16 @@ exception when insufficient_privilege then null;
 end $$;
 
 do $$ begin
-  insert into public.stock_transactions (ingredient_id, user_id, type, quantity) values (1, 2, 'in', 5);
-  raise exception 'TEST FAILED: barista recorded stock in';
-exception when insufficient_privilege then null;
+  -- Barista stock-in is allowed (user-approved POS permission, 20261120000700/0800). The row is
+  -- undone right away so the stock numbers checked below stay the same.
+  begin
+    insert into public.stock_transactions (ingredient_id, user_id, type, quantity) values (1, 2, 'in', 5);
+    raise exception 'UNDO_TEST_ROW';
+  exception when others then
+    if sqlerrm <> 'UNDO_TEST_ROW' then
+      raise exception 'TEST FAILED: barista stock-in refused: %', sqlerrm;
+    end if;
+  end;
 end $$;
 
 do $$ begin
