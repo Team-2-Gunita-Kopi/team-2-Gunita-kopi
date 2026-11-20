@@ -4,13 +4,14 @@ import { NextRequest } from "next/server";
 // Fake Supabase: tokens map to auth users, auth users map to profile rows.
 const jwt = (claims: Record<string, unknown>) =>
   `${Buffer.from("{}").toString("base64url")}.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.sig`;
-// Owner tokens after the second sign-in step carry aal2; OWNER_AAL1 is a password-only session.
-const OWNER = jwt({ sub: "auth-owner", aal: "aal2" });
-const OWNER_AAL1 = jwt({ sub: "auth-owner", aal: "aal1" });
+// OWNER: a session apps/api approved after the emailed code (app_role() returns the role).
+// OWNER_UNAPPROVED: a password-only session, or an email-OTP session made outside apps/api.
+const OWNER = jwt({ sub: "auth-owner", session_id: "approved" });
+const OWNER_UNAPPROVED = jwt({ sub: "auth-owner", session_id: "other" });
 
 const authUsers: Record<string, { id: string; email: string }> = {
   [OWNER]: { id: "auth-owner", email: "owner@gunitakopi.com" },
-  [OWNER_AAL1]: { id: "auth-owner", email: "owner@gunitakopi.com" },
+  [OWNER_UNAPPROVED]: { id: "auth-owner", email: "owner@gunitakopi.com" },
   "barista-token": { id: "auth-barista", email: "barista@gunitakopi.com" },
   "inactive-token": { id: "auth-inactive", email: "old@gunitakopi.com" },
   "no-profile-token": { id: "auth-orphan", email: "orphan@gunitakopi.com" },
@@ -25,7 +26,12 @@ const profiles: Record<
 };
 
 vi.mock("../src/lib/supabase-user", () => ({
-  createScopedUserClient: () => ({
+  createScopedUserClient: (token: string) => ({
+    // Stands in for public.app_role(): the Owner role only for the approved session.
+    rpc: async () => ({
+      data: token === OWNER ? "owner_admin" : null,
+      error: null,
+    }),
     auth: {
       getUser: async (token: string) =>
         authUsers[token]
@@ -102,14 +108,14 @@ describe("API Server Authorization Guard", () => {
     expect(user.role).toBe("owner_admin");
   });
 
-  it("rejects an Owner session that has not completed MFA (aal1) with MFA_REQUIRED", async () => {
-    await expect(requireUser(req(OWNER_AAL1))).rejects.toMatchObject({
+  it("rejects an Owner session that apps/api did not approve with MFA_REQUIRED", async () => {
+    await expect(requireUser(req(OWNER_UNAPPROVED))).rejects.toMatchObject({
       statusCode: 403,
       code: "MFA_REQUIRED",
     });
   });
 
-  it("does not require MFA for baristas", async () => {
+  it("does not require the emailed code for baristas", async () => {
     const user = await requireUser(req("barista-token"));
     expect(user.role).toBe("barista");
   });

@@ -53,9 +53,9 @@ docker exec gk-pg sh -c 'cd /sb && for f in tests/supabase-stub.sql migrations/*
 docker rm -f gk-pg
 ```
 
-`supabase-stub.sql` creates the few Supabase objects the migrations need (`anon`, `authenticated`, `service_role`, `auth.users`, `auth.uid()`, `auth.jwt()`, and minimal `storage.buckets` / `storage.objects`). With `supabase start`, skip the stub and run only the test files. Owner sessions in the tests set `"aal": "aal2"` in `request.jwt.claims`.
+`supabase-stub.sql` creates the few Supabase objects the migrations need (`anon`, `authenticated`, `service_role`, `auth.users`, `auth.uid()`, `auth.jwt()`, and minimal `storage.buckets` / `storage.objects`). With `supabase start`, skip the stub and run only the test files. Owner sessions in the tests set `"session_id"` in `request.jwt.claims` to a session approved in `owner_login_challenges` (the fixtures use the Owner's id). Each fixture creates its own Owner and first retires an Owner left by an earlier file (`users_single_owner`).
 
-`roles_mfa_storage.test.sql` checks the Owner `aal2` rule, Owner and Barista stock-in/out, restricted Barista ingredient creation, active-supplier assignment/options, opening-stock history, caller-bound movement rows, checkout deduction, and the product image Storage policies.
+`roles_mfa_storage.test.sql` checks the approved-session rule for the Owner (unapproved, missing or `aal2`-only claims get no role; staff cannot write challenges), `owner_otp_use` limits (resend wait, 3 sends, 5 attempts, expiry, single use), the single-Owner index, Owner and Barista stock-in/out, restricted Barista ingredient creation, active-supplier assignment/options, opening-stock history, caller-bound movement rows, checkout deduction, and the product image Storage policies.
 
 `addons_catalog_costs.test.sql` checks the add-on columns and constraint, Owner-only `unit_cost`, add-on checkout (rows, prices, stock, retries, conflicts), that configuration changes leave stock history and saved orders alone, and the official catalog (count per category, excluded items, re-run through `\ir`). Test fixtures use product ids from 901 because the catalog migration takes the first ids.
 
@@ -67,7 +67,7 @@ docker rm -f gk-pg
 - Both roles read catalog, inventory, orders and payments. The Owner writes catalog, ingredient details, suppliers and costing; both roles may write their own stock transactions.
 - Ingredient costs are Owner-only (team decision; SRS NFR-02). `authenticated` has column-level SELECT on `ingredients` without `unit_cost`, so no signed-in token can select it, including through the Data API. The Owner reads costs through `ingredient_unit_costs()` (SECURITY DEFINER; raises `FORBIDDEN` unless `app_role()` is `owner_admin`). The costing triggers `product_ingredients_recost` and `ingredients_recost` run as SECURITY DEFINER because they read `unit_cost`; they fire only on Owner writes. `recalculate_product_costing` is no longer executable by `authenticated`.
 - Manual stock movements: the Owner and Barista may insert `stock_transactions` of type `in` or `out`, with `user_id` bound to the caller. This is a user-approved POS permission change. In the clean migration order, `20261120000700` follows `20261120000600`; live already records `00700` out of order, so pending `20261120000800` restores the permission after `00600` is eventually applied. Baristas may create basic ingredients through `create_barista_ingredient`; the function can assign an existing active supplier but cannot create suppliers or expose contact details, costs, or add-on settings. Optional opening stock is recorded as a stock-in in the same transaction. Ingredient edits, unit costs, supplier management, and add-on settings remain Owner-only. This permission is local-only until `20261120000900` and `20261120001000` are separately approved for live. Checkout stock-out goes through `process_checkout_transaction` (SECURITY DEFINER) and is not affected. Baristas update only `orders.status`.
-- An Owner session counts only at `aal2` (after MFA): `app_role()` and `app_user_id()` return NULL for an Owner below it.
+- An Owner session counts only when `apps/api` approved it after the emailed sign-in code (its `session_id` is recorded in `owner_login_challenges`, migration `20261120001100`): `app_role()` and `app_user_id()` return NULL for any other Owner session. At most one `owner_admin` row exists (`users_single_owner`).
 - `anon` has no access. `audit_logs` has no policies.
 - `users`: a barista reads only their own row, so never the Owner's email. Signed-in users may update only `full_name` and `status` (RLS: Owner only); `role`, `email`, `username` and `auth_user_id` change only through the API, so nobody can grant themselves `owner_admin`.
 - `provision_initial_owner()` is executable by `service_role` only. An advisory lock makes concurrent setup requests create at most one Owner.
@@ -88,9 +88,9 @@ pnpm db:types                 # regenerate packages/db-types from the linked pro
 
 ## Sign in
 
-Everyone signs in with **username + password** (SRS FR-41). The login page posts to its own site (`/auth/login`), which calls `apps/api` `POST /api/auth/login`. The API looks up the username in `users`, picks the Auth email, and signs in with Supabase Auth. The site stores the session in an HttpOnly cookie; the browser never sees a token or the Auth email.
+Everyone signs in with **username + password** (SRS FR-41); the Owner may type their email instead of the username. The login page posts to its own site (`/auth/login`), which calls `apps/api` `POST /api/auth/login`. The API looks up the username in `users`, picks the Auth email, and signs in with Supabase Auth. The site stores the session in an HttpOnly cookie; the browser never sees a token or the Auth email.
 
-- **Owner/Admin:** Auth email is the real address in `users.email`. Supports email verification and "Forgot password" by emailed 6-digit code (Admin sign-in page or `/forgot-password`), and needs a second sign-in step (TOTP MFA, below).
+- **Owner/Admin:** Auth email is the real address in `users.email`. Supports email verification and "Forgot password" by emailed 6-digit code (Admin sign-in page or `/forgot-password`), and needs a second sign-in step on every sign-in: a 6-digit code emailed by Supabase Auth (below). No authenticator app.
 - **Barista:** Auth email is the internal `<username>@staff.gunitakopi.local` (`usernameToAuthEmail` in `@gunita/auth`); `users.email` is NULL. No mail is sent; the Owner resets barista passwords.
 
 Wrong password, unknown username and inactive account all return the same `401`. An unverified Owner gets `403 EMAIL_NOT_CONFIRMED` (Supabase reports this only after the password matched).
@@ -107,10 +107,10 @@ Cookie names: `sb-gunita-admin-auth` (Admin) and `sb-gunita-pos-auth` (POS), so 
 
 The Admin site has two more server routes:
 
-- `POST /auth/mfa` (Owner MFA, SDS 2.4 and 2.8, SRS NFR-09). After a password sign-in the Owner session is `aal1`; `/auth/login` returns `mfaRequired: true` and the page goes to `/mfa`. `{ action: "start" }` returns `step: "verify"` when a TOTP factor exists, otherwise enrolls one (any unfinished factor is removed first) and returns its QR code and secret. `{ action: "verify", code }` runs `challengeAndVerify`; Supabase upgrades the session to `aal2` and the HttpOnly cookie is rewritten. No token is returned. A new factor is never enrolled while a verified one exists.
-- `POST /auth/recovery` (Owner password recovery, all server side). `step: "request"` calls `resetPasswordForEmail` and answers the same for unknown emails and for mail failures (only Supabase's 429 is passed on). `step: "verify"` checks the 6-digit code with `verifyOtp` (type `recovery`) and keeps the recovery session in the HttpOnly cookie `sb-gunita-admin-recovery` (15 minutes). The page guard and `/api` proxy never read that cookie, and a non-Owner account is refused with the same message as a wrong code. `step: "reset"` sets the new password (8+ characters) and then signs out every session of the account (`scope: global`); the Owner signs in again, including the second step.
+- `POST /auth/otp` (Owner second step, SDS 2.4 and 2.8, SRS NFR-09). For an Owner, `POST /api/auth/login` revokes the password session and returns only a random challenge (its SHA-256 is stored in `owner_login_challenges`). `/auth/login` then asks `apps/api` `POST /api/auth/otp` to email the first code (`signInWithOtp`, `shouldCreateUser: false`), keeps the challenge in the HttpOnly cookie `gunita-admin-otp` (Path `/auth`, SameSite Strict, 10 minutes) and answers `otpRequired: true`; no session cookie is written. `{ action: "verify", code }` sends the code to `apps/api`, which checks it with `verifyOtp` (type `email`), records the new session's `session_id` on the challenge and returns that session; the site writes it to the session cookie and drops the challenge cookie. `{ action: "resend" }` emails a new code. Limits per challenge (`owner_otp_use`): 3 codes, 60 seconds apart, 5 code attempts, 10 minutes; Supabase makes each code single-use with a 5-minute expiry. A new password sign-in replaces any unfinished challenge. The POS has no `/auth/otp` and refuses Owner accounts without sending a code.
+- `POST /auth/recovery` (Owner password recovery, all server side). `step: "request"` calls `resetPasswordForEmail` and answers the same for unknown emails and for mail failures (only Supabase's 429 is passed on). `step: "verify"` checks the 6-digit code with `verifyOtp` (type `recovery`) and keeps the recovery session in the HttpOnly cookie `sb-gunita-admin-recovery` (15 minutes). The page guard and `/api` proxy never read that cookie, and a non-Owner account is refused with the same message as a wrong code. `step: "reset"` sets the new password (8+ characters) and then signs out every session of the account (`scope: global`); the Owner signs in again, including the emailed code.
 
-Owner `aal2` is enforced in three places: the Admin middleware (`mfaPath: "/mfa"`, every other page redirects there), `apps/api` `requireUser` (`403 MFA_REQUIRED` for an `owner_admin` token whose verified `aal` claim is not `aal2`), and the database (`app_role()` / `app_user_id()` return NULL for an Owner below `aal2`, migration `20261120000000`), so a password-only Owner token gives no data even when used against the Data API directly. Baristas have no second step.
+The emailed code is enforced on the server, not the page: `apps/api` `requireUser` calls `app_role()` for an `owner_admin` profile and answers `403 MFA_REQUIRED` unless it returns the role, and the database (`app_role()` / `app_user_id()`, migration `20261120001100`) gives no data to an Owner session whose `session_id` `apps/api` did not approve. So a password-only Owner token, or an email-code session made directly against Supabase Auth (which would skip the password), gives no data even against the Data API. Supabase has no email MFA factor, which is why approval is tracked by session instead of `aal`. Baristas have no second step.
 
 Server-only settings (never `NEXT_PUBLIC_`): `INTERNAL_PROXY_SECRET` (same value in api, admin and pos), `API_URL` (admin and pos; defaults to `NEXT_PUBLIC_API_URL`).
 
@@ -145,12 +145,14 @@ Read only from a header the hosting platform sets (`@gunita/auth/client-ip`):
 
 JSON logs, no passwords, tokens or setup codes. Sign-in events: `auth.login_failed` (reason), `auth.login_blocked`, `auth.lockout`, `auth.login_succeeded`, `auth.throttle_unavailable`, `auth.proxy_secret_rejected`, `auth.client_ip_unavailable`. Usernames and IPs are logged only as short hash prefixes. Server errors (5xx) are logged as `request.failed`; clients get a generic message.
 
-## First owner account (one time)
+## First owner account (one time, developer only)
 
-1. Outside localhost development, set `OWNER_SETUP_TOKEN` (32+ random characters) in the API environment.
-2. On the Admin sign-in page, choose **Create account** and enter the email, full name, username, password and confirmation. Localhost development uses the trusted local proxy and does not ask for a setup code; all other environments require the setup token. A visit to the former `/setup` page returns to sign-in.
-3. `POST /api/setup/owner` creates the Auth account on the real email (unconfirmed), then calls `provision_initial_owner()` to add the `owner_admin` profile. The role is set by the API; the request has no role field. Supabase sends the confirmation email.
-4. After the Owner exists, setup returns `409 SETUP_COMPLETE`. Remove `OWNER_SETUP_TOKEN` to switch the endpoint off.
+There is no registration page. The developer provisions the single Owner:
+
+1. Set `OWNER_SETUP_TOKEN` (32+ random characters, e.g. `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`) in the API environment and restart or redeploy the API.
+2. Run `OWNER_SETUP_TOKEN=<same value> API_URL=<https API URL, or http://localhost:3002> node scripts/provision-owner.mjs`. It asks for full name, username, email and password (hidden) and calls `POST /api/setup/owner` with `X-Setup-Token`.
+3. The API creates the Auth account on the real email (confirmed: the setup token authorizes it, and every sign-in proves the inbox again), then calls `provision_initial_owner()` (advisory lock) to add the `owner_admin` profile. The role is set by the API; the request has no role field. The unique index `users_single_owner` refuses a second Owner even for writes that bypass the function.
+4. After the Owner exists, setup returns `409 SETUP_COMPLETE`. Remove `OWNER_SETUP_TOKEN` to switch the endpoint off. The Admin and POS `/api` proxies never forward `setup/*` or `auth/*`.
 
 The Owner then creates barista accounts through `POST /api/admin/employees` (username, password, full name, role `barista` only; no email).
 
@@ -166,7 +168,8 @@ The Owner then creates barista accounts through `POST /api/admin/employees` (use
 - Supabase's own sign-in rate limit is per IP, and every sign-in comes from the API server. Raise it in the Dashboard so the app-level throttle is the one that trips.
 - During a distributed attack on a username, a new device or IP (not yet trusted) cannot sign in to that username until the lock expires; known terminals keep working.
 - Live Auth settings: turn off "Allow new users to sign up" (it is on) and set up custom SMTP (the built-in sender only mails project team members and about 2 emails per hour). The old `/reset-password` link page is gone, so no Redirect URL is needed for recovery.
-- Supabase's per-IP limits on code checks (`/verify`, MFA verify) see the Admin server's IP for every user, as with sign-in. The app does not add its own throttle to recovery or MFA codes.
+- Supabase's per-IP limits on code checks (`/verify`) see the API or Admin server's IP for every user, as with sign-in. The Owner sign-in code has its own per-challenge limits (`owner_otp_use`); recovery codes rely on Supabase's limits only.
+- Approved Owner sessions stay valid until they end in Supabase Auth (sign-out, password reset, or refresh-token expiry); the access token, as for every role, stays usable until it expires (1 hour) after sign-out.
 
 ## Live configuration and pending migrations (updated 2026-11-20)
 
@@ -174,7 +177,7 @@ The Owner then creates barista accounts through `POST /api/admin/employees` (use
 
 Live history has 9 recorded rows, including `20261120000700_barista_stock_in`. On 2026-11-20, that migration was applied to the live `gunita-kopi-pos-dev` project in one guarded SQL Editor transaction. The live `stock_insert` policy was verified afterward: `user_id` must equal `app_user_id()`, and `app_role()` must be `owner_admin` or `barista`, allowing either manual movement type. No other migration was applied.
 
-Pending on live: `20261120000000` (Owner MFA and stock roles), `20261120000100` (product image Storage), `20261120000500` (cash only), `20261120000600_owner_stock_out.sql`, `20261120000800_restore_barista_stock_in.sql`, `20261120000900_barista_add_basic_ingredient.sql`, and `20261120001000_barista_ingredient_supplier.sql`. `00600` re-allows Owner stock-out after `20261120000000` restricts it, but it would also narrow Barista writes to stock-out if applied after the already-recorded `00700`. `00800` reasserts the approved Owner/Barista stock-in/out policy after those older migrations run. `00900` adds the Barista ingredient-creation RPC; `01000` adds existing-active-supplier assignment and limited supplier-name options. Neither has been applied to live. The gap is a **history-order issue only**, not a schema dependency:
+Pending on live: `20261120000000` (Owner MFA and stock roles), `20261120000100` (product image Storage), `20261120000500` (cash only), `20261120000600_owner_stock_out.sql`, `20261120000800_restore_barista_stock_in.sql`, `20261120000900_barista_add_basic_ingredient.sql`, and `20261120001000_barista_ingredient_supplier.sql`, and `20261120001100_owner_email_otp.sql` (Owner emailed sign-in code; supersedes the `aal2` rule of `0000`). `00600` re-allows Owner stock-out after `20261120000000` restricts it, but it would also narrow Barista writes to stock-out if applied after the already-recorded `00700`. `00800` reasserts the approved Owner/Barista stock-in/out policy after those older migrations run. `00900` adds the Barista ingredient-creation RPC; `01000` adds existing-active-supplier assignment and limited supplier-name options. Neither has been applied to live. The gap is a **history-order issue only**, not a schema dependency:
 
 - `0000` replaces only `app_role()` and `app_user_id()` (same signatures and grants) and the `stock_insert` policy. All three come from the initial schema and are unchanged on live.
 - `0100` touches only `storage.buckets` and four new `storage.objects` policies.
@@ -189,15 +192,15 @@ Checks run:
 
 No history repair is needed. The still-pending MFA, Storage, cash-only, and Owner stock-out migrations each need approval before live application. Recommended order, when approved:
 
-1. Deploy this branch's API and Admin (`/mfa`) first.
-2. Apply `20261120000000`, `20261120000100`, `20261120000500`, `20261120000600`, then `20261120000800`. `20261120000700` is already applied and recorded. Use `supabase db push --include-all` only after a `--dry-run` that lists exactly these five pending versions, or the `db-migrations.yml` manual job with those five versions.
+1. Deploy this branch's API and Admin (password + emailed code) first, and configure the Magic Link template and SMTP (item 2 below).
+2. Apply `20261120000000`, `20261120000100`, `20261120000500`, `20261120000600`, `20261120000800`, then `20261120001100` (Owner emailed code; it replaces the `aal2` rule of `0000`, so apply them in one push or `0000` alone would lock the Owner out). `20261120000700` is already applied and recorded. `00900` and `01000` are separate decisions. Use `supabase db push --include-all` only after a `--dry-run` that lists exactly the approved pending versions, or the `db-migrations.yml` manual job with those versions.
 
 Not yet proven on real Supabase: that the hosted Storage service accepts the `0100` bucket insert and policies. Try it on staging or a local `supabase start` first.
 
 Except where noted above and in item 4, nothing below has been done on the live project or tested against it.
 
-1. **Migrations** `20261120000000_owner_mfa_and_stock_roles.sql`, `20261120000100_product_images.sql`, `20261120000500_payments_cash_only.sql`, `20261120000600_owner_stock_out.sql` and `20261120000800_restore_barista_stock_in.sql`: check with `npx supabase@2 db push --dry-run --db-url "<url>"`, then push only after separate approval. Deploy the Admin site (with `/mfa`) and the API **before the first MFA migration**: from then on an Owner session without the second step reads no data. `20261120000700` is already applied and recorded.
-2. **Owner MFA (TOTP):** enabled by default on hosted projects. In the Dashboard (Authentication, Multi-Factor) confirm TOTP enrollment and verification are on. Nothing else is required; the Owner enrolls on the next sign-in. Check the MFA verification rate limit (Authentication, Rate Limits).
+1. **Migrations** `20261120000000_owner_mfa_and_stock_roles.sql`, `20261120000100_product_images.sql`, `20261120000500_payments_cash_only.sql`, `20261120000600_owner_stock_out.sql`, `20261120000800_restore_barista_stock_in.sql` and `20261120001100_owner_email_otp.sql`: check with `npx supabase@2 db push --dry-run --db-url "<url>"`, then push only after separate approval. Deploy the Admin site and the API **before `20261120001100`** (and never apply `0000` without it): from then on an Owner session that did not pass the emailed code reads no data. `20261120000700` is already applied and recorded.
+2. **Owner sign-in code (email OTP):** Authentication, Email Templates, "Magic Link": the body must show `{{ .Token }}` (copy `supabase/templates/owner-sign-in-code.html`; no link is used). Authentication, Providers, Email: Email OTP length 6, expiry 300 seconds. Custom SMTP is required (the built-in sender only mails project team members, about 2 per hour). TOTP MFA is not used; it can be turned off under Authentication, Multi-Factor.
 3. **Recovery email:** Authentication, Email Templates, "Reset Password": the body must contain `{{ .Token }}` (the 6-digit code), for example `Your Gunita Kopi password reset code is {{ .Token }}. It expires soon; ignore this email if you did not ask for it.` The `{{ .ConfirmationURL }}` link is not used. Code lifetime is the Email OTP expiry (Authentication, Providers, Email; keep it short, for example 900 seconds). Custom SMTP is needed for real delivery.
 4. **Catalog migrations.** Live state on 2026-11-19:
    - `20261120000200`, `20261120000300` and `20261120000400` are applied and recorded, with all 76 products present.
@@ -214,7 +217,7 @@ Except where noted above and in item 4, nothing below has been done on the live 
 - `GET /api/products/{id}/image` (both roles): streams the stored file with the caller's token, `nosniff`. Only a path of that exact form for that product is served.
 - `DELETE /api/products/{id}/image` (Owner): clears `products.image` and deletes the stored file.
 - Pages load `/api/products/{id}/image?v=<file>` through their same-origin proxy (`productImageSrc` in `@gunita/contracts`). Products without an image, or with an older http(s) URL in `image`, keep working.
-- Storage RLS: both roles read; only an Owner at `aal2` inserts, updates or deletes, and only in this bucket.
+- Storage RLS: both roles read; only an Owner (`app_role()`, so an approved session) inserts, updates or deletes, and only in this bucket.
 - The POS does not cache images for offline use; offline, product tiles show without a picture.
 
 ## Add-ons (FR-03, migration `20261120000200`)

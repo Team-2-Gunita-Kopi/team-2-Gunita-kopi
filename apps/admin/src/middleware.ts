@@ -7,11 +7,10 @@ import { USE_MOCKS } from "@/lib/use-mocks";
 
 const REQUIRED_ROLE = "owner_admin";
 
-// Owner portal. Public: sign in, wrong-role notice, session routes, password recovery, and the
-// legacy /setup redirect.
-// /mfa needs a signed-in Owner; every other page needs the second step (aal2).
+// Owner portal. Public: sign in (password, then the emailed code), wrong-role notice, session
+// routes, password recovery, and the legacy /setup redirect. The session cookie is written only
+// after the emailed code is accepted; apps/api and RLS refuse any other Owner session.
 const guard = createAuthMiddleware({
-  mfaPath: "/mfa",
   supabaseUrl: env.supabaseUrl,
   supabaseKey: env.supabaseAnonKey,
   cookieName: ADMIN_SESSION_COOKIE,

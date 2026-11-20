@@ -128,6 +128,46 @@ export type Database = {
         };
         Relationships: [];
       };
+      owner_login_challenges: {
+        Row: {
+          attempts: number;
+          auth_user_id: string;
+          challenge_id: number;
+          created_at: string;
+          expires_at: string;
+          last_sent_at: string | null;
+          sends: number;
+          session_id: string | null;
+          token_hash: string;
+          verified_at: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          attempts?: number;
+          auth_user_id: string;
+          challenge_id?: never;
+          created_at?: string;
+          expires_at?: string;
+          last_sent_at?: string | null;
+          sends?: number;
+          session_id?: string | null;
+          token_hash: string;
+          verified_at?: string | null;
+        };
+        Update: {
+          attempts?: number;
+          auth_user_id?: string;
+          challenge_id?: never;
+          created_at?: string;
+          expires_at?: string;
+          last_sent_at?: string | null;
+          sends?: number;
+          session_id?: string | null;
+          token_hash?: string;
+          verified_at?: string | null;
+        };
+        Relationships: [];
+      };
       orders: {
         Row: {
           client_tx_id: string;
@@ -686,6 +726,10 @@ export type Database = {
       login_throttle_success: {
         Args: { p_pair_key: string; p_trusted_key: string };
         Returns: undefined;
+      };
+      owner_otp_use: {
+        Args: { p_kind: string; p_token_hash: string };
+        Returns: { auth_user_id: string; email: string }[];
       };
       process_checkout_transaction: { Args: { p_order: Json }; Returns: Json };
       recalculate_product_costing: {

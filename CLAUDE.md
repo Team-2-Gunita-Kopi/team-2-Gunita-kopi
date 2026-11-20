@@ -94,7 +94,7 @@ Work on `integration/phase2-frontend`, uncommitted until the user approves. Do n
 - POS order mapping between `@gunita/contracts/ui` and `@gunita/contracts` is in `apps/pos/src/features/pos/api-mappers.ts` (tests: `apps/pos/tests/api-mappers.test.ts`): one product row plus one row per add-on, `online` is sent as `pre-order`, cash only, non-numeric (demo) ids are refused locally and never synced.
 - Stock movement policy is Owner and Barista stock-in/out (Admin/POS), per user-approved POS permission update; API and RLS enforce it. `20261120000700_barista_stock_in.sql` was applied and verified on live Supabase on 2026-11-20. `20261120000800_restore_barista_stock_in.sql` is pending on live; it reasserts the permission after older pending migration `20261120000600` is eventually applied. Baristas may add a basic ingredient and opening stock through a restricted RPC, assigning an existing active supplier only; supplier creation/details, costs, add-on settings, edits, and deletes remain Owner-only. Migrations `20261120000900_barista_add_basic_ingredient.sql` and `20261120001000_barista_ingredient_supplier.sql` are local-only and must not be applied live without approval. The Owner order board only changes status; checkout (`POST /api/orders`, `/api/sync`) is Barista-only.
 - Add-ons follow the SDS rule that add-on name and cost come from INGREDIENTS. In real mode `CustomizeModal.tsx` lists ingredients flagged `is_addon` (`inventoryAddons(ingredients)`) for the `ADDON_DRINK_CATEGORIES` (`Iced Coffee`, `Non-Coffee`) at ₱25.00 each; demo mode still uses the static `ADDON_CATALOG`. Live has no ingredients yet, so the POS shows no add-ons until the Owner configures them.
-- Open decisions, do not guess: (1) which real ingredient and measured quantity back each of the 11 official add-ons (Handoff Notes E); (2) product images: upload route `apps/api/src/app/api/products/[id]/image/` and migration `20261120000100_product_images.sql` (private bucket `product-images`) exist locally, not applied live; (3) Owner MFA is implemented in code (`/mfa` pages, `MFA_REQUIRED` in `apps/api/src/lib/auth.ts`), but its migration `20261120000000_owner_mfa_and_stock_roles.sql` is not applied live. Report printing is not implemented. FR-40 (staff on duty) is out of scope per the SRS; do not implement it. Forgot-password needs `{{ .Token }}` in the Supabase recovery email template and has not been tested live.
+- Open decisions, do not guess: (1) which real ingredient and measured quantity back each of the 11 official add-ons (Handoff Notes E); (2) product images: upload route `apps/api/src/app/api/products/[id]/image/` and migration `20261120000100_product_images.sql` (private bucket `product-images`) exist locally, not applied live; (3) Owner second step is a 6-digit emailed code, not TOTP (password, then `POST /api/auth/otp`; approved `session_id`s in `owner_login_challenges`, enforced by `app_role()` and `requireUser`; migration `20261120001100_owner_email_otp.sql`, local only, supersedes the `aal2` rule of `20261120000000`; neither is applied live). The Owner is provisioned only by `scripts/provision-owner.mjs` (no registration page). Report printing is not implemented. FR-40 (staff on duty) is out of scope per the SRS; do not implement it. Forgot-password needs `{{ .Token }}` in the Supabase recovery email template and has not been tested live.
 - Live testing so far is database-level only (read-only queries and one rolled-back role simulation; see Handoff Notes B). No live API test and no browser test has been run.
 
 Checks on Node 22 when the default Node is newer (run from each package folder): `npx -y node@22 ../../node_modules/vitest/vitest.mjs run` and `npx -y node@22 node_modules/next/dist/bin/next build`. The SRS and SDS are not in the repo; they are in the user's Downloads folder (`Team 8 - SRS Documentation (Gunita Kopi POS System) - Web-Based.md`, `Gunita_Kopi_POS_SDS_updated (1).md`).
@@ -360,7 +360,7 @@ Written 2026-11-20 for the `testing/local-supabase-handover` branch. Details and
   - Throttled in Postgres and fails closed.
   - No public sign-up: the Owner is created once via `/api/setup/owner`, and baristas via `/api/admin/employees`.
 - **Roles:** `owner_admin` (Admin site) and `barista` (POS site), checked on every API call against `public.users` and again by RLS.
-  - Owner MFA (TOTP, aal2) is required: the API answers `MFA_REQUIRED`, and the database does too once `20261120000000` is applied.
+  - Owner second step: a 6-digit code emailed on every sign-in (Supabase email OTP, 5 minutes, single use; 3 sends, 5 attempts per sign-in). Only sessions apps/api approved count (`app_role()`, `requireUser` answers `MFA_REQUIRED`). No TOTP. One Owner only (`users_single_owner`).
   - Stock: the Owner records stock-in and stock-out; the Barista can record stock-in and stock-out from POS.
 - **Modules:**
   - Catalog: the 76 official products.
@@ -398,6 +398,7 @@ Written 2026-11-20 for the `testing/local-supabase-handover` branch. Details and
   - `20261120000500_payments_cash_only`
   - `20261120000600_owner_stock_out`
   - `20261120000800_restore_barista_stock_in`
+  - `20261120001100_owner_email_otp` (local only; replaces the `aal2` Owner rule of `0000`)
 - **Audit result:** an ordering issue in migration history, not a demonstrated schema dependency.
   - The pending files touch only `app_role()`/`app_user_id()`, the `stock_insert` policy, Storage, and one `payments` CHECK.
   - `0200`–`0400` do not create or replace any of these.
@@ -405,11 +406,12 @@ Written 2026-11-20 for the `testing/local-supabase-handover` branch. Details and
   - `00700` is recorded before older pending `00600`. Applying `00600` later would restrict Barista inserts to stock-out, so `00800` reasserts the approved policy afterward.
   - No `migration repair` is needed.
 - **Proposed production order (a plan only; nothing here is authorized):**
-  1. Deploy the compatible API and Admin, including `/mfa`.
+  1. Deploy the compatible API and Admin (password + emailed code), with the Magic Link template showing `{{ .Token }}` and custom SMTP.
   2. Apply `20261120000000`.
   3. Apply `20261120000100`.
   4. Apply `20261120000500`.
   5. Apply `20261120000600`, then `20261120000800` to preserve Barista stock-in.
+  6. Apply `20261120001100` in the same push as `0000` (alone, `0000` locks the Owner out).
 - `supabase db push --include-all` applies **every** local migration missing from remote history. Run it only after a `--dry-run`, or the `db-migrations.yml` manual job, has shown exactly the approved pending versions.
 - **Limitation:** the schema comparison and SQL tests ran on PGlite. They have not run on real Supabase or Docker PostgreSQL, and hosted Storage accepting `0100` is unproven.
 
@@ -431,7 +433,7 @@ npx -y pnpm@12.21.0 dev
 
 - Admin http://localhost:3000, POS http://localhost:3001, API http://localhost:3002.
 - Accounts:
-  - `testowner` (Owner) signs in on the Admin site and must complete TOTP enrolment on `/mfa`.
+  - `testowner` (Owner) signs in on the Admin site, then enters the emailed code from Inbucket (http://localhost:54326).
   - `testbarista` (Barista) uses the POS site.
 - Passwords are generated by the seed and stored in the gitignored `supabase/.env.seed-accounts.local`.
 - The seed also writes gitignored `apps/*/.env.development.local` files: the local URL and keys, plus one shared `INTERNAL_PROXY_SECRET`.

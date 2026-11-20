@@ -1,3 +1,3 @@
 import { session } from "@/lib/session-handlers";
 
-export const POST = session.mfa;
+export const POST = session.otp;

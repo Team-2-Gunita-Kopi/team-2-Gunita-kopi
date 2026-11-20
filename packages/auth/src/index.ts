@@ -23,6 +23,11 @@ export const POS_SESSION_COOKIE = "sb-gunita-pos-auth";
  * "save new password"). Never read by the page guard or the /api proxy, so it grants no access.
  */
 export const ADMIN_RECOVERY_COOKIE = "sb-gunita-admin-recovery";
+/**
+ * Owner sign-in challenge between the password and the emailed code (HttpOnly, path /auth,
+ * 10 minutes). Grants no access: apps/api exchanges it for a session only with a valid code.
+ */
+export const ADMIN_OTP_COOKIE = "gunita-admin-otp";
 
 export function usernameToAuthEmail(username: string): string {
   return `${username.trim().toLowerCase()}@${STAFF_EMAIL_DOMAIN}`;
@@ -43,18 +48,10 @@ export interface SupabaseJwtPayload {
     [key: string]: unknown;
   };
   role?: string;
-  /** Authenticator assurance level: "aal2" after the second sign-in step (MFA). */
-  aal?: string;
+  /** Supabase Auth session; an Owner session counts only once apps/api approved this id. */
+  session_id?: string;
   exp?: number;
   iat?: number;
-}
-
-/**
- * SDS 2.4 / 2.8: the Owner account needs a second sign-in step (TOTP MFA). A session counts for
- * this role only at aal2; the database (app_role) and apps/api enforce the same rule.
- */
-export function needsSecondFactor(role: unknown, aal: unknown): boolean {
-  return role === ROLES.OWNER_ADMIN && aal !== "aal2";
 }
 
 /**

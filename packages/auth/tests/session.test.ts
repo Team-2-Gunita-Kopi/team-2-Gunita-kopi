@@ -8,6 +8,7 @@ import { NextRequest } from "next/server";
 import { createAuthMiddleware } from "../src/middleware";
 import { createSessionHandlers } from "../src/session-server";
 import {
+  ADMIN_OTP_COOKIE,
   ADMIN_RECOVERY_COOKIE,
   ADMIN_SESSION_COOKIE,
   POS_SESSION_COOKIE,
@@ -19,22 +20,16 @@ const b64 = (o: unknown) =>
 type Tok = { id: string; role: Role; aal: string };
 const access = new Map<string, Tok>();
 const refresh = new Map<string, Tok>();
-// MFA factors per user, recovery codes per email, passwords set through PUT /user.
-type Factor = {
-  id: string;
-  factor_type: "totp";
-  status: "verified" | "unverified";
-  created_at: string;
-  friendly_name: string;
-};
-const factors: Record<string, Factor[]> = {};
+// Recovery codes per email, passwords set through PUT /user.
 const emails: Record<string, { id: string; role: Role }> = {
   "owner@example.com": { id: "owner-1", role: "owner_admin" },
   "bea@staff.gunitakopi.local": { id: "bar-1", role: "barista" },
 };
 const otps = new Map<string, string>(); // email -> unused recovery code
 const passwords: Record<string, string> = {};
-const TOTP = "123456";
+// Fake apps/api Owner sign-in: challenge -> Owner, and the emailed code it accepts.
+const challenges = new Map<string, { id: string; role: Role }>();
+const SIGN_IN_CODE = "246810";
 const hits: string[] = [];
 const apiSeen: {
   path: string;
@@ -70,7 +65,6 @@ const user = (u: { id: string; role: Role }) => ({
   role: "authenticated",
   app_metadata: { role: u.role },
   user_metadata: {},
-  factors: factors[u.id] ?? [],
   created_at: "2026-11-17T00:00:00Z",
 });
 const sessionOf = (u: Tok) => ({
@@ -107,59 +101,6 @@ beforeAll(async () => {
       if (!u) return send(403, { code: "bad_jwt", msg: "invalid JWT" });
       if (req.method === "PUT") passwords[u.id] = JSON.parse(body).password;
       return send(200, user(u));
-    }
-    const factorPath =
-      /^\/auth\/v1\/factors(?:\/([^/]+))?(?:\/(challenge|verify))?$/.exec(
-        req.url ?? "",
-      );
-    if (factorPath) {
-      const u = access.get(bearer);
-      if (!u) return send(403, { code: "bad_jwt", msg: "invalid JWT" });
-      const [, fid, step] = factorPath;
-      const list = (factors[u.id] ??= []);
-      if (!fid && req.method === "POST") {
-        // Like Supabase: a verified factor means a new one needs aal2.
-        if (list.some((f) => f.status === "verified") && u.aal !== "aal2")
-          return send(403, { code: "insufficient_aal", msg: "AAL2 required" });
-        const f: Factor = {
-          id: `f-${++seq}`,
-          factor_type: "totp",
-          status: "unverified",
-          created_at: new Date(Date.now() + seq).toISOString(),
-          friendly_name: JSON.parse(body).friendly_name,
-        };
-        list.push(f);
-        return send(200, {
-          id: f.id,
-          type: "totp",
-          friendly_name: f.friendly_name,
-          totp: {
-            qr_code: "<svg/>",
-            secret: "JBSWY3DP",
-            uri: "otpauth://totp/x",
-          },
-        });
-      }
-      if (fid && !step && req.method === "DELETE") {
-        factors[u.id] = list.filter((f) => f.id !== fid);
-        return send(200, { id: fid });
-      }
-      if (step === "challenge")
-        return send(200, {
-          id: `ch-${fid}`,
-          type: "totp",
-          expires_at: 9999999999,
-        });
-      if (step === "verify") {
-        const f = list.find((x) => x.id === fid);
-        if (!f || JSON.parse(body).code !== TOTP)
-          return send(422, {
-            code: "mfa_verification_failed",
-            msg: "Invalid TOTP code entered",
-          });
-        f.status = "verified";
-        return send(200, sessionOf({ ...u, aal: "aal2" }));
-      }
     }
     if (req.url?.startsWith("/auth/v1/recover")) {
       const { email } = JSON.parse(body);
@@ -209,19 +150,6 @@ beforeAll(async () => {
       setupToken: (req.headers["x-setup-token"] as string) ?? null,
     });
     res.setHeader("content-type", "application/json");
-    if (
-      req.url === "/api/setup/owner" &&
-      !req.headers["x-setup-token"] &&
-      req.headers["x-gunita-proxy-secret"] !== SECRET
-    ) {
-      res.statusCode = 403;
-      return res.end(
-        JSON.stringify({
-          success: false,
-          error: { code: "FORBIDDEN", message: "Owner setup is protected" },
-        }),
-      );
-    }
     if (req.url === "/api/auth/login") {
       const { username, password } = JSON.parse(body);
       const u = users[username];
@@ -237,6 +165,14 @@ beforeAll(async () => {
           }),
         );
       }
+      if (u.role === "owner_admin") {
+        // Like apps/api: no session for the Owner until the emailed code is accepted.
+        const challenge = `ch-${++seq}`.padEnd(40, "x");
+        challenges.set(challenge, u);
+        return res.end(
+          JSON.stringify({ success: true, data: { otpRequired: true, challenge } }),
+        );
+      }
       const t = issue(u.id, u.role, u.ttl);
       return res.end(
         JSON.stringify({
@@ -246,6 +182,26 @@ beforeAll(async () => {
             refreshToken: t.refresh_token,
             expiresAt: t.expires_at,
           },
+        }),
+      );
+    }
+    if (req.url === "/api/auth/otp") {
+      const { action, challenge, code } = JSON.parse(body);
+      const u = challenges.get(challenge);
+      const fail = (status: number, code: string) => {
+        res.statusCode = status;
+        res.end(JSON.stringify({ success: false, error: { code, message: code } }));
+      };
+      if (!u) return fail(401, "OTP_EXPIRED");
+      if (action === "send")
+        return res.end(JSON.stringify({ success: true, data: { sent: true } }));
+      if (code !== SIGN_IN_CODE) return fail(400, "INVALID_CODE");
+      challenges.delete(challenge);
+      const t = issue(u.id, u.role, (u as { ttl?: number }).ttl);
+      return res.end(
+        JSON.stringify({
+          success: true,
+          data: { accessToken: t.access_token, refreshToken: t.refresh_token },
         }),
       );
     }
@@ -272,7 +228,7 @@ const site = (
   cookieName: string,
   allowedRoles: Role[],
   origin: string,
-  extra: { mfaPath?: string; recoveryCookieName?: string } = {},
+  extra: { recoveryCookieName?: string } = {},
 ) => {
   const opts = {
     supabaseUrl: authUrl,
@@ -287,11 +243,13 @@ const site = (
       apiUrl,
       proxySecret: SECRET,
       recoveryCookieName: extra.recoveryCookieName,
+      // As in apps/admin: only the Owner portal runs the emailed-code step.
+      otpCookieName:
+        cookieName === ADMIN_SESSION_COOKIE ? ADMIN_OTP_COOKIE : undefined,
     }),
     guard: createAuthMiddleware({
       ...opts,
       publicPaths: ["/login", "/auth/", "/forgot-password"],
-      mfaPath: extra.mfaPath,
     }),
   };
 };
@@ -342,7 +300,7 @@ const req = (
     body: init.body,
   });
 };
-const login = async (
+const loginStep = async (
   s: Site,
   jar: Jar,
   username: string,
@@ -359,6 +317,31 @@ const login = async (
       }),
     ),
   );
+const otpStep = async (s: Site, jar: Jar, body: unknown, origin?: string | null) =>
+  jar.take(
+    await s.handlers.otp(
+      req(s, "/auth/otp", {
+        method: "POST",
+        body: JSON.stringify(body),
+        cookie: jar.header,
+        origin,
+      }),
+    ),
+  );
+// Full sign-in: password, then (Owner) the emailed code. Returns the response that set the session.
+const login = async (
+  s: Site,
+  jar: Jar,
+  username: string,
+  password = "good",
+  origin?: string | null,
+) => {
+  const res = await loginStep(s, jar, username, password, origin);
+  const body = await res.clone().json().catch(() => null);
+  return body?.data?.otpRequired
+    ? otpStep(s, jar, { action: "verify", code: SIGN_IN_CODE })
+    : res;
+};
 const visit = async (s: Site, jar: Jar, path: string) =>
   jar.take(await s.guard(req(s, path, { cookie: jar.header })));
 const callApi = async (
@@ -391,12 +374,12 @@ describe("HttpOnly session: Admin", () => {
     expect(res.status).toBe(200);
     const cookies = res.headers.getSetCookie();
     expect(cookies.length).toBeGreaterThan(0);
-    for (const c of cookies) {
-      expect(c.startsWith(ADMIN_SESSION_COOKIE)).toBe(true);
+    for (const c of cookies.filter((c) => c.startsWith(ADMIN_SESSION_COOKIE))) {
       expect(c).toMatch(/HttpOnly/i);
       expect(c).toMatch(/SameSite=lax/i);
       expect(c).toMatch(/Path=\//i);
     }
+    expect(cookies.some((c) => c.startsWith(ADMIN_SESSION_COOKIE))).toBe(true);
     const body = JSON.stringify(await res.json());
     expect(body).not.toMatch(/access|refresh|token/i);
   });
@@ -428,112 +411,17 @@ describe("HttpOnly session: Admin", () => {
     expect(access.has(seen.auth!.slice(7))).toBe(true);
   });
 
-  it("proxy forwards without a token when signed out, and never proxies sign-in", async () => {
+  it("proxy forwards without a token when signed out, and never proxies sign-in or Owner setup", async () => {
     const s = admin(),
       jar = new Jar();
     await callApi(s, jar, "products");
     expect(apiSeen.find((c) => c.path === "/api/products")!.auth).toBeNull();
-    const res = await callApi(s, jar, "auth/login", "POST");
-    expect(res.status).toBe(404);
-    expect(apiSeen.some((c) => c.path === "/api/auth/login")).toBe(false);
-  });
-
-  it("uses the internal proxy secret for tokenless Owner setup on localhost development", async () => {
-    const previousNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "development";
-    try {
-      const res = await callApi(admin(), new Jar(), "setup/owner", "POST");
-      expect(res.status).toBe(200);
-      expect(
-        apiSeen.find((call) => call.path === "/api/setup/owner")?.secret,
-      ).toBe(SECRET);
-    } finally {
-      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = previousNodeEnv;
+    for (const path of ["auth/login", "auth/otp", "setup/owner"]) {
+      expect((await callApi(s, jar, path, "POST")).status).toBe(404);
+      expect((await callApi(pos(), jar, path, "POST")).status).toBe(404);
     }
-  });
-
-  it("refuses tokenless Owner setup through a non-loopback host", async () => {
-    const previousNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "development";
-    try {
-      const remoteAdmin = site(
-        ADMIN_SESSION_COOKIE,
-        ["owner_admin"],
-        "http://192.168.1.20:3000",
-      );
-      const res = await callApi(
-        remoteAdmin,
-        new Jar(),
-        "setup/owner",
-        "POST",
-      );
-      expect(res.status).toBe(403);
-      expect(apiSeen).toHaveLength(0);
-    } finally {
-      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = previousNodeEnv;
-    }
-  });
-
-  it("does not grant tokenless Owner setup to the POS proxy", async () => {
-    const previousNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "development";
-    try {
-      const res = await callApi(pos(), new Jar(), "setup/owner", "POST");
-      expect(res.status).toBe(403);
-      expect(
-        apiSeen.find((call) => call.path === "/api/setup/owner")?.secret,
-      ).toBeNull();
-    } finally {
-      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = previousNodeEnv;
-    }
-  });
-
-  it("owner setup creates the account, then signs in with the first step only (MFA next)", async () => {
-    const s = site(ADMIN_SESSION_COOKIE, ["owner_admin"], "http://localhost:3000", {
-      mfaPath: "/mfa",
-    });
-    const jar = new Jar();
-    const setup = (origin?: string | null, token = "setup-secret") => {
-      const r = req(s, "/auth/setup", {
-        method: "POST",
-        body: JSON.stringify({ username: "eric", password: "good" }),
-        origin,
-      });
-      r.headers.set("x-setup-token", token);
-      return s.handlers.ownerSetup(r);
-    };
-
-    expect((await setup("https://evil.example")).status).toBe(403);
-    expect(apiSeen).toHaveLength(0);
-
-    const res = jar.take(await setup());
-    expect(res.status).toBe(200);
-    expect((await res.json()).data.mfaRequired).toBe(true);
-    expect(apiSeen.map((c) => c.path)).toEqual([
-      "/api/setup/owner",
-      "/api/auth/login",
-    ]);
-    expect(apiSeen[0]!.setupToken).toBe("setup-secret");
-    // aal1 only: every page except /mfa sends the new Owner to the MFA setup.
-    expect(location(await visit(s, jar, "/dashboard")).pathname).toBe("/mfa");
-    expect(passed(await visit(s, jar, "/mfa"))).toBe(true);
-  });
-
-  it("owner setup: an API refusal passes through and no cookie is set", async () => {
-    const s = admin();
-    const res = await s.handlers.ownerSetup(
-      req(s, "/auth/setup", {
-        method: "POST",
-        body: JSON.stringify({ username: "eric", password: "good" }),
-      }),
-    );
-    expect(res.status).toBe(403);
-    expect(res.headers.getSetCookie()).toHaveLength(0);
-    expect(apiSeen.some((c) => c.path === "/api/auth/login")).toBe(false);
-    expect((await pos().handlers.ownerSetup(req(pos(), "/auth/setup", { method: "POST", body: "{}" }))).status).toBe(404);
+    expect(apiSeen.some((c) => c.path.startsWith("/api/auth/"))).toBe(false);
+    expect(apiSeen.some((c) => c.path.startsWith("/api/setup/"))).toBe(false);
   });
 
   it("refuses cross-site requests (CSRF) to login, logout and state-changing proxy calls", async () => {
@@ -676,18 +564,17 @@ describe("HttpOnly session: POS", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Owner MFA (SDS 2.4, 2.8) and password recovery, on the same HttpOnly cookie design.
+// Owner emailed sign-in code (SDS 2.4) and password recovery, on the same HttpOnly cookie design.
 // ---------------------------------------------------------------------------
 const owner = () =>
   site(ADMIN_SESSION_COOKIE, ["owner_admin"], "http://localhost:3000", {
-    mfaPath: "/mfa",
     recoveryCookieName: ADMIN_RECOVERY_COOKIE,
   });
 type Json = { success: boolean; data?: any; error?: any };
 const post = async (
   s: Site,
   jar: Jar,
-  handler: "mfa" | "recovery",
+  handler: "otp" | "recovery",
   body: unknown,
   origin?: string | null,
 ) => {
@@ -703,136 +590,82 @@ const post = async (
   );
   return { res, body: (await res.json()) as Json };
 };
-const claimsIn = (jar: Jar) => {
-  const raw = jar.m.get(ADMIN_SESSION_COOKIE)!;
-  const s = JSON.parse(Buffer.from(raw.slice(7), "base64url").toString());
-  return JSON.parse(
-    Buffer.from(s.access_token.split(".")[1], "base64url").toString(),
-  );
-};
 
-describe("Owner MFA", () => {
-  beforeEach(() => {
-    delete factors["owner-1"];
-  });
-
-  it("login reports that the second step is needed; pages redirect to /mfa until it is done", async () => {
+describe("Owner emailed sign-in code", () => {
+  it("the password gives no session: only a short HttpOnly challenge cookie, and a code is emailed", async () => {
     const s = owner(),
       jar = new Jar();
-    const res = await login(s, jar, "eric");
-    expect((await res.json()).data.mfaRequired).toBe(true);
-    const page = await visit(s, jar, "/reports");
-    expect(page.status).toBe(307);
-    expect(location(page).pathname).toBe("/mfa");
-    expect(location(page).searchParams.get("redirect")).toBe("/reports");
-    expect(passed(await visit(s, jar, "/mfa"))).toBe(true);
+    const res = await loginStep(s, jar, "eric");
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toEqual({ otpRequired: true });
+    const cookies = res.headers.getSetCookie();
+    expect(cookies).toHaveLength(1);
+    expect(cookies[0]).toMatch(new RegExp(`^${ADMIN_OTP_COOKIE}=`));
+    expect(cookies[0]).toMatch(/HttpOnly/i);
+    expect(cookies[0]).toMatch(/SameSite=strict/i);
+    expect(cookies[0]).toMatch(/Path=\/auth/i);
+    expect(cookies[0]).toMatch(/Max-Age=600/i);
+    expect(apiSeen.filter((c) => c.path === "/api/auth/otp")).toHaveLength(1);
+    expect(location(await visit(s, jar, "/dashboard")).pathname).toBe("/login");
   });
 
-  it("first sign-in: enrolls a TOTP factor, rejects a wrong code, accepts the right one (aal2)", async () => {
+  it("a wrong code keeps the challenge; the right code sets the session and drops the challenge", async () => {
     const s = owner(),
       jar = new Jar();
-    await login(s, jar, "eric");
-    const start = await post(s, jar, "mfa", { action: "start" });
-    expect(start.body.data).toMatchObject({
-      step: "enroll",
-      secret: "JBSWY3DP",
-    });
-    expect(start.body.data.qrCode).toMatch(/^data:image\/svg\+xml/);
-    expect(JSON.stringify(start.body)).not.toMatch(
-      /access_token|refresh_token/,
-    );
-
-    const bad = await post(s, jar, "mfa", { action: "verify", code: "000000" });
+    await loginStep(s, jar, "eric");
+    const bad = await post(s, jar, "otp", { action: "verify", code: "000000" });
     expect(bad.res.status).toBe(400);
     expect(bad.body.error.code).toBe("INVALID_CODE");
-    expect(location(await visit(s, jar, "/dashboard")).pathname).toBe("/mfa");
+    expect(jar.m.has(ADMIN_SESSION_COOKIE)).toBe(false);
+    expect(jar.m.has(ADMIN_OTP_COOKIE)).toBe(true);
 
-    const good = await post(s, jar, "mfa", { action: "verify", code: TOTP });
+    const good = await post(s, jar, "otp", { action: "verify", code: SIGN_IN_CODE });
     expect(good.res.status).toBe(200);
-    expect(
-      good.res.headers.getSetCookie().every((c) => /HttpOnly/i.test(c)),
-    ).toBe(true);
-    expect(claimsIn(jar).aal).toBe("aal2");
+    expect(JSON.stringify(good.body)).not.toMatch(/access|refresh|token/i);
+    expect(jar.m.has(ADMIN_OTP_COOKIE)).toBe(false);
     expect(passed(await visit(s, jar, "/dashboard"))).toBe(true);
-    expect(JSON.stringify(good.body)).not.toMatch(/token/i);
   });
 
-  it("setup verifies the factor whose QR code was shown, even when a second start raced it", async () => {
+  it("a used-up challenge drops the cookie so the Owner signs in again", async () => {
     const s = owner(),
       jar = new Jar();
-    await login(s, jar, "eric");
-    const start = await post(s, jar, "mfa", { action: "start" });
-    const shown = start.body.data.factorId as string;
-    expect(shown).toBeTruthy();
-    // A racing start (reload, React's double effect in development) adds a newer factor.
-    factors["owner-1"]!.push({
-      id: "f-racer",
-      factor_type: "totp",
-      status: "unverified",
-      created_at: new Date(Date.now() + 60_000).toISOString(),
-      friendly_name: "racer",
-    });
-    const good = await post(s, jar, "mfa", {
-      action: "verify",
-      code: TOTP,
-      factorId: shown,
-    });
-    expect(good.res.status).toBe(200);
-    expect(factors["owner-1"]!.find((f) => f.id === shown)!.status).toBe("verified");
+    await loginStep(s, jar, "eric");
+    challenges.clear(); // expired or over its limits at apps/api
+    const res = await post(s, jar, "otp", { action: "verify", code: SIGN_IN_CODE });
+    expect(res.res.status).toBe(401);
+    expect(res.body.error.code).toBe("OTP_EXPIRED");
+    expect(jar.m.has(ADMIN_OTP_COOKIE)).toBe(false);
   });
 
-  it("later sign-ins ask for a code only and never enroll a second factor", async () => {
-    const s = owner();
-    const first = new Jar();
-    await login(s, first, "eric");
-    await post(s, first, "mfa", { action: "start" });
-    await post(s, first, "mfa", { action: "verify", code: TOTP });
-
-    const jar = new Jar();
-    await login(s, jar, "eric");
-    const start = await post(s, jar, "mfa", { action: "start" });
-    expect(start.body.data).toEqual({ step: "verify" });
-    expect(factors["owner-1"]).toHaveLength(1);
-    expect(
-      (await post(s, jar, "mfa", { action: "verify", code: TOTP })).res.status,
-    ).toBe(200);
-    expect(claimsIn(jar).aal).toBe("aal2");
-  });
-
-  it("an unfinished setup is replaced on the next start", async () => {
+  it("resend asks apps/api for a new code", async () => {
     const s = owner(),
       jar = new Jar();
-    await login(s, jar, "eric");
-    await post(s, jar, "mfa", { action: "start" });
-    await post(s, jar, "mfa", { action: "start" });
-    expect(factors["owner-1"]).toHaveLength(1);
+    await loginStep(s, jar, "eric");
+    const r = await post(s, jar, "otp", { action: "resend" });
+    expect(r.res.status).toBe(200);
+    expect(apiSeen.filter((c) => c.path === "/api/auth/otp")).toHaveLength(2);
   });
 
-  it("refuses without a session, cross-site, and with a malformed code", async () => {
+  it("refuses without a challenge, cross-site, and with a malformed code", async () => {
     const s = owner(),
       jar = new Jar();
-    expect((await post(s, jar, "mfa", { action: "start" })).res.status).toBe(
-      401,
-    );
-    await login(s, jar, "eric");
+    expect((await post(s, jar, "otp", { action: "verify", code: SIGN_IN_CODE })).res.status).toBe(401);
+    await loginStep(s, jar, "eric");
     expect(
-      (await post(s, jar, "mfa", { action: "start" }, "https://evil.example"))
-        .res.status,
-    ).toBe(403);
-    expect(
-      (await post(s, jar, "mfa", { action: "verify", code: "12ab56" })).res
+      (await post(s, jar, "otp", { action: "verify", code: SIGN_IN_CODE }, "https://evil.example")).res
         .status,
-    ).toBe(400);
+    ).toBe(403);
+    expect((await post(s, jar, "otp", { action: "verify", code: "12ab56" })).res.status).toBe(400);
+    expect(jar.m.has(ADMIN_SESSION_COOKIE)).toBe(false);
   });
 
-  it("baristas need no second step on the POS", async () => {
-    const s = site(POS_SESSION_COOKIE, ["barista"], "http://localhost:3001", {
-        mfaPath: "/mfa",
-      }),
-      jar = new Jar();
-    const res = await login(s, jar, "bea");
-    expect((await res.json()).data.mfaRequired).toBe(false);
-    expect(passed(await visit(s, jar, "/pos"))).toBe(true);
+  it("the POS refuses an Owner account without emailing a code", async () => {
+    const jar = new Jar();
+    const res = await loginStep(pos(), jar, "eric");
+    expect(res.status).toBe(403);
+    expect(res.headers.getSetCookie()).toHaveLength(0);
+    expect(apiSeen.some((c) => c.path === "/api/auth/otp")).toBe(false);
+    expect((await post(pos(), jar, "otp", { action: "resend" })).res.status).toBe(404);
   });
 });
 
@@ -936,7 +769,7 @@ describe("Owner password recovery", () => {
     ).toBe(true);
     expect(jar.m.size).toBe(0);
     // The session signed in before the reset no longer works.
-    expect(location(await visit(s, signedIn, "/mfa")).pathname).toBe("/login");
+    expect(location(await visit(s, signedIn, "/dashboard")).pathname).toBe("/login");
     // A second reset without a new code is refused.
     expect(
       (

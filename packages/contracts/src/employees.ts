@@ -71,16 +71,38 @@ export const OwnerSetupResponseSchema = EmployeeResponseSchema.extend({
 });
 export type OwnerSetupResponse = z.infer<typeof OwnerSetupResponseSchema>;
 
-// Username sign-in for every role. The API resolves the Auth identity; the browser never sees it.
+// Username sign-in for every role; the Owner may also use their email. The API resolves the Auth
+// identity; the browser never sees it.
 export const LoginRequestSchema = z.object({
-  username: UsernameSchema,
+  username: z.union([
+    UsernameSchema,
+    z.string().trim().toLowerCase().email().max(254),
+  ]),
   password: z.string().min(1, "Password is required"),
 });
 export type LoginRequest = z.infer<typeof LoginRequestSchema>;
 
-export const LoginResponseSchema = z.object({
+export const LoginSessionSchema = z.object({
   accessToken: z.string(),
   refreshToken: z.string(),
   expiresAt: z.number().optional(),
 });
+export type LoginSession = z.infer<typeof LoginSessionSchema>;
+
+// Barista: a session. Owner: no session yet, only a challenge for the emailed code (POST /api/auth/otp).
+export const LoginResponseSchema = z.union([
+  LoginSessionSchema,
+  z.object({ otpRequired: z.literal(true), challenge: z.string() }),
+]);
 export type LoginResponse = z.infer<typeof LoginResponseSchema>;
+
+const OtpChallengeSchema = z.string().min(32).max(128);
+export const OwnerOtpRequestSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("send"), challenge: OtpChallengeSchema }),
+  z.object({
+    action: z.literal("verify"),
+    challenge: OtpChallengeSchema,
+    code: z.string().regex(/^\d{6}$/, "Enter the 6-digit code"),
+  }),
+]);
+export type OwnerOtpRequest = z.infer<typeof OwnerOtpRequestSchema>;

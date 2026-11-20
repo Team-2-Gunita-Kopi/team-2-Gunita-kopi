@@ -1,15 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import {
-  decodeJwtPayload,
-  hasRole,
-  needsSecondFactor,
-  ADMIN_SESSION_COOKIE,
-  type Role,
-} from "./index";
+import { hasRole, type Role } from "./index";
 import { sessionCookieOptions } from "./cookies";
 import { trustedClientIp } from "./client-ip";
-import { isLoopbackHost, isLoopbackUrl } from "./local-url";
 
 export interface SessionHandlerOptions {
   supabaseUrl: string;
@@ -25,6 +18,11 @@ export interface SessionHandlerOptions {
    * POST /auth/recovery. Never read by the page guard or the /api proxy.
    */
   recoveryCookieName?: string;
+  /**
+   * Admin only: HttpOnly cookie holding the Owner's sign-in challenge between the password and the
+   * emailed code. Enables POST /auth/otp. Without it (POS), Owner accounts are refused at sign-in.
+   */
+  otpCookieName?: string;
 }
 
 const CODE = /^\d{6}$/;
@@ -59,11 +57,6 @@ const sameOrigin = (req: NextRequest) =>
  * - /api/*:            same-origin proxy to apps/api that adds the Bearer token from the cookie.
  */
 export function createSessionHandlers(opts: SessionHandlerOptions) {
-  const localOwnerSetupWithoutToken =
-    process.env.NODE_ENV === "development" &&
-    opts.cookieName === ADMIN_SESSION_COOKIE &&
-    isLoopbackUrl(opts.supabaseUrl) &&
-    isLoopbackUrl(opts.apiUrl);
   const session = (
     req: NextRequest,
     cookieName = opts.cookieName,
@@ -117,70 +110,6 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
     return signInThroughApi(req, ip, await req.text());
   }
 
-  /**
-   * POST /auth/setup (Admin only): one-time Owner registration through apps/api, then signs the new
-   * Owner in so the authenticator can be set up at /mfa right away. The session is aal1, so the page
-   * guard and the API accept it only for the MFA step. Tokens never reach the browser.
-   */
-  async function ownerSetup(req: NextRequest) {
-    if (opts.cookieName !== ADMIN_SESSION_COOKIE)
-      return fail(404, "NOT_FOUND", "Not found");
-    if (!sameOrigin(req))
-      return fail(403, "FORBIDDEN", "Cross-site request refused");
-    const ip = clientIp(req);
-    if (!ip) return unavailable();
-    const body = await req.text();
-    const parsed = (() => {
-      try {
-        return JSON.parse(body) as { username?: unknown; password?: unknown };
-      } catch {
-        return null;
-      }
-    })();
-    if (
-      typeof parsed?.username !== "string" ||
-      typeof parsed.password !== "string"
-    )
-      return fail(400, "VALIDATION_ERROR", "Invalid request");
-
-    const headers = new Headers({ "content-type": "application/json" });
-    const setupToken = req.headers.get("x-setup-token");
-    if (setupToken) headers.set("x-setup-token", setupToken);
-    else if (localOwnerSetupWithoutToken) {
-      if (!isLoopbackHost(req.nextUrl.hostname))
-        return fail(403, "FORBIDDEN", "Local Owner setup must use localhost");
-      headers.set("x-gunita-proxy-secret", opts.proxySecret);
-    }
-    const upstream = await fetch(`${opts.apiUrl}/api/setup/owner`, {
-      method: "POST",
-      headers,
-      body,
-      cache: "no-store",
-    }).catch(() => null);
-    if (!upstream) return fail(502, "BAD_GATEWAY", "The API is unreachable");
-    const payload = await upstream.json().catch(() => null);
-    if (!upstream.ok || !payload?.success)
-      return NextResponse.json(
-        payload ?? {
-          success: false,
-          error: { code: "SETUP_FAILED", message: "Owner setup failed" },
-        },
-        { status: upstream.ok ? 502 : upstream.status },
-      );
-
-    const signedIn = await signInThroughApi(
-      req,
-      ip,
-      JSON.stringify({ username: parsed.username, password: parsed.password }),
-    );
-    if (signedIn.ok) return signedIn;
-    return fail(
-      502,
-      "SIGN_IN_FAILED",
-      "The Owner account was created, but signing in failed. Go back and sign in to set up the authenticator.",
-    );
-  }
-
   /** Signs in through apps/api and stores the session in the HttpOnly cookie. */
   async function signInThroughApi(req: NextRequest, ip: string, body: string) {
     const upstream = await fetch(`${opts.apiUrl}/api/auth/login`, {
@@ -205,10 +134,19 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
       );
     }
 
+    if (payload.data?.otpRequired) return startOtp(payload.data.challenge);
+    return storeSession(req, payload.data);
+  }
+
+  /** Writes the session from apps/api into the HttpOnly cookie, for an allowed role only. */
+  async function storeSession(
+    req: NextRequest,
+    tokens: { accessToken: string; refreshToken: string },
+  ) {
     const { client, apply } = session(req);
     const { data, error } = await client.auth.setSession({
-      access_token: payload.data.accessToken,
-      refresh_token: payload.data.refreshToken,
+      access_token: tokens.accessToken,
+      refresh_token: tokens.refreshToken,
     });
     if (error || !data.user) return fail(502, "AUTH_ERROR", "Sign-in failed");
     if (!hasRole(data.user.app_metadata?.role, opts.allowedRoles)) {
@@ -226,108 +164,93 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
           role: data.user.app_metadata?.role,
           fullName: typeof meta.full_name === "string" ? meta.full_name : "",
           username: typeof meta.username === "string" ? meta.username : "",
-          // Owner: the page guard and the API refuse this session until POST /auth/mfa succeeds.
-          mfaRequired: needsSecondFactor(
-            data.user.app_metadata?.role,
-            decodeJwtPayload(payload.data.accessToken)?.aal,
-          ),
         },
       }),
     );
   }
 
+  const otpApi = async (body: Record<string, unknown>) => {
+    const upstream = await fetch(`${opts.apiUrl}/api/auth/otp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    }).catch(() => null);
+    const payload = upstream ? await upstream.json().catch(() => null) : null;
+    const ok = !!upstream?.ok && payload?.success === true;
+    const error = () =>
+      payload && upstream && !upstream.ok
+        ? NextResponse.json(payload, { status: upstream.status })
+        : unavailable();
+    return { ok, payload, error };
+  };
+
+  const otpCookie = (res: NextResponse, value: string) => {
+    res.cookies.set(opts.otpCookieName!, value, {
+      path: "/auth",
+      httpOnly: true,
+      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: value ? 10 * 60 : 0,
+    });
+    res.headers.set("cache-control", "private, no-store");
+    return res;
+  };
+
+  /** Owner after the password: no session yet. Emails the first code and keeps the challenge. */
+  async function startOtp(challenge: string) {
+    if (!opts.otpCookieName)
+      return fail(403, "FORBIDDEN", "This account cannot use this site");
+    const sent = await otpApi({ action: "send", challenge });
+    if (!sent.ok) return sent.error();
+    return otpCookie(
+      NextResponse.json({ success: true, data: { otpRequired: true } }),
+      challenge,
+    );
+  }
+
   /**
-   * POST /auth/mfa, second sign-in step for the Owner (SDS 2.4, 2.8), on the HttpOnly session:
-   * - { action: "start" }: "verify" when a TOTP factor is set up; otherwise enrolls a new one and
-   *   returns its QR code and secret once (first-time setup, any unfinished setup is replaced).
-   * - { action: "verify", code, factorId? }: checks the 6-digit code; on success Supabase upgrades the
-   *   session to aal2 and the cookie is rewritten. Tokens never reach the browser.
+   * POST /auth/otp (Admin), second Owner sign-in step, on the HttpOnly challenge cookie:
+   * - { action: "verify", code }: apps/api checks the emailed code and approves the new session,
+   *   which is then written to the session cookie. Tokens never reach the browser.
+   * - { action: "resend" }: emails a new code (apps/api enforces the limits).
    */
-  async function mfa(req: NextRequest) {
+  async function otp(req: NextRequest) {
+    if (!opts.otpCookieName) return fail(404, "NOT_FOUND", "Not found");
     if (!sameOrigin(req))
       return fail(403, "FORBIDDEN", "Cross-site request refused");
+    const challenge = req.cookies.get(opts.otpCookieName)?.value;
+    if (!challenge)
+      return fail(401, "OTP_EXPIRED", "The code has expired. Sign in again.");
     const body = (await req.json().catch(() => null)) as {
       action?: string;
-      code?: string;
-      factorId?: string;
+      code?: unknown;
     } | null;
-    const { client, apply } = session(req);
-    const { data: claims } = await client.auth.getClaims();
+
+    if (body?.action === "resend") {
+      const sent = await otpApi({ action: "send", challenge });
+      return sent.ok ? NextResponse.json({ success: true }) : sent.error();
+    }
     if (
-      !claims?.claims ||
-      !hasRole(claims.claims.app_metadata?.role, opts.allowedRoles)
+      body?.action !== "verify" ||
+      typeof body.code !== "string" ||
+      !CODE.test(body.code)
     )
-      return apply(fail(401, "UNAUTHORIZED", "Sign in first"));
+      return fail(400, "VALIDATION_ERROR", "Enter the 6-digit code");
 
-    const { data: factors, error } = await client.auth.mfa.listFactors();
-    if (error) return apply(unavailable());
-    const verified = factors.totp[0];
-
-    if (body?.action === "start") {
-      if (verified)
-        return apply(
-          NextResponse.json({ success: true, data: { step: "verify" } }),
-        );
-      for (const f of factors.all) {
-        if (f.factor_type === "totp" && f.status !== "verified")
-          await client.auth.mfa.unenroll({ factorId: f.id });
-      }
-      const { data: enrolled, error: enrollError } =
-        await client.auth.mfa.enroll({
-          factorType: "totp",
-          friendlyName: `Gunita Kopi Owner ${new Date().toISOString()}`,
-        });
-      if (enrollError) return apply(unavailable());
-      return apply(
-        NextResponse.json({
-          success: true,
-          data: {
-            step: "enroll",
-            factorId: enrolled.id,
-            qrCode: enrolled.totp.qr_code,
-            secret: enrolled.totp.secret,
-          },
-        }),
-      );
+    const verified = await otpApi({
+      action: "verify",
+      challenge,
+      code: body.code,
+    });
+    if (!verified.ok) {
+      // A used-up challenge: drop the cookie so the page returns to the password step.
+      const code = verified.payload?.error?.code;
+      return code === "OTP_EXPIRED" || code === "OTP_LIMIT"
+        ? otpCookie(verified.error(), "")
+        : verified.error();
     }
-
-    if (
-      body?.action === "verify" &&
-      typeof body.code === "string" &&
-      CODE.test(body.code)
-    ) {
-      // Setup: verify the factor whose QR code the page showed (two starts can race, e.g. a
-      // reload or React's double effect in development); otherwise the newest unfinished one.
-      const unverified = factors.all
-        .filter((f) => f.factor_type === "totp")
-        .sort((a, b) => b.created_at.localeCompare(a.created_at));
-      const factor =
-        verified ??
-        (typeof body.factorId === "string"
-          ? unverified.find((f) => f.id === body.factorId)
-          : unverified[0]);
-      if (!factor)
-        return apply(
-          fail(409, "MFA_NOT_STARTED", "Set up the authenticator app first"),
-        );
-      const { error: verifyError } = await client.auth.mfa.challengeAndVerify({
-        factorId: factor.id,
-        code: body.code,
-      });
-      if (verifyError) {
-        return apply(
-          (verifyError.status ?? 0) === 429 || (verifyError.status ?? 0) >= 500
-            ? unavailable()
-            : fail(
-                400,
-                "INVALID_CODE",
-                "That code is not valid. Try the current code.",
-              ),
-        );
-      }
-      return apply(NextResponse.json({ success: true }));
-    }
-    return apply(fail(400, "VALIDATION_ERROR", "Invalid request"));
+    return otpCookie(await storeSession(req, verified.payload.data), "");
   }
 
   /**
@@ -443,20 +366,10 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
     ctx: { params: Promise<{ path: string[] }> },
   ) {
     const path = (await ctx.params).path.map(encodeURIComponent).join("/");
-    const localOwnerSetupRequest =
-      req.method === "POST" &&
-      path === "setup/owner" &&
-      localOwnerSetupWithoutToken &&
-      !req.headers.get("x-setup-token");
-    if (localOwnerSetupRequest && !isLoopbackHost(req.nextUrl.hostname)) {
-      return fail(
-        403,
-        "FORBIDDEN",
-        "Local Owner setup must use localhost",
-      );
-    }
-    // Tokens must never reach the browser: sign-in goes through /auth/login only.
-    if (path === "auth/login") return fail(404, "NOT_FOUND", "Not found");
+    // Tokens must never reach the browser: sign-in goes through /auth/* only. Owner setup is a
+    // developer script against apps/api, never through a site.
+    if (path.startsWith("auth/") || path.startsWith("setup/"))
+      return fail(404, "NOT_FOUND", "Not found");
     const hasBody = req.method !== "GET" && req.method !== "HEAD";
     if (hasBody && !sameOrigin(req))
       return fail(403, "FORBIDDEN", "Cross-site request refused");
@@ -465,12 +378,9 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
     // Reads the cookie and refreshes an expiring token; apps/api verifies the token itself.
     const { data } = await client.auth.getSession();
     const headers = new Headers();
-    for (const h of ["content-type", "x-request-id", "x-setup-token"]) {
+    for (const h of ["content-type", "x-request-id"]) {
       const v = req.headers.get(h);
       if (v) headers.set(h, v);
-    }
-    if (localOwnerSetupRequest) {
-      headers.set("x-gunita-proxy-secret", opts.proxySecret);
     }
     if (data.session) {
       headers.set("authorization", `Bearer ${data.session.access_token}`);
@@ -499,5 +409,5 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
     );
   }
 
-  return { login, logout, proxy, mfa, recovery, ownerSetup };
+  return { login, logout, proxy, otp, recovery };
 }

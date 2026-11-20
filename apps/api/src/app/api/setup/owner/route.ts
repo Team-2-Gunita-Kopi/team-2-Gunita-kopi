@@ -1,20 +1,16 @@
 import { NextRequest } from "next/server";
 import { errorResponse, jsonResponse } from "@/lib/response";
 import { readJson } from "@/lib/request";
-import { canUseLocalOwnerSetupWithoutToken } from "@/modules/setup/local-no-token";
 import { provisionInitialOwner } from "@/modules/setup/service";
 import { OwnerSetupRequestSchema } from "@/modules/setup/schema";
 
-// One-time Owner registration. Tokenless requests are accepted only from the trusted local proxy.
+// One-time Owner provisioning by the developer (scripts/provision-owner.mjs), authorized by
+// X-Setup-Token = OWNER_SETUP_TOKEN. Not reachable through the Admin or POS site.
 export async function POST(req: NextRequest) {
   try {
     const validated = await readJson(req, OwnerSetupRequestSchema);
-    const setupToken = req.headers.get("x-setup-token");
     return jsonResponse(
-      await provisionInitialOwner(setupToken, validated, {
-        allowLocalNoToken:
-          setupToken === null && canUseLocalOwnerSetupWithoutToken(req),
-      }),
+      await provisionInitialOwner(req.headers.get("x-setup-token"), validated),
       { status: 201 },
     );
   } catch (error) {

@@ -13,6 +13,11 @@ insert into auth.users (id, email) values
 insert into public.users (user_id, auth_user_id, username, full_name, role, email) overriding system value values
   (1, :owner, 'owner', 'Owner One', 'owner_admin', 'owner@example.com'),
   (2, :barista, 'bea', 'Bea Barista', 'barista', null);
+
+-- The Owner signed in with password + emailed code: apps/api approved this session (20261120001100).
+-- The test uses the Owner's id as the session id.
+insert into public.owner_login_challenges (token_hash, auth_user_id, session_id, verified_at)
+  values ('test-' || :owner, :owner, :owner, now());
 insert into public.suppliers (supplier_id, supplier_name) overriding system value values (1, 'Bean Co');
 insert into public.ingredients (ingredient_id, supplier_id, ingredient_name, unit, current_stock, reorder_level, unit_cost,
                                 is_addon, addon_selling_price, addon_quantity)
@@ -25,9 +30,9 @@ insert into public.products (product_id, product_name, category, price, created_
   (902, 'Mocha', 'Coffee', 140.00, 1);
 
 -- ---------------------------------------------------------------------------
--- Owner: recipe and costing (Owner sessions carry aal2 after MFA, migration 20261120000000)
+-- Owner: recipe and costing (an approved Owner session, migration 20261120001100)
 -- ---------------------------------------------------------------------------
-select set_config('request.jwt.claims', json_build_object('sub', :owner, 'aal', 'aal2')::text, false);
+select set_config('request.jwt.claims', json_build_object('sub', :owner, 'session_id', :owner)::text, false);
 set role authenticated;
 
 do $$ begin
@@ -232,7 +237,7 @@ reset role;
 -- ---------------------------------------------------------------------------
 -- Owner: reports match the completed order
 -- ---------------------------------------------------------------------------
-select set_config('request.jwt.claims', json_build_object('sub', :owner, 'aal', 'aal2')::text, false);
+select set_config('request.jwt.claims', json_build_object('sub', :owner, 'session_id', :owner)::text, false);
 set role authenticated;
 
 do $$ begin

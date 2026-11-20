@@ -16,8 +16,8 @@ interface Call {
   filters: [string, unknown[]][];
 }
 
-// Owner sessions are verified tokens after MFA (aal2); apps/api reads the aal claim.
-const OWNER = `e30.${Buffer.from(JSON.stringify({ aal: "aal2" })).toString("base64url")}.sig`;
+// Owner sessions approved after the emailed code; app_role() below returns their role.
+const OWNER = `e30.${Buffer.from(JSON.stringify({ session_id: "approved" })).toString("base64url")}.sig`;
 
 const profiles: Record<
   string,
@@ -110,6 +110,9 @@ vi.mock("../src/lib/supabase-user", () => ({
       }),
     },
     rpc: async (name: string, args: unknown) => {
+      // requireUser's Owner check (public.app_role()); not a business call.
+      if (name === "app_role")
+        return { data: profiles[token]?.role ?? null, error: null };
       rpcCalls.push({ name, args });
       return { error: null, ...onRpc(name, args) };
     },

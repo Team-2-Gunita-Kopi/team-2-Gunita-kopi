@@ -39,7 +39,8 @@ npx -y pnpm@12.21.0 dev
 ```
 
 7. Passwords are in `supabase/.env.seed-accounts.local` (gitignored). Sign in as `testowner` at
-   http://localhost:3000 and enrol an authenticator app on `/mfa`. Sign in as `testbarista` at
+   http://localhost:3000, then enter the 6-digit code from the local mail viewer (Inbucket,
+   http://localhost:54326). Sign in as `testbarista` at
    http://localhost:3001.
 
 The seed script writes `apps/{api,admin,pos}/.env.development.local`. These hold the local Supabase URL
@@ -55,7 +56,7 @@ without values, in `apps/*/.env.example`.
 | Docker Desktop (WSL 2 backend) | `npx supabase@2.122.1 start` runs the local stack in containers | install it, start it, check with `docker ps` |
 | Node 22 and pnpm 12.21.0 | project tooling | `.nvmrc`, `npx -y pnpm@12.21.0` |
 | Git Bash | the seed script is bash | already used in this repo |
-| An authenticator app (TOTP) | the API requires the Owner's second sign-in step (`MFA_REQUIRED`) | enrol on the Admin `/mfa` page at first sign-in |
+| The local mail viewer (Inbucket, http://localhost:54326) | the Owner's second sign-in step is a 6-digit code emailed on every sign-in (`MFA_REQUIRED` without it) | started by `supabase start` |
 
 The alternative is a separate free Supabase project used as staging. It needs explicit approval and its
 own credentials. The seed script refuses non-local targets as written, so staging would need a reviewed
@@ -72,13 +73,14 @@ npx -y supabase@2.122.1 status     # API URL must be http://127.0.0.1:54321
 The local stack applies **all** migrations, including `20261120000000` (Owner MFA, strict stock roles)
 and `20261120000100` (`product-images` bucket). Live does not have those two yet. Local behaviour is
 therefore slightly stricter than live: at the database level the Owner can no longer record stock-out,
-and Owner data needs aal2.
+and Owner data needs a session approved after the emailed code (`20261120001100`).
 
 It also applies `20261120000500` (cash-only payments), which is not on live either.
 
-`supabase/config.toml` now sets `[auth.mfa.totp] enroll_enabled = true` and `verify_enabled = true` for
-the local stack. That file only configures the local stack; nothing is pushed to live. The setting has not
-yet been exercised, because no local stack has run.
+`supabase/config.toml` sets the Owner sign-in code for the local stack: `[auth.email]` OTP length 6,
+expiry 300 seconds, 60 seconds between emails, and the Magic Link template
+`supabase/templates/owner-sign-in-code.html` (shows `{{ .Token }}`). TOTP is off. That file only configures
+the local stack; nothing is pushed to live. Not yet exercised, because no local stack has run.
 
 ### Installing Docker Desktop (needs you, as administrator)
 
@@ -127,7 +129,7 @@ Use `dev`. `next start` does not read `.env.development.local` and would use the
 | `testowner` | owner_admin (email `test-owner@example.com`, a placeholder) | http://localhost:3000 | in `supabase/.env.seed-accounts.local` |
 | `testbarista` | barista | http://localhost:3001 | in `supabase/.env.seed-accounts.local` |
 
-The Owner is sent to `/mfa` the first time to enrol TOTP.
+After the password, the Owner enters the code emailed to `test-owner@example.com` (shown in Inbucket).
 
 ## 6. What is seeded
 
