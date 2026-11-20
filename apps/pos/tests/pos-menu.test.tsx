@@ -69,13 +69,42 @@ describe("pos menu", () => {
     expect(screen.getByText("No items yet.")).toBeInTheDocument();
   });
 
-  it("an inactive product shows Unavailable", async () => {
+  it("does not show an inactive product", async () => {
     await renderPos(
       seedCatalog((c) => {
         c.products.find((p) => p.name === "Iced Ube Latte")!.isActive = false;
       }),
     );
-    expect(within(tile("Iced Ube Latte")).getByText("Unavailable")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Iced Ube Latte/ })).not.toBeInTheDocument();
+  });
+
+  it("blocks checkout when a cart product becomes unavailable", async () => {
+    const catalog = seedCatalog();
+    const product = catalog.products.find((p) => p.name === "Iced Spanish Latte")!;
+    let active = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        json: async () => ({
+          ok: true,
+          data: active
+            ? catalog
+            : { ...catalog, products: catalog.products.filter((p) => p.id !== product.id) },
+        }),
+      }) as Response),
+    );
+    renderWithProviders(<PosPage />);
+    await screen.findByRole("button", { name: /^Iced Spanish Latte/ });
+    await userEvent.click(tile("Iced Spanish Latte"));
+    await userEvent.click(screen.getByRole("button", { name: /^Charge/ }));
+    await userEvent.type(screen.getByLabelText("Amount paid"), "500");
+    active = false;
+    await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Iced Spanish Latte is no longer available. Remove it from the cart.",
+    );
+    expect(screen.queryByRole("dialog", { name: "Receipt" })).not.toBeInTheDocument();
   });
 
   it("tapping a tile twice makes one line with qty 2 and Charge ₱290.00", async () => {

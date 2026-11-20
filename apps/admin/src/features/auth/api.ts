@@ -37,6 +37,7 @@ export interface RegisterOwnerRequest {
   email: string;
   username: string;
   password: string;
+  setupCode?: string;
 }
 
 // Password recovery runs on this site's server (/auth/recovery): the recovery session stays in an
@@ -55,7 +56,9 @@ export const verifyRecoveryCode = (email: string, code: string) =>
 export const resetPassword = (_email: string, _code: string, password: string) =>
   recovery({ step: "reset", password });
 
-export type MfaStart = { step: "verify" } | { step: "enroll"; qrCode: string; secret: string };
+export type MfaStart =
+  | { step: "verify" }
+  | { step: "enroll"; factorId: string; qrCode: string; secret: string };
 
 /** Second sign-in step (SDS 2.4): enroll a TOTP app the first time, otherwise ask for a code. */
 export async function startMfa(): Promise<MfaStart> {
@@ -64,16 +67,35 @@ export async function startMfa(): Promise<MfaStart> {
   return res.data;
 }
 
-export async function verifyMfa(code: string): Promise<void> {
-  const res = await apiClient<null>("/auth/mfa", { method: "POST", body: JSON.stringify({ action: "verify", code }) });
+/** factorId: during setup, the authenticator whose QR code was shown. */
+export async function verifyMfa(code: string, factorId?: string): Promise<void> {
+  const res = await apiClient<null>("/auth/mfa", {
+    method: "POST",
+    body: JSON.stringify({ action: "verify", code, factorId }),
+  });
   if (!res.success) throw new Error(res.error?.message ?? "That code is not valid.");
 }
 
 /**
- * The Owner account is created once, through POST /api/setup/owner, which needs the server's
- * one-time setup code. Public sign-up is disabled, so this opens the /setup page instead.
+ * Creates the one-time Owner account through this site's server (/auth/setup), which also signs the
+ * new Owner in (first step only) so the authenticator is set up at /mfa next. Local setup
+ * authorization is added by the server.
  */
-export async function registerOwner(_req: RegisterOwnerRequest): Promise<void> {
-  window.location.assign("/setup");
-  return new Promise(() => {}); // navigating away
+export async function registerOwner(req: RegisterOwnerRequest): Promise<void> {
+  const setupCode = req.setupCode?.trim();
+
+  const res = await apiClient<SessionUser>("/auth/setup", {
+    method: "POST",
+    headers: setupCode ? { "X-Setup-Token": setupCode } : undefined,
+    body: JSON.stringify({
+      email: req.email,
+      fullName: req.fullName,
+      username: req.username,
+      password: req.password,
+      confirmPassword: req.password,
+    }),
+  });
+  if (!res.success) {
+    throw new Error(res.error?.message ?? "Owner account setup failed.");
+  }
 }

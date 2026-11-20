@@ -2,88 +2,188 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Button, DataTable, Dialog, Input, useToast } from "@gunita/ui";
+import {
+  Button,
+  DataTable,
+  Dialog,
+  Icon,
+  Input,
+  Tabs,
+  useToast,
+} from "@gunita/ui";
+import type { IconName } from "@gunita/ui";
 import {
   PRODUCT_IMAGE_MAX_BYTES,
   PRODUCT_IMAGE_TYPES,
-  productImageSrc,
-  type Product,
 } from "@gunita/contracts";
 import { useLiveQuery } from "@/lib/data";
 import { USE_MOCKS } from "@/lib/use-mocks";
 import {
   createProduct,
   listProductsWithCosting,
-  removeProductImage,
   toProductRow,
   updateProduct,
   uploadProductImage,
   type ProductRow,
 } from "@/features/products/api";
+import { listUsers } from "@/features/users/api";
 
-type SampleProductRow = ProductRow;
+interface ProductListRow extends ProductRow {
+  creator: string;
+}
 
-const sampleProducts: SampleProductRow[] = [
+const sampleProducts: ProductListRow[] = [
   {
-    id: "prod-1",
-    name: "Spanish Latte",
-    category: "Coffee",
-    sellingPrice: "₱140.00",
-    costPrice: "₱42.50",
-    margin: "69.6%",
+    id: "1",
+    name: "Iced Spanish Latte",
+    description: "Condensed-milk classic, 16oz",
+    category: "Iced Coffee Drinks",
+    sellingPrice: "₱145.00",
+    costPrice: "₱176.50",
+    margin: "-22%",
+    marginPercent: -21.7,
     available: true,
+    createdAt: "2026-08-08T00:00:00+08:00",
+    createdBy: 1,
+    creator: "Eric Espedilion",
   },
   {
-    id: "prod-2",
-    name: "Caramel Macchiato",
-    category: "Coffee",
+    id: "2",
+    name: "Iced Caramel Macchiato",
+    description: "Caramel drizzle over milk, 16oz",
+    category: "Iced Coffee Drinks",
     sellingPrice: "₱150.00",
-    costPrice: "₱48.20",
-    margin: "67.8%",
+    costPrice: "₱41.20",
+    margin: "73%",
+    marginPercent: 72.5,
     available: true,
+    createdAt: "2026-08-08T00:00:00+08:00",
+    createdBy: 1,
+    creator: "Eric Espedilion",
+  },
+  {
+    id: "3",
+    name: "Iced Ube Latte",
+    description: "Ube halaya + espresso, 16oz",
+    category: "Iced Coffee Drinks",
+    sellingPrice: "₱155.00",
+    costPrice: "₱26.20",
+    margin: "83%",
+    marginPercent: 83.1,
+    available: true,
+    createdAt: "2026-08-08T00:00:00+08:00",
+    createdBy: 1,
+    creator: "Eric Espedilion",
+  },
+  {
+    id: "4",
+    name: "Iced Americano",
+    description: "Straight espresso over ice, 16oz",
+    category: "Iced Coffee Drinks",
+    sellingPrice: "₱110.00",
+    costPrice: "₱26.20",
+    margin: "76%",
+    marginPercent: 76.2,
+    available: true,
+    createdAt: "2026-08-08T00:00:00+08:00",
+    createdBy: 1,
+    creator: "Eric Espedilion",
+  },
+  {
+    id: "5",
+    name: "Iced Hazelnut Latte",
+    description: "Hazelnut syrup latte, 16oz",
+    category: "Iced Coffee Drinks",
+    sellingPrice: "₱150.00",
+    costPrice: "₱41.20",
+    margin: "73%",
+    marginPercent: 72.5,
+    available: true,
+    createdAt: "2026-08-08T00:00:00+08:00",
+    createdBy: 1,
+    creator: "Eric Espedilion",
   },
 ];
 
 const EMPTY = { name: "", description: "", category: "", price: "" };
 const IMAGE_TYPES: readonly string[] = PRODUCT_IMAGE_TYPES;
+const PRODUCT_TABS = [
+  { id: "list", label: "Product List", href: "/products" },
+  {
+    id: "costing",
+    label: "Recipe & Costing",
+    href: "/products/recipe-costing",
+  },
+];
+
+function createdDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Manila",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }).format(date);
+}
+
+function productIcon(category: string): IconName {
+  if (/meal|silog/i.test(category)) return "rice";
+  if (/snack|bread|pastry/i.test(category)) return "pastry";
+  return /coffee/i.test(category) ? "iced" : "cup";
+}
 
 export default function ProductsPage() {
   const toast = useToast();
+  const router = useRouter();
   const client = useQueryClient();
   const products = useLiveQuery(["products"], listProductsWithCosting, {
     enabled: !USE_MOCKS,
   });
-  const [editing, setEditing] = useState<Product | "new" | null>(null);
+  const users = useLiveQuery(["users"], listUsers, { enabled: !USE_MOCKS });
+  const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [file, setFile] = useState<File | null>(null);
-  const [removeImage, setRemoveImage] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
 
-  const byId = new Map(
-    (products.data?.items ?? []).map((r) => [String(r.product.id), r.product]),
+  const creatorNames = new Map(
+    (users.data ?? []).map((user) => [user.id, user.fullName]),
   );
-  const rows = USE_MOCKS
+  const productRows: ProductListRow[] = USE_MOCKS
     ? sampleProducts
-    : (products.data?.items ?? []).map((r) =>
-        toProductRow(r.product, r.costing),
-      );
+    : (products.data?.items ?? []).map(({ product, costing }) => {
+        const row = toProductRow(product, costing);
+        const creator =
+          product.createdBy === null
+            ? "—"
+            : (creatorNames.get(product.createdBy) ??
+              (users.isLoading
+                ? "Loading…"
+                : users.error
+                  ? "Unavailable"
+                  : "Unknown user"));
+        return { ...row, creator };
+      });
+  const rows = [...productRows].sort((a, b) => Number(a.id) - Number(b.id));
+  const categories = [
+    ...new Set(rows.map((row) => row.category).filter(Boolean)),
+  ].sort();
+  const filteredRows = rows.filter(
+    (row) =>
+      row.name.toLowerCase().includes(search.trim().toLowerCase()) &&
+      (!categoryFilter || row.category === categoryFilter),
+  );
 
-  const open = (p: Product | "new") => {
+  const openAddProduct = () => {
     setErrorMessage("");
-    setEditing(p);
+    setAdding(true);
     setFile(null);
-    setRemoveImage(false);
-    setForm(
-      p === "new"
-        ? EMPTY
-        : {
-            name: p.name,
-            description: p.description ?? "",
-            category: p.category ?? "",
-            price: String(p.price),
-          },
-    );
+    setForm(EMPTY);
   };
 
   // Quick check before upload; the API checks the file's real type and size again.
@@ -101,11 +201,8 @@ export default function ProductsPage() {
       return setFile(null);
     }
     setFile(f);
-    if (f) setRemoveImage(false);
   };
 
-  const currentImage =
-    editing && editing !== "new" ? productImageSrc(editing) : undefined;
   const refresh = () => client.invalidateQueries({ queryKey: ["products"] });
 
   // FR-50/FR-52: the API records the creating user and date.
@@ -119,16 +216,12 @@ export default function ProductsPage() {
       price: Number(form.price),
     };
     try {
-      const saved =
-        editing === "new"
-          ? await createProduct({ ...body, isAvailable: true })
-          : editing
-            ? await updateProduct(editing.id, body)
-            : null;
+      const saved = adding
+        ? await createProduct({ ...body, isAvailable: true })
+        : null;
       // The image needs the product id, so it is stored after the product is saved.
       if (saved && file) await uploadProductImage(saved.id, file);
-      else if (saved && removeImage) await removeProductImage(saved.id);
-      setEditing(null);
+      setAdding(false);
       await refresh();
     } catch (err) {
       setErrorMessage(
@@ -155,27 +248,59 @@ export default function ProductsPage() {
       setForm({ ...form, [key]: e.target.value });
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-5">
+      <header className="product-page-header">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Products</h1>
-          <p className="text-sm text-gray-500">Manage coffee menu and items</p>
+          <p className="product-page-kicker">Gunita · Admin</p>
+          <h1>Products</h1>
         </div>
-        <div className="flex items-center space-x-3">
-          <Link href="/products/recipe-costing">
-            <Button variant="outline">Recipe Costing</Button>
-          </Link>
-          <Button onClick={() => open("new")} disabled={USE_MOCKS}>
-            Add Product
-          </Button>
-        </div>
+        <Button variant="primary" onClick={openAddProduct} disabled={USE_MOCKS}>
+          <Icon name="plus" />
+          Add product
+        </Button>
+      </header>
+
+      <Tabs tabs={PRODUCT_TABS} activeTab="list" className="product-tabs" />
+
+      <div className="product-filters" aria-label="Product filters">
+        <label className="field">
+          Search
+          <input
+            type="search"
+            placeholder="Product name"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+        <label className="field">
+          Category
+          <select
+            value={categoryFilter}
+            onChange={(event) => setCategoryFilter(event.target.value)}
+          >
+            <option value="">All</option>
+            {categories.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {products.error && (
-        <p className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-red-700">
           {products.error instanceof Error
             ? products.error.message
             : "Could not load products."}
+        </p>
+      )}
+      {users.error && (
+        <p role="alert" className="text-sm text-red-700">
+          Creator names could not be loaded:{" "}
+          {users.error instanceof Error
+            ? users.error.message
+            : "Request failed."}
         </p>
       )}
       {products.data?.costingError && (
@@ -183,62 +308,122 @@ export default function ProductsPage() {
           Costs and margins could not be loaded: {products.data.costingError}
         </p>
       )}
+      {!USE_MOCKS && products.isLoading && (
+        <p role="status">Loading products…</p>
+      )}
 
-      <DataTable<SampleProductRow>
-        columns={[
-          {
-            key: "imageSrc",
-            header: "Image",
-            render: (row) =>
-              row.imageSrc ? (
-                <img
-                  src={row.imageSrc}
-                  alt=""
-                  className="h-10 w-10 rounded object-cover"
-                />
-              ) : null,
-          },
-          { key: "name", header: "Product Name" },
-          { key: "category", header: "Category" },
-          { key: "sellingPrice", header: "Selling Price" },
-          { key: "costPrice", header: "Cost (COGS)" },
-          { key: "margin", header: "Profit Margin" },
-          {
-            key: "available",
-            header: "Status",
-            render: (row) => (
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={USE_MOCKS}
-                  onClick={() => void toggleAvailable(row)}
-                >
-                  {row.available ? "Available" : "Unavailable"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={USE_MOCKS}
-                  onClick={() => {
-                    const p = byId.get(row.id);
-                    if (p) open(p);
-                  }}
-                >
-                  Edit
-                </Button>
-              </div>
-            ),
-          },
-        ]}
-        data={rows}
-        keyExtractor={(row) => row.id}
-      />
+      <div className="products-table">
+        <DataTable<ProductListRow>
+          className="tbl-products"
+          columns={[
+            { key: "id", header: "ID", className: "num" },
+            {
+              key: "thumbnail",
+              header: "",
+              render: (row) =>
+                row.imageSrc ? (
+                  <img
+                    src={row.imageSrc}
+                    alt={`${row.name} product`}
+                    className="product-thumbnail"
+                  />
+                ) : (
+                  <span className="product-thumbnail">
+                    <Icon name={productIcon(row.category)} />
+                  </span>
+                ),
+            },
+            {
+              key: "name",
+              header: "Name",
+              render: (row) => (
+                <span className="product-name-cell">
+                  <strong>{row.name}</strong>
+                  {row.description && <span>{row.description}</span>}
+                </span>
+              ),
+            },
+            { key: "category", header: "Category" },
+            { key: "sellingPrice", header: "Price", className: "num" },
+            { key: "costPrice", header: "Cost", className: "num" },
+            {
+              key: "margin",
+              header: "Margin",
+              className: "num",
+              render: (row) =>
+                row.margin ? (
+                  <span
+                    className={`product-margin${row.marginPercent !== null && row.marginPercent < 0 ? " negative" : ""}`}
+                  >
+                    {row.margin}
+                  </span>
+                ) : null,
+            },
+            {
+              key: "available",
+              header: "Available",
+              render: (row) => (
+                <label className="avail-toggle">
+                  <span className="switch">
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      aria-label={`Available for ${row.name}`}
+                      checked={row.available}
+                      disabled={USE_MOCKS}
+                      onChange={() => void toggleAvailable(row)}
+                    />
+                    <span className="tr" />
+                  </span>
+                </label>
+              ),
+            },
+            {
+              key: "createdAt",
+              header: "Date Created",
+              render: (row) => createdDate(row.createdAt),
+            },
+            { key: "creator", header: "Created By" },
+            {
+              key: "actions",
+              header: "Actions",
+              className: "act-cell",
+              render: (row) => (
+                <div className="product-actions">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={USE_MOCKS}
+                    aria-label={`Edit ${row.name}`}
+                    onClick={() => router.push(`/products/${row.id}/edit`)}
+                  >
+                    <Icon name="pencil" />
+                    Edit
+                  </Button>
+                  <Link
+                    href="/products/recipe-costing"
+                    className="btn btn-sm product-recipe-link"
+                  >
+                    Recipe &amp; Costing
+                  </Link>
+                </div>
+              ),
+            },
+          ]}
+          data={filteredRows}
+          emptyMessage={
+            products.error
+              ? "Could not load products."
+              : "No products match these filters."
+          }
+          keyExtractor={(row) => row.id}
+        />
+      </div>
 
       <Dialog
-        isOpen={editing !== null}
-        onClose={() => setEditing(null)}
-        title={editing === "new" ? "Add Product" : "Edit Product"}
+        isOpen={adding}
+        onClose={() => setAdding(false)}
+        title="Add Product"
       >
         <form onSubmit={save} className="space-y-4">
           {errorMessage && (
@@ -280,23 +465,6 @@ export default function ProductsPage() {
             >
               Image (PNG, JPEG or WebP, up to 2 MB)
             </label>
-            {currentImage && !file && !removeImage && (
-              <div className="flex items-center gap-3">
-                <img
-                  src={currentImage}
-                  alt=""
-                  className="h-16 w-16 rounded object-cover"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setRemoveImage(true)}
-                >
-                  Remove image
-                </Button>
-              </div>
-            )}
             <input
               id="product-image"
               type="file"
@@ -309,7 +477,7 @@ export default function ProductsPage() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setEditing(null)}
+              onClick={() => setAdding(false)}
             >
               Cancel
             </Button>

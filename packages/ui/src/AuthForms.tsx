@@ -203,20 +203,28 @@ export interface CreateAccountValues {
   email: string;
   username: string;
   password: string;
+  setupCode?: string;
 }
 
 export interface CreateAccountFormProps {
   /** Rejects with a message on failure (e.g. registration closed, username taken). */
-  onCreate: (values: CreateAccountValues) => Promise<void>;
+  onCreate: (values: CreateAccountValues) => Promise<string | void>;
   /** Called after the account is created. */
-  onDone: () => void;
+  onDone: (message?: string) => void;
   onBack: () => void;
+  requiresSetupCode?: boolean;
 }
 
-export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({ onCreate, onDone, onBack }) => {
+export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
+  onCreate,
+  onDone,
+  onBack,
+  requiresSetupCode = false,
+}) => {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
+  const [setupCode, setSetupCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
@@ -226,18 +234,28 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({ onCreate, 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
-    const values = { fullName: fullName.trim(), email: email.trim(), username: username.trim(), password };
+    const values = {
+      fullName: fullName.trim(),
+      email: email.trim(),
+      username: username.trim(),
+      password,
+      ...(requiresSetupCode ? { setupCode: setupCode.trim() } : {}),
+    };
     if (values.fullName.length < 2) return setError("Full name is required.");
     if (!EMAIL_RE.test(values.email)) return setError("Enter a valid email address.");
     if (!values.username) return setError("Username is required.");
+    if (requiresSetupCode && !values.setupCode) return setError("Setup code is required.");
     if (password.length < MIN_PASSWORD) return setError(`Password must be at least ${MIN_PASSWORD} characters.`);
     if (password !== confirm) return setError("Passwords do not match.");
     setError("");
     setLoading(true);
-    const err = await run(() => onCreate(values));
+    let successMessage: string | void = undefined;
+    const err = await run(async () => {
+      successMessage = await onCreate(values);
+    });
     setLoading(false);
     if (err) return setError(err);
-    onDone();
+    onDone(typeof successMessage === "string" ? successMessage : undefined);
   };
 
   return (
@@ -256,6 +274,17 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({ onCreate, 
           Username
           <input type="text" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} />
         </label>
+        {requiresSetupCode && (
+          <label className="field">
+            Setup code
+            <input
+              type="password"
+              autoComplete="off"
+              value={setupCode}
+              onChange={(e) => setSetupCode(e.target.value)}
+            />
+          </label>
+        )}
         <PasswordInput
           label={`Password (min ${MIN_PASSWORD} chars)`}
           value={password}

@@ -15,6 +15,7 @@ import { checkout, recordToOrder } from "@/features/pos/checkout";
 import { getSession } from "@/features/auth";
 import { formatTime } from "@gunita/ui";
 import { USE_MOCKS } from "@/lib/use-mocks";
+import { isOnline } from "@/lib/connectivity";
 import type { Order } from "@gunita/contracts/ui";
 
 export default function PosPage() {
@@ -32,18 +33,22 @@ export default function PosPage() {
 
   const onSearch = useCallback((q: string) => setQuery(q.trim().toLowerCase()), []);
 
+  const availableProducts = useMemo(
+    () => (data?.products ?? []).filter((p) => p.isActive),
+    [data],
+  );
   const products = useMemo(
     () =>
-      (data?.products ?? []).filter(
+      availableProducts.filter(
         (p) => (category === ALL || p.category === category) && (!query || p.name.toLowerCase().includes(query)),
       ),
-    [data, category, query],
+    [availableProducts, category, query],
   );
 
   // Real mode: the categories the saved products use (the official menu's), in the order they arrive.
   const categories = useMemo(
-    () => (USE_MOCKS ? undefined : [...new Set((data?.products ?? []).map((p) => p.category))]),
-    [data],
+    () => (USE_MOCKS ? undefined : [...new Set(availableProducts.map((p) => p.category))]),
+    [availableProducts],
   );
 
   const customizeLine = lines.find((l) => l.lineId === customizeId);
@@ -56,9 +61,23 @@ export default function PosPage() {
   const settings = data?.settings;
 
   const confirmPayment = async ({ type, paid }: { type: Order["type"]; paid: number }) => {
+    if (isOnline()) {
+      const latest = await refetch();
+      const currentProducts = latest.data?.products ?? data?.products ?? [];
+      const unavailable = lines.find(
+        (line) => !currentProducts.some((product) => product.id === line.productId && product.isActive),
+      );
+      if (unavailable) {
+        throw new Error(`${unavailable.productName} is no longer available. Remove it from the cart.`);
+      }
+    }
+
     const cashier = getSession();
     if (!cashier) throw new Error("You are signed out. Please sign in again.");
     const { record, order } = await checkout({ lines, type, paid, cashier });
+    if (record.status === "failed" && record.rejected) {
+      throw new Error(record.errorMessage ?? "The server rejected this order. Check product availability and try again.");
+    }
     setReceipt({
       order: order ?? recordToOrder(record, cashier),
       pendingSync: record.status !== "synced",

@@ -2,7 +2,20 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Order } from "@gunita/contracts/ui";
-import { Banner, Button, DataTable, EmptyState, Input, PageHeader, Receipt, Seg, Skeleton, StatusBadge, Tabs } from "../src";
+import {
+  Banner,
+  Button,
+  DataTable,
+  EmptyState,
+  formatQueueNumber,
+  Input,
+  PageHeader,
+  Receipt,
+  Seg,
+  Skeleton,
+  StatusBadge,
+  Tabs,
+} from "../src";
 
 const order: Order = {
   id: "o1",
@@ -10,7 +23,15 @@ const order: Order = {
   orderNumber: "20261116-A-001",
   status: "completed",
   type: "take-out",
-  items: [{ productName: "Latte", productId: "p1", quantity: 2, unitPrice: 170, subtotal: 340 }],
+  items: [
+    {
+      productName: "Latte",
+      productId: "p1",
+      quantity: 2,
+      unitPrice: 170,
+      subtotal: 340,
+    },
+  ],
   totalAmount: 340,
   taxAmount: 0,
   discountAmount: 0,
@@ -33,7 +54,11 @@ describe("base components", () => {
   });
 
   it("Button keeps legacy variants compiling as plain btn", () => {
-    render(<Button variant="outline" size="lg">Old</Button>);
+    render(
+      <Button variant="outline" size="lg">
+        Old
+      </Button>,
+    );
     expect(screen.getByRole("button", { name: "Old" }).className).toBe("btn");
   });
 
@@ -61,51 +86,107 @@ describe("base components", () => {
         ]}
       />,
     );
-    expect(screen.getByRole("button", { name: "Dine-in" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Take-out" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Dine-in" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Take-out" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
     await userEvent.click(screen.getByRole("button", { name: "Take-out" }));
     expect(onChange).toHaveBeenCalledWith("take-out");
   });
 
   it("Tabs renders subtab links with the active one marked", () => {
-    render(<Tabs activeTab="b" tabs={[{ id: "a", label: "A", href: "#a" }, { id: "b", label: "B", href: "#b" }]} />);
-    expect(screen.getByRole("tab", { name: "B" })).toHaveClass("subtab-link", "on");
-    expect(screen.getByRole("tab", { name: "A" })).toHaveAttribute("href", "#a");
+    render(
+      <Tabs
+        activeTab="b"
+        tabs={[
+          { id: "a", label: "A", href: "#a" },
+          { id: "b", label: "B", href: "#b" },
+        ]}
+      />,
+    );
+    expect(screen.getByRole("tab", { name: "B" })).toHaveClass(
+      "subtab-link",
+      "on",
+    );
+    expect(screen.getByRole("tab", { name: "A" })).toHaveAttribute(
+      "href",
+      "#a",
+    );
   });
 
   it("PageHeader renders the Baybayin kicker with its latin caption", () => {
-    const { container } = render(<PageHeader latin="gunita · admin" title="Dashboard" />);
+    const { container } = render(
+      <PageHeader latin="gunita · admin" title="Dashboard" />,
+    );
     const kicker = container.querySelector(".kicker");
     expect(kicker).toHaveTextContent("ᜄᜓᜈᜒᜆ");
     expect(kicker).toHaveAttribute("data-latin", "gunita · admin");
     expect(kicker).toHaveAttribute("lang", "tl-Tglg");
-    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Dashboard" }),
+    ).toBeInTheDocument();
+  });
+
+  it("formats queue numbers without the letter prefix", () => {
+    expect(formatQueueNumber("A-018")).toBe("018");
+    expect(formatQueueNumber("20261116-A-018")).toBe("018");
+    expect(formatQueueNumber(18)).toBe("018");
+    expect(formatQueueNumber("OFF-018")).toBe("OFF-018");
   });
 
   it("Receipt shows queue number, total, footer and pending sync", () => {
     const { rerender } = render(
-      <Receipt order={order} shopName="Gunita Kopi" footer="Salamat po! Come again." cashierName="Ana" pendingSync />,
+      <Receipt
+        order={order}
+        shopName="Gunita Kopi"
+        footer="Salamat po! Come again."
+        cashierName="Ana"
+        pendingSync
+      />,
     );
-    expect(screen.getByText("20261116-A-001")).toBeInTheDocument();
+    expect(screen.getByText("001")).toBeInTheDocument();
     expect(screen.getAllByText("₱340.00").length).toBeGreaterThan(0);
     expect(screen.getByText("Salamat po! Come again.")).toBeInTheDocument();
     expect(screen.getByText("Pending sync")).toBeInTheDocument();
-    rerender(<Receipt order={order} shopName="Gunita Kopi" footer="x" cashierName="Ana" />);
+    rerender(
+      <Receipt
+        order={order}
+        shopName="Gunita Kopi"
+        footer="x"
+        cashierName="Ana"
+      />,
+    );
     expect(screen.queryByText("Pending sync")).toBeNull();
   });
 
   it("Receipt shows capitalized method when paid and Unpaid row otherwise", () => {
-    const { rerender } = render(<Receipt order={order} shopName="S" footer="f" cashierName="Ana" />);
+    const { rerender } = render(
+      <Receipt order={order} shopName="S" footer="f" cashierName="Ana" />,
+    );
     expect(screen.getByText("Cash")).toBeInTheDocument();
     expect(screen.getByText("Change")).toBeInTheDocument();
-    rerender(<Receipt order={{ ...order, paidAmount: 0, changeAmount: 0 }} shopName="S" footer="f" cashierName="Ana" />);
+    rerender(
+      <Receipt
+        order={{ ...order, paidAmount: 0, changeAmount: 0 }}
+        shopName="S"
+        footer="f"
+        cashierName="Ana"
+      />,
+    );
     expect(screen.getByText("Unpaid")).toBeInTheDocument();
     expect(screen.queryByText("Change")).toBeNull();
   });
 
   it("Banner danger uses the banner-danger class", () => {
     render(<Banner tone="danger">Oops</Banner>);
-    expect(screen.getByRole("alert")).toHaveClass("lowstock-banner", "banner-danger");
+    expect(screen.getByRole("alert")).toHaveClass(
+      "lowstock-banner",
+      "banner-danger",
+    );
   });
 
   it("Skeleton renders the requested rows", () => {

@@ -40,6 +40,14 @@ export function formatDateTime(iso: string): string {
   return `${formatDate(iso)} ${formatTime(iso)}`;
 }
 
+export function formatQueueNumber(value: string | number): string {
+  const queueNumber = String(value).trim();
+  const match = /^(?:\d{8}-)?A-(\d+)$/i.exec(queueNumber);
+  const numeric =
+    match?.[1] ?? (/^\d+$/.test(queueNumber) ? queueNumber : null);
+  return numeric ? numeric.padStart(3, "0") : queueNumber;
+}
+
 /** Local "YYYY-MM-DD". */
 export function toDayKey(iso: string): string {
   const d = new Date(iso);

@@ -1,7 +1,8 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import { isIpAddress, trustedClientIp } from "@gunita/auth/client-ip";
 import { AppError } from "./errors";
 import { logger } from "./logger";
+import { hasValidInternalProxySecret } from "./proxy-secret";
 import { supabaseAdmin } from "./supabase-admin";
 
 // Failures allowed per 15-minute window before a lock. Locks start at 15 minutes and double on
@@ -40,12 +41,6 @@ export function throttleKeys(username: string, ip: string): ThrottleKeys {
 /** Short, non-reversible label for logs. */
 export const logKey = (key: string) => key.slice(0, key.indexOf(":") + 13);
 
-const secretMatches = (given: string, expected: string) =>
-  timingSafeEqual(
-    createHash("sha256").update(given).digest(),
-    createHash("sha256").update(expected).digest(),
-  );
-
 /**
  * Client IP for throttling. The Admin/POS servers sign users in on their behalf and forward the
  * browser's IP in x-gunita-client-ip, trusted only with the shared INTERNAL_PROXY_SECRET.
@@ -55,9 +50,7 @@ const secretMatches = (given: string, expected: string) =>
 export function clientIp(req: Request): string | null {
   const forwarded = req.headers.get("x-gunita-client-ip");
   if (forwarded !== null) {
-    const secret = process.env.INTERNAL_PROXY_SECRET ?? "";
-    const given = req.headers.get("x-gunita-proxy-secret") ?? "";
-    if (secret.length < 32 || !secretMatches(given, secret)) {
+    if (!hasValidInternalProxySecret(req.headers)) {
       logger.error("auth.proxy_secret_rejected");
       return null;
     }

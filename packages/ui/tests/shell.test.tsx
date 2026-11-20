@@ -380,4 +380,37 @@ describe("CreateAccountForm", () => {
     await user.click(screen.getByRole("button", { name: "← Back to sign in" }));
     expect(onBack).toHaveBeenCalledOnce();
   });
+
+  it("requires the setup code in one-time registration and returns the success message", async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn(async () => "Owner account created.");
+    const onDone = vi.fn();
+    render(
+      <CreateAccountForm
+        onCreate={onCreate}
+        onDone={onDone}
+        onBack={() => {}}
+        requiresSetupCode
+      />,
+    );
+    await user.type(screen.getByLabelText("Full name"), "Owner Name");
+    await user.type(screen.getByLabelText("Email address"), "owner@example.com");
+    await user.type(screen.getByLabelText("Username"), "owner");
+    await user.type(screen.getByLabelText("Password (min 8 chars)"), "password123");
+    await user.type(screen.getByLabelText("Confirm password"), "password123");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Setup code is required.");
+    expect(onCreate).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText("Setup code"), "secret-code");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    expect(onCreate).toHaveBeenCalledWith({
+      fullName: "Owner Name",
+      email: "owner@example.com",
+      username: "owner",
+      password: "password123",
+      setupCode: "secret-code",
+    });
+    expect(onDone).toHaveBeenCalledWith("Owner account created.");
+  });
 });

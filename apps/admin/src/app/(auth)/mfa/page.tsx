@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Input } from "@gunita/ui";
 import { signOut, startMfa, verifyMfa, type MfaStart } from "@/features/auth";
@@ -16,8 +16,12 @@ export default function MfaPage() {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const started = useRef(false);
 
   useEffect(() => {
+    // Once per page: each start replaces an unfinished setup with a new QR code.
+    if (started.current) return;
+    started.current = true;
     startMfa()
       .then(setStart)
       .catch((err) =>
@@ -36,7 +40,16 @@ export default function MfaPage() {
     setBusy(true);
     setError("");
     try {
-      await verifyMfa(code.trim());
+      await verifyMfa(
+        code.trim(),
+        start?.step === "enroll" ? start.factorId : undefined,
+      );
+      if (start?.step === "enroll") {
+        // First setup done: end this session; the Owner signs in again with password and code.
+        await signOut().catch(() => undefined);
+        router.replace("/login?notice=mfa_enabled");
+        return;
+      }
       router.replace(
         safeRedirect(
           new URLSearchParams(window.location.search).get("redirect"),

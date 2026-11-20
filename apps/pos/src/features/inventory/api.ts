@@ -1,9 +1,14 @@
 import {
+  CreateBaristaIngredientRequestSchema,
+  IngredientSupplierOptionsSchema,
   IngredientSchema,
   StockTransactionSchema,
   pageOf,
+  type CreateBaristaIngredientRequest,
   type Ingredient,
+  type IngredientSupplierOption,
   type StockTransaction,
+  type StockTransactionType,
 } from "@gunita/contracts";
 import { apiAllPages, apiData } from "@/lib/api-client";
 
@@ -12,24 +17,54 @@ export function listIngredients(): Promise<Ingredient[]> {
   return apiAllPages("/api/ingredients", pageOf(IngredientSchema));
 }
 
+/** Existing active suppliers available for ingredient assignment; no supplier details or writes. */
+export function listIngredientSupplierOptions(): Promise<
+  IngredientSupplierOption[]
+> {
+  return apiData(
+    "/api/ingredients/suppliers",
+    IngredientSupplierOptionsSchema,
+  );
+}
+
+/** Baristas may assign an existing supplier; supplier details, cost, and add-on fields are excluded. */
+export function createBaristaIngredient(
+  input: CreateBaristaIngredientRequest,
+): Promise<Ingredient> {
+  const body = CreateBaristaIngredientRequestSchema.parse(input);
+  return apiData("/api/ingredients", IngredientSchema, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 /** FR-17: latest stock movements. */
-export async function listStockHistory(): Promise<StockTransaction[]> {
-  const page = await apiData("/api/stock-transactions?pageSize=50", pageOf(StockTransactionSchema));
+export async function listStockHistory(filters: {
+  ingredientId?: string;
+  from?: string;
+  to?: string;
+} = {}): Promise<StockTransaction[]> {
+  const query = new URLSearchParams({ pageSize: "50" });
+  if (filters.ingredientId) query.set("ingredientId", filters.ingredientId);
+  if (filters.from) query.set("from", filters.from);
+  if (filters.to) query.set("to", filters.to);
+  const page = await apiData(
+    `/api/stock-transactions?${query}`,
+    pageOf(StockTransactionSchema),
+  );
   return page.items;
 }
 
-/**
- * FR-16: manual stock-out (used, spoiled or wasted). Baristas may only record stock-out
- * (SRS FR-15/FR-16); the API and RLS refuse stock-in from this role.
- */
-export function recordStockOut(input: {
+/** FR-15/FR-16: Baristas record manual stock-in or stock-out from the POS. */
+export function recordStockMovement(input: {
   ingredientId: number;
+  type: StockTransactionType;
   quantity: number;
   remarks?: string;
 }): Promise<StockTransaction> {
   return apiData("/api/stock-transactions", StockTransactionSchema, {
     method: "POST",
-    body: JSON.stringify({ ...input, type: "out" }),
+    body: JSON.stringify(input),
   });
 }
 

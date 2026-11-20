@@ -127,6 +127,8 @@ const productImage = await import("../src/app/api/products/[id]/image/route");
 const stock = await import("../src/app/api/stock-transactions/route");
 const ingredientList = await import("../src/app/api/ingredients/route");
 const ingredientById = await import("../src/app/api/ingredients/[id]/route");
+const ingredientSuppliers = await import("../src/app/api/ingredients/suppliers/route");
+const suppliers = await import("../src/app/api/suppliers/route");
 const costingRoute = await import("../src/app/api/products/[id]/costing/route");
 const recipeRoute = await import("../src/app/api/products/[id]/recipe/route");
 const costingList = await import("../src/app/api/products/costing/route");
@@ -514,28 +516,104 @@ describe("product images (FR-50)", () => {
 });
 
 describe("inventory", () => {
-  it("allows stock-in only for the Owner and stock-out only for the Barista", async () => {
+  it("allows Owner and Barista stock-in/out", async () => {
     const tx = (type: string) => ({ ingredientId: 1, type, quantity: 5 });
-    expect(
-      (
-        await call(
-          stock.POST(
-            req("POST", "/api/stock-transactions", "barista-token", tx("in")),
-            undefined,
-          ),
-        )
-      ).status,
-    ).toBe(403);
-    expect(
-      (
-        await call(
-          stock.POST(
-            req("POST", "/api/stock-transactions", OWNER, tx("out")),
-            undefined,
-          ),
-        )
-      ).status,
-    ).toBe(403);
+    onRpc = () => ({ data: [] });
+    onQuery = (c) => {
+      if (c.table === "v_inventory_status") {
+        return {
+          data: {
+            ingredient_id: 1,
+            ingredient_name: "Milk",
+            unit: "ml",
+            current_stock: 200,
+            reorder_level: 20,
+            stock_status: "available",
+            supplier_id: null,
+            supplier_name: null,
+            date_updated: "2026-11-19T00:00:00Z",
+            is_addon: false,
+            addon_selling_price: null,
+            addon_quantity: null,
+          },
+        };
+      }
+      if (c.table === "stock_transactions" && c.op === "insert") {
+        const movement = c.payload as {
+          type: "in" | "out";
+          quantity: number;
+          user_id: number;
+        };
+        return {
+          data: {
+            stock_trans_id: 10,
+            ingredient_id: 1,
+            user_id: movement.user_id,
+            type: movement.type,
+            quantity: movement.quantity,
+            remaining_stock: movement.type === "in" ? 205 : 195,
+            date_time: "2026-11-19T00:00:00Z",
+            remarks: null,
+            ingredients: { ingredient_name: "Milk" },
+            users: { full_name: movement.user_id === 1 ? "Owner" : "Barista" },
+          },
+        };
+      }
+      return { data: [] };
+    };
+    const ownerIn = await call(
+      stock.POST(
+        req("POST", "/api/stock-transactions", OWNER, tx("in")),
+        undefined,
+      ),
+    );
+    expect(ownerIn.status).toBe(201);
+    expect(ownerIn.body.data).toMatchObject({
+      type: "in",
+      quantity: 5,
+      userId: 1,
+    });
+
+    const ownerOut = await call(
+      stock.POST(
+        req("POST", "/api/stock-transactions", OWNER, tx("out")),
+        undefined,
+      ),
+    );
+    expect(ownerOut.status).toBe(201);
+    expect(ownerOut.body.data).toMatchObject({
+      type: "out",
+      quantity: 5,
+      userId: 1,
+    });
+
+    const baristaIn = await call(
+      stock.POST(
+        req("POST", "/api/stock-transactions", "barista-token", tx("in")),
+        undefined,
+      ),
+    );
+    expect(baristaIn.status).toBe(201);
+    expect(baristaIn.body.data).toMatchObject({
+      type: "in",
+      quantity: 5,
+      userId: 2,
+      userName: "Barista",
+    });
+
+    const baristaOut = await call(
+      stock.POST(
+        req("POST", "/api/stock-transactions", "barista-token", tx("out")),
+        undefined,
+      ),
+    );
+    expect(baristaOut.status).toBe(201);
+    expect(baristaOut.body.data).toMatchObject({
+      type: "out",
+      quantity: 5,
+      userId: 2,
+      userName: "Barista",
+    });
   });
 
   it.each([0, -3])("rejects quantity %d", async (quantity) => {
@@ -634,6 +712,10 @@ describe("ingredient costs and add-on configuration", () => {
     );
     expect(list.status).toBe(200);
     expect(list.body.data.items[0]).not.toHaveProperty("unitCost");
+    expect(list.body.data.items[0]).toMatchObject({
+      supplierId: null,
+      supplierName: null,
+    });
     expect(list.body.data.items[0]).toMatchObject({
       isAddon: true,
       addonSellingPrice: 25,
@@ -865,6 +947,107 @@ describe("ingredient costs and add-on configuration", () => {
       addon_selling_price: null,
       addon_quantity: null,
     });
+  });
+
+  it("allows Baristas to create a basic ingredient and returns no Owner-only details", async () => {
+    onRpc = (name) =>
+      name === "create_barista_ingredient" ? { data: 21 } : { data: null };
+    onQuery = single;
+    const r = await call(
+      ingredientList.POST(
+        req("POST", "/api/ingredients", "barista-token", {
+          name: "Sugar",
+          unit: "g",
+          supplierId: 6,
+          reorderLevel: 25,
+          openingStock: 500,
+        }),
+        undefined,
+      ),
+    );
+
+    expect(r.status).toBe(201);
+    expect(rpcCalls).toContainEqual({
+      name: "create_barista_ingredient",
+      args: {
+        p_name: "Sugar",
+        p_unit: "g",
+        p_supplier_id: 6,
+        p_reorder_level: 25,
+        p_opening_stock: 500,
+      },
+    });
+    expect(r.body.data).toMatchObject({
+      id: 21,
+      supplierId: null,
+      supplierName: null,
+    });
+    expect(r.body.data).not.toHaveProperty("unitCost");
+    expect(
+      calls.some((c) => c.op === "insert" && c.table === "ingredients"),
+    ).toBe(false);
+  });
+
+  it.each([
+    { supplierName: "New supplier" },
+    { unitCost: 1.25 },
+    { isAddon: true, addonQuantity: 10 },
+  ])(
+    "rejects Barista ingredient fields outside the restricted schema: %j",
+    async (extra) => {
+      const r = await call(
+        ingredientList.POST(
+          req("POST", "/api/ingredients", "barista-token", {
+            name: "Sugar",
+            ...extra,
+          }),
+          undefined,
+        ),
+      );
+      expect(r.status).toBe(400);
+      expect(rpcCalls).toHaveLength(0);
+      expect(
+        calls.some((c) => c.op === "insert" && c.table === "ingredients"),
+      ).toBe(false);
+    },
+  );
+
+  it("returns only active supplier options for Baristas", async () => {
+    onRpc = (name) =>
+      name === "barista_supplier_options"
+        ? {
+            data: [
+              { supplier_id: 6, supplier_name: "Batangas Barako Traders" },
+            ],
+          }
+        : { data: null };
+    const r = await call(
+      ingredientSuppliers.GET(
+        req("GET", "/api/ingredients/suppliers", "barista-token"),
+        undefined,
+      ),
+    );
+
+    expect(r.status).toBe(200);
+    expect(r.body.data).toEqual([
+      { id: 6, name: "Batangas Barako Traders" },
+    ]);
+    expect(rpcCalls.map((rpc) => rpc.name)).toContain(
+      "barista_supplier_options",
+    );
+
+    const create = await call(
+      suppliers.POST(
+        req("POST", "/api/suppliers", "barista-token", {
+          name: "Barista Cannot Create This",
+        }),
+        undefined,
+      ),
+    );
+    expect(create.status).toBe(403);
+    expect(
+      calls.some((c) => c.op === "insert" && c.table === "suppliers"),
+    ).toBe(false);
   });
 
   it.each([
@@ -1142,6 +1325,68 @@ describe("reports", () => {
     expect(calls[0]!.filters).toContainEqual([
       "gte",
       ["sale_date", "2026-11-01"],
+    ]);
+  });
+
+  it("ranks best sellers within the inclusive Manila date range", async () => {
+    onQuery = (query) => {
+      if (query.table === "v_sales") {
+        return {
+          data: [
+            { order_line_id: 1, product_id: 5, quantity: 2, subtotal: 160 },
+            { order_line_id: 2, product_id: 5, quantity: 1, subtotal: 80 },
+            { order_line_id: 3, product_id: 9, quantity: 4, subtotal: 300 },
+          ],
+        };
+      }
+      if (query.table === "products") {
+        return {
+          data: [
+            { product_id: 5, product_name: "Latte" },
+            { product_id: 9, product_name: "Salabat" },
+          ],
+        };
+      }
+      return { data: [] };
+    };
+
+    const r = await call(
+      reports.GET(
+        req(
+          "GET",
+          "/api/reports/best-sellers?from=2026-10-30&to=2026-11-05&limit=5",
+          OWNER,
+        ),
+        params({ type: "best-sellers" }),
+      ),
+    );
+
+    expect(r.status).toBe(200);
+    expect(r.body.data.rows).toEqual([
+      {
+        productId: 9,
+        productName: "Salabat",
+        unitsSold: 4,
+        revenue: 300,
+        currentUnitCost: null,
+      },
+      {
+        productId: 5,
+        productName: "Latte",
+        unitsSold: 3,
+        revenue: 240,
+        currentUnitCost: null,
+      },
+    ]);
+    const salesCall = calls.find((query) => query.table === "v_sales");
+    if (!salesCall) throw new Error("Expected a date-filtered sales query.");
+    expect(salesCall.filters).toContainEqual([
+      "gte",
+      ["order_date", "2026-10-30T00:00:00+08:00"],
+    ]);
+    expect(salesCall.filters).toContainEqual([
+      "lt",
+      ["order_date", "2026-11-06T00:00:00+08:00"],
     ]);
   });
 

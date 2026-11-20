@@ -161,7 +161,7 @@ Email/username + password, show/hide toggle, inline error, loading state, no sig
 - **Ingredient list (read-only):** name, unit, current stock, reorder level, status chip; Out/Low first.
 - **Stock In/Out (`/inventory/stock`):** ingredient select (shows current stock), type In/Out, quantity > 0, remarks (e.g. *Delivery*) → creates `stock_transactions`. Out cannot exceed current stock.
 - **Stock History:** date/time, ingredient, type, qty, remaining, by, remarks; filter by ingredient/type/date.
-- No add/edit/delete ingredient, no unit cost, no supplier info (Owner-only — see Q12).
+- Baristas may add a basic ingredient (name, unit, existing active supplier, reorder level, and opening stock). They cannot create suppliers, view supplier contact details, set unit cost/add-on settings, or edit/delete ingredients.
 
 ---
 

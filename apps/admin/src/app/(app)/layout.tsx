@@ -60,6 +60,11 @@ function OwnerShell({ children }: { children: React.ReactNode }) {
     ...(USE_MOCKS ? [{ label: "Reset demo data", onSelect: resetDemo }] : []),
     { label: "Sign out", onSelect: handleLogout },
   ];
+  const pageTitle =
+    ADMIN_NAV_ITEMS.find(
+      (item) =>
+        pathname === item.href || pathname.startsWith(`${item.href}/`),
+    )?.label ?? "Admin Portal";
 
   return (
     <>
@@ -67,7 +72,7 @@ function OwnerShell({ children }: { children: React.ReactNode }) {
         navItems={ADMIN_NAV_ITEMS}
         currentPath={pathname}
         onNavigate={(href) => router.push(href)}
-        topBarProps={{ title: "Admin Portal", userName, roleLabel: "Owner", onLogout: handleLogout, menuItems }}
+        topBarProps={{ title: pageTitle, userName, roleLabel: "Owner", onLogout: handleLogout, menuItems }}
       >
         {children}
       </AppShell>

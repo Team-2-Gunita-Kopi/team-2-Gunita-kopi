@@ -14,12 +14,9 @@ const SELECT =
   "stock_trans_id, ingredient_id, user_id, type, quantity, remaining_stock, date_time, remarks, ingredients(ingredient_name), users(full_name)";
 
 /**
- * SRS 2.3 and FR-15/FR-16: the Owner records stock-in, the Barista records stock-out.
- * RLS (stock_insert, migration 20261120000000) enforces the same rule; checkout stock-out goes
- * through process_checkout_transaction instead.
+ * The Owner and Barista may record stock-in and stock-out.
+ * RLS enforces the same rule; checkout stock-out goes through process_checkout_transaction.
  */
-const ROLE_FOR_TYPE = { in: "owner_admin", out: "barista" } as const;
-
 interface TxRow {
   stock_trans_id: number;
   ingredient_id: number;
@@ -73,12 +70,8 @@ export async function createStockTransaction(
   user: AuthenticatedUser,
   body: CreateStockTransactionRequest,
 ): Promise<StockTransaction> {
-  if (user.role !== ROLE_FOR_TYPE[body.type]) {
-    throw new ForbiddenError(
-      body.type === "in"
-        ? "Only the Owner/Manager records stock-in"
-        : "Only Barista/Service Staff record stock-out",
-    );
+  if (user.role !== "owner_admin" && user.role !== "barista") {
+    throw new ForbiddenError("Only the Owner/Manager or Barista/Service Staff may record stock movements");
   }
   await getIngredient(user, body.ingredientId); // 404 instead of a misleading stock conflict
   const { data, error } = await user.supabaseClient

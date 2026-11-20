@@ -1,7 +1,7 @@
 import React from "react";
 import { ORDER_TYPE_LABEL } from "@gunita/contracts/ui";
 import type { Order } from "@gunita/contracts/ui";
-import { formatDateTime, formatPeso } from "./format";
+import { formatDateTime, formatPeso, formatQueueNumber } from "./format";
 import { Chip } from "./Chip";
 
 export interface ReceiptProps {
@@ -20,7 +20,14 @@ function methodLabel(m: string): string {
 }
 
 /** Layout from receiptModal() in apps/admin/app.js. */
-export function Receipt({ order, shopName, footer, cashierName, pendingSync, slip }: ReceiptProps) {
+export function Receipt({
+  order,
+  shopName,
+  footer,
+  cashierName,
+  pendingSync,
+  slip,
+}: ReceiptProps) {
   const small = { fontSize: ".78rem" } as const;
   return (
     <div className="print-area">
@@ -28,11 +35,16 @@ export function Receipt({ order, shopName, footer, cashierName, pendingSync, sli
         <div className="bay-head" lang="tl-Tglg" aria-hidden="true">
           ᜃᜓᜉᜒ
         </div>
-        <h3 style={{ textAlign: "center", margin: ".2rem 0" }}>{slip ? "Order slip" : shopName}</h3>
+        <h3 style={{ textAlign: "center", margin: ".2rem 0" }}>
+          {slip ? "Order slip" : shopName}
+        </h3>
         <div className="queue-num" style={{ textAlign: "center" }}>
-          {order.orderNumber ?? order.id}
+          {formatQueueNumber(order.orderNumber ?? order.id)}
         </div>
-        <p className="muted" style={{ textAlign: "center", margin: "0 0 .5rem" }}>
+        <p
+          className="muted"
+          style={{ textAlign: "center", margin: "0 0 .5rem" }}
+        >
           {ORDER_TYPE_LABEL[order.type]} · {formatDateTime(order.createdAt)}
         </p>
         {pendingSync ? (
@@ -51,10 +63,15 @@ export function Receipt({ order, shopName, footer, cashierName, pendingSync, sli
                       <br />
                       <span className="muted addon-line">
                         {slip ? (
-                          <>+ {a.quantity}× {a.label}</>
+                          <>
+                            + {a.quantity}× {a.label}
+                          </>
                         ) : (
                           <>
-                            + {a.label} <span className="num">{formatPeso(a.price * a.quantity)}</span>
+                            + {a.label}{" "}
+                            <span className="num">
+                              {formatPeso(a.price * a.quantity)}
+                            </span>
                           </>
                         )}
                       </span>
@@ -63,13 +80,17 @@ export function Receipt({ order, shopName, footer, cashierName, pendingSync, sli
                   {it.customization ? (
                     <>
                       <br />
-                      <span className="muted" style={small}>{it.customization}</span>
+                      <span className="muted" style={small}>
+                        {it.customization}
+                      </span>
                     </>
                   ) : null}
                   {it.specialInstructions ? (
                     <>
                       <br />
-                      <span className="muted" style={small}>Note: {it.specialInstructions}</span>
+                      <span className="muted" style={small}>
+                        Note: {it.specialInstructions}
+                      </span>
                     </>
                   ) : null}
                 </td>
@@ -77,35 +98,52 @@ export function Receipt({ order, shopName, footer, cashierName, pendingSync, sli
               </tr>
             ))}
             {slip ? null : (
-            <>
-            <tr className="tot">
-              <td><strong>Total</strong></td>
-              <td className="r"><strong>{formatPeso(order.totalAmount)}</strong></td>
-            </tr>
-            {order.paidAmount > 0 ? (
               <>
-                <tr>
-                  <td className="muted">{methodLabel(order.paymentMethod)}</td>
-                  <td className="r muted">{formatPeso(order.paidAmount)}</td>
+                <tr className="tot">
+                  <td>
+                    <strong>Total</strong>
+                  </td>
+                  <td className="r">
+                    <strong>{formatPeso(order.totalAmount)}</strong>
+                  </td>
                 </tr>
-                <tr>
-                  <td className="muted">Change</td>
-                  <td className="r muted">{formatPeso(order.changeAmount)}</td>
-                </tr>
+                {order.paidAmount > 0 ? (
+                  <>
+                    <tr>
+                      <td className="muted">
+                        {methodLabel(order.paymentMethod)}
+                      </td>
+                      <td className="r muted">
+                        {formatPeso(order.paidAmount)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="muted">Change</td>
+                      <td className="r muted">
+                        {formatPeso(order.changeAmount)}
+                      </td>
+                    </tr>
+                  </>
+                ) : (
+                  <tr>
+                    <td className="muted">Payment</td>
+                    <td className="r muted">Unpaid</td>
+                  </tr>
+                )}
               </>
-            ) : (
-              <tr>
-                <td className="muted">Payment</td>
-                <td className="r muted">Unpaid</td>
-              </tr>
-            )}
-            </>
             )}
           </tbody>
         </table>
-        <p className="muted" style={{ ...small, margin: ".5rem 0 0" }}>Served by {cashierName}</p>
+        <p className="muted" style={{ ...small, margin: ".5rem 0 0" }}>
+          Served by {cashierName}
+        </p>
         {slip ? null : (
-          <p className="muted" style={{ ...small, textAlign: "center", margin: ".3rem 0 0" }}>{footer}</p>
+          <p
+            className="muted"
+            style={{ ...small, textAlign: "center", margin: ".3rem 0 0" }}
+          >
+            {footer}
+          </p>
         )}
       </div>
     </div>

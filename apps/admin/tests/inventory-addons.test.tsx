@@ -1,8 +1,8 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { screen, waitFor, within } from "@testing-library/react";
-import type { Ingredient } from "@gunita/contracts";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import type { Ingredient, StockTransaction } from "@gunita/contracts";
 import { renderWithProviders } from "@/test/render";
 
 // Real mode: the inventory page against the (mocked) API module.
@@ -12,8 +12,10 @@ const api = vi.hoisted(() => ({
   listIngredients: vi.fn(),
   createIngredient: vi.fn(),
   updateIngredient: vi.fn(),
-  listStockHistory: vi.fn(async () => []),
-  recordStockIn: vi.fn(),
+  listStockHistory: vi.fn<
+    (filters?: { ingredientId?: string; from?: string; to?: string }) => Promise<StockTransaction[]>
+  >(async () => []),
+  recordStockMovement: vi.fn(),
 }));
 vi.mock("@/features/inventory/api", async (importActual) => ({
   ...(await importActual<typeof import("@/features/inventory/api")>()),
@@ -32,11 +34,11 @@ const base = {
   updatedAt: "2026-11-19T00:00:00Z",
 };
 const BEANS: Ingredient = {
-  ...base, id: 21, name: "Espresso Beans", unit: "g", unitCost: 1.2,
+  ...base, id: 21, name: "Espresso Beans", unit: "g", unitCost: 1.2, supplierName: "Local Roasters",
   isAddon: true, addonSellingPrice: 25, addonQuantity: 18,
 };
 const RICE: Ingredient = {
-  ...base, id: 23, name: "Rice", unit: "g", unitCost: 0.05,
+  ...base, id: 23, name: "Rice", unit: "g", unitCost: 0.05, supplierName: "Farm Supply",
   isAddon: false, addonSellingPrice: null, addonQuantity: null,
 };
 
@@ -45,25 +47,26 @@ beforeEach(() => {
   api.listIngredients.mockResolvedValue([BEANS, RICE]);
   api.createIngredient.mockResolvedValue(RICE);
   api.updateIngredient.mockResolvedValue(RICE);
+  api.recordStockMovement.mockResolvedValue({});
 });
 
 async function openEdit(name: string) {
   renderWithProviders(<InventoryPage />);
   const row = (await screen.findByText(name)).closest("tr")!;
-  await userEvent.click(within(row).getByRole("button", { name: "Edit" }));
+  await userEvent.click(within(row).getByRole("button", { name: `Edit ${name}` }));
   return screen.getByRole("dialog");
 }
 
 describe("Admin inventory: add-on configuration and costs", () => {
   it("keeps the Unit Cost column for the Owner", async () => {
     renderWithProviders(<InventoryPage />);
-    expect(await screen.findByText("₱0.05/g")).toBeInTheDocument();
+    expect(await screen.findByText("₱0.05")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Unit Cost" })).toBeInTheDocument();
   });
 
   it("Add Ingredient: unchecked by default, fixed PHP 25.00, quantity required and saved", async () => {
     renderWithProviders(<InventoryPage />);
-    await userEvent.click(await screen.findByRole("button", { name: "Add Ingredient" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Add ingredient" }));
     const dialog = screen.getByRole("dialog");
     const box = within(dialog).getByLabelText("Available as a POS add-on");
     expect(box).not.toBeChecked();
@@ -94,7 +97,7 @@ describe("Admin inventory: add-on configuration and costs", () => {
 
   it("Add Ingredient unchecked saves a regular ingredient", async () => {
     renderWithProviders(<InventoryPage />);
-    await userEvent.click(await screen.findByRole("button", { name: "Add Ingredient" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Add ingredient" }));
     const dialog = screen.getByRole("dialog");
     await userEvent.type(within(dialog).getByLabelText("Ingredient"), "Cups");
     await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
@@ -124,5 +127,114 @@ describe("Admin inventory: add-on configuration and costs", () => {
     const dialog = await openEdit("Rice");
     expect(within(dialog).getByLabelText("Available as a POS add-on")).not.toBeChecked();
     expect(within(dialog).queryByLabelText(/Add-on selling price/)).not.toBeInTheDocument();
+  });
+
+  it("shows ingredient IDs and suppliers, and opens row-specific stock and history views", async () => {
+    renderWithProviders(<InventoryPage />);
+    expect(await screen.findByRole("columnheader", { name: "ID" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Supplier" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
+
+    let row = (await screen.findByText("Rice")).closest("tr")!;
+    expect(within(row).getByText("23")).toBeInTheDocument();
+    expect(within(row).getByText("Farm Supply")).toBeInTheDocument();
+    await userEvent.click(within(row).getByRole("button", { name: "Stock In/Out" }));
+    expect(screen.getByLabelText("Ingredient")).toHaveValue("23");
+
+    await userEvent.click(screen.getByRole("tab", { name: "Ingredient List" }));
+    row = (await screen.findByText("Rice")).closest("tr")!;
+    await userEvent.click(within(row).getByRole("button", { name: "History" }));
+    expect(screen.getByRole("tab", { name: "Stock History" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByLabelText("Ingredient")).toHaveValue("23");
+  });
+
+  it("records stock-in and stock-out for the selected ingredient", async () => {
+    renderWithProviders(<InventoryPage />);
+    await userEvent.click(
+      await screen.findByRole("tab", { name: "Stock In / Out" }),
+    );
+    expect(await screen.findByText("200 g")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("Quantity"), "10");
+    await userEvent.type(screen.getByLabelText("Remarks"), "delivery");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save transaction" }),
+    );
+    await waitFor(() =>
+      expect(api.recordStockMovement).toHaveBeenLastCalledWith({
+        ingredientId: 21,
+        type: "in",
+        quantity: 10,
+        remarks: "delivery",
+      }),
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("Type"), "out");
+    await userEvent.type(screen.getByLabelText("Quantity"), "5");
+    await userEvent.type(screen.getByLabelText("Remarks"), "spoilage");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save transaction" }),
+    );
+    await waitFor(() =>
+      expect(api.recordStockMovement).toHaveBeenLastCalledWith({
+        ingredientId: 21,
+        type: "out",
+        quantity: 5,
+        remarks: "spoilage",
+      }),
+    );
+  });
+
+  it("shows filtered stock history with transaction IDs and movement badges", async () => {
+    api.listStockHistory.mockResolvedValue([
+      {
+        id: 8,
+        ingredientId: 23,
+        ingredientName: "Rice",
+        type: "in",
+        quantity: 22,
+        remainingStock: 672,
+        userId: 4,
+        userName: "Juan Dela Cruz",
+        dateTime: "2026-11-04T09:28:00Z",
+        remarks: "Delivery",
+      },
+      {
+        id: 7,
+        ingredientId: 21,
+        ingredientName: "Espresso Beans",
+        type: "out",
+        quantity: 5,
+        remainingStock: 195,
+        userId: 2,
+        userName: "Eric Espedilion",
+        dateTime: "2026-11-02T08:55:00Z",
+        remarks: "Weekly usage",
+      },
+    ]);
+
+    renderWithProviders(<InventoryPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Stock History" }));
+
+    expect(await screen.findByRole("columnheader", { name: "Date & Time" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "ID" })).toBeInTheDocument();
+    expect(await screen.findByText("IN")).toHaveClass("stock-history-type", "is-in");
+    expect(screen.getByText("OUT")).toHaveClass("stock-history-type", "is-out");
+    expect(screen.getByText("22 g")).toBeInTheDocument();
+    expect(screen.getByText("Weekly usage")).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText("Ingredient"), "23");
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-11-01" } });
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-11-30" } });
+    await waitFor(() =>
+      expect(api.listStockHistory).toHaveBeenLastCalledWith({
+        ingredientId: "23",
+        from: "2026-11-01",
+        to: "2026-11-30",
+      }),
+    );
   });
 });

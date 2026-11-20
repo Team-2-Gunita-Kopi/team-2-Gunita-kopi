@@ -1,7 +1,23 @@
 import { z } from "zod";
-import { PaginationQuerySchema, StatusSchema, optionalText } from "./common";
+import {
+  IdSchema,
+  PaginationQuerySchema,
+  StatusSchema,
+  optionalText,
+} from "./common";
 
 // SUPPLIERS (FR-22). Reference records only: no purchase orders or automatic reordering.
+export const IngredientSupplierOptionSchema = z.object({
+  id: IdSchema,
+  name: z.string(),
+});
+export const IngredientSupplierOptionsSchema = z.array(
+  IngredientSupplierOptionSchema,
+);
+export type IngredientSupplierOption = z.infer<
+  typeof IngredientSupplierOptionSchema
+>;
+
 export const SupplierSchema = z.object({
   id: z.number().int(),
   name: z.string(),

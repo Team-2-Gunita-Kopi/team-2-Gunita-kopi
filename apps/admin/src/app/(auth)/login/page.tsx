@@ -1,17 +1,33 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CreateAccountForm, ForgotPasswordForm, LoginForm } from "@gunita/ui";
 import { registerOwner, requestPasswordRecovery, resetPassword, signIn, verifyRecoveryCode } from "@/features/auth";
 import { safeRedirect } from "@/lib/safe-redirect";
+import { USE_MOCKS } from "@/lib/use-mocks";
+import { isLoopbackUrl } from "@gunita/auth";
 
 type View = "login" | "forgot" | "create";
+
+const localOwnerSetupWithoutToken =
+  process.env.NODE_ENV === "development" &&
+  isLoopbackUrl(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "") &&
+  isLoopbackUrl(
+    process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002",
+  );
 
 export default function LoginPage() {
   const router = useRouter();
   const [view, setView] = useState<View>("login");
   const [notice, setNotice] = useState("");
+
+  // Shown after the first authenticator setup (/mfa signs out and sends the Owner here).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("notice") === "mfa_enabled") {
+      setNotice("Authenticator set up. Sign in with your username and password.");
+    }
+  }, []);
 
   const backToLogin = (message = "") => {
     setNotice(message);
@@ -49,7 +65,13 @@ export default function LoginPage() {
     return (
       <CreateAccountForm
         onCreate={registerOwner}
-        onDone={() => backToLogin("Account created. You can now sign in.")}
+        requiresSetupCode={!USE_MOCKS && !localOwnerSetupWithoutToken}
+        onDone={(message) =>
+          // Real mode: the new Owner is signed in (first step only) and sets up MFA before signing in.
+          USE_MOCKS
+            ? backToLogin(message || "Account created. You can now sign in.")
+            : router.replace("/mfa")
+        }
         onBack={() => backToLogin()}
       />
     );

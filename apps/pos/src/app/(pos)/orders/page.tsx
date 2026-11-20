@@ -1,149 +1,474 @@
 "use client";
 
-import React from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, DataTable, StatusBadge, useConfirm, useToast } from "@gunita/ui";
-import { USE_MOCKS } from "@/lib/use-mocks";
-import { posDb } from "@/offline/db";
+import React, { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
+import type { Order, OrderStatus } from "@gunita/contracts";
+import { ORDER_TYPE_LABEL } from "@gunita/contracts/ui";
 import {
-  NEXT_STATUS,
-  listTodayOrders,
-  toOrderBoardRow,
-  updateOrderStatus,
-  type OrderBoardRow,
-} from "@/features/orders/api";
+  Button,
+  DataTable,
+  StatusBadge,
+  formatPeso,
+  formatQueueNumber,
+} from "@gunita/ui";
+import type { Column } from "@gunita/ui";
+import { USE_MOCKS } from "@/lib/use-mocks";
+import { posDb, type OutboxOrderRecord } from "@/offline/db";
+import { listOrders } from "@/features/orders/api";
 
-type PosOrderRow = OrderBoardRow;
+interface OrderLineRow {
+  key: string;
+  orderId: number | null;
+  line: number;
+  queue: string;
+  cashier: string;
+  type: string;
+  orderDate: string;
+  status: OrderStatus;
+  product: string;
+  ingredient: string;
+  addon: string;
+  quantity: number;
+  unitPrice: string;
+  customization: string;
+  specialInstructions: string;
+}
 
-const samplePosOrders: PosOrderRow[] = [
+type StatusFilter = OrderStatus | "all";
+
+const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Asia/Manila",
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+const TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Asia/Manila",
+  hour: "numeric",
+  minute: "2-digit",
+});
+const BUSINESS_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Manila",
+});
+
+const sampleData: Omit<OrderLineRow, "key" | "orderId">[] = [
   {
-    id: "tx_1",
-    orderId: null,
-    orderNumber: "#GK-1085",
-    type: "dine-in",
-    items: "2x Spanish Latte",
-    total: "₱280.00",
-    status: "completed",
-    syncState: "synced",
+    line: 101,
+    queue: "012",
+    cashier: "Juan Dela Cruz",
+    type: "Dine-in",
+    orderDate: "2026-11-03T14:22:00+08:00",
+    status: "preparing",
+    product: "Iced Spanish Latte",
+    ingredient: "—",
+    addon: "No",
+    quantity: 1,
+    unitPrice: formatPeso(145),
+    customization: "Sugar 50%",
+    specialInstructions: "No lid",
   },
   {
-    id: "tx_2",
-    orderId: null,
-    orderNumber: "#GK-1086",
-    type: "take-out",
-    items: "1x Americano, 1x Croissant",
-    total: "₱195.00",
+    line: 102,
+    queue: "012",
+    cashier: "Juan Dela Cruz",
+    type: "Dine-in",
+    orderDate: "2026-11-03T14:22:00+08:00",
     status: "preparing",
-    syncState: "pending",
+    product: "Iced Spanish Latte",
+    ingredient: "Hazelnut syrup",
+    addon: "Yes",
+    quantity: 1,
+    unitPrice: formatPeso(15),
+    customization: "—",
+    specialInstructions: "—",
+  },
+  {
+    line: 99,
+    queue: "011",
+    cashier: "Juan Dela Cruz",
+    type: "Take-out",
+    orderDate: "2026-11-03T14:10:00+08:00",
+    status: "pending",
+    product: "Longsilog",
+    ingredient: "—",
+    addon: "No",
+    quantity: 2,
+    unitPrice: formatPeso(140),
+    customization: "Scrambled egg",
+    specialInstructions: "—",
+  },
+  {
+    line: 100,
+    queue: "011",
+    cashier: "Juan Dela Cruz",
+    type: "Take-out",
+    orderDate: "2026-11-03T13:59:00+08:00",
+    status: "pending",
+    product: "Ensaymada",
+    ingredient: "—",
+    addon: "No",
+    quantity: 2,
+    unitPrice: formatPeso(70),
+    customization: "Heated",
+    specialInstructions: "—",
+  },
+  {
+    line: 97,
+    queue: "010",
+    cashier: "Juan Dela Cruz",
+    type: "Take-out",
+    orderDate: "2026-11-03T12:47:00+08:00",
+    status: "pending",
+    product: "Iced Americano",
+    ingredient: "—",
+    addon: "No",
+    quantity: 1,
+    unitPrice: formatPeso(110),
+    customization: "Less ice",
+    specialInstructions: "—",
+  },
+  {
+    line: 98,
+    queue: "010",
+    cashier: "Juan Dela Cruz",
+    type: "Take-out",
+    orderDate: "2026-11-03T12:47:00+08:00",
+    status: "pending",
+    product: "Iced Spanish Latte",
+    ingredient: "—",
+    addon: "No",
+    quantity: 1,
+    unitPrice: formatPeso(145),
+    customization: "Sugar 25%",
+    specialInstructions: "Serve last",
+  },
+  {
+    line: 94,
+    queue: "009",
+    cashier: "Maria Santos",
+    type: "Take-out",
+    orderDate: "2026-11-03T12:16:00+08:00",
+    status: "completed",
+    product: "Tapsilog",
+    ingredient: "—",
+    addon: "No",
+    quantity: 1,
+    unitPrice: formatPeso(150),
+    customization: "Sunny side up",
+    specialInstructions: "—",
+  },
+  {
+    line: 95,
+    queue: "009",
+    cashier: "Maria Santos",
+    type: "Take-out",
+    orderDate: "2026-11-03T12:16:00+08:00",
+    status: "completed",
+    product: "Kapeng Barako",
+    ingredient: "—",
+    addon: "No",
+    quantity: 1,
+    unitPrice: formatPeso(85),
+    customization: "Extra hot",
+    specialInstructions: "—",
+  },
+  {
+    line: 96,
+    queue: "009",
+    cashier: "Maria Santos",
+    type: "Take-out",
+    orderDate: "2026-11-03T12:16:00+08:00",
+    status: "completed",
+    product: "Banana Bread",
+    ingredient: "—",
+    addon: "No",
+    quantity: 1,
+    unitPrice: formatPeso(60),
+    customization: "—",
+    specialInstructions: "—",
   },
 ];
 
-/** Orders still on this device (not yet confirmed by the server, FR-56/FR-60). */
-async function queuedRows(): Promise<PosOrderRow[]> {
-  const records = await posDb.ordersOutbox.where("status").anyOf("pending", "syncing", "failed").toArray();
-  return records.map((r) => ({
-    id: r.clientTxId,
-    orderId: null,
-    orderNumber: r.provisionalNo ?? "Queued",
-    type: r.order.type,
-    items: r.order.items.map((i) => `${i.quantity}x ${i.productName}`).join(", "),
-    total: `₱${r.order.totalAmount.toFixed(2)}`,
-    status: "pending",
-    syncState: r.status === "failed" ? "failed" : "pending",
-  }));
+const sampleRows = sampleData.map((row) => ({
+  ...row,
+  orderId: null,
+  key: String(row.line),
+}));
+
+async function queuedOrders(): Promise<OutboxOrderRecord[]> {
+  return posDb.ordersOutbox
+    .where("status")
+    .anyOf("pending", "syncing", "failed")
+    .toArray();
+}
+
+function flattenOrders(orders: Order[]): OrderLineRow[] {
+  return orders.flatMap((order) => {
+    let parentProduct = "—";
+    return [...order.items]
+      .sort((a, b) => a.lineId - b.lineId)
+      .map((item) => {
+        if (!item.isAddon) parentProduct = item.name ?? "—";
+        return {
+          key: `${order.orderId}-${item.lineId}`,
+          orderId: order.orderId,
+          line: item.lineId,
+          queue: formatQueueNumber(order.orderId),
+          cashier: order.cashierName ?? "—",
+          type: order.orderType ? ORDER_TYPE_LABEL[order.orderType] : "—",
+          orderDate: order.orderDate,
+          status: order.status,
+          product: item.isAddon ? parentProduct : (item.name ?? "—"),
+          ingredient: item.isAddon ? (item.name ?? "—") : "—",
+          addon: item.isAddon ? "Yes" : "No",
+          quantity: item.quantity,
+          unitPrice: formatPeso(item.unitPrice),
+          customization: item.customization ?? "—",
+          specialInstructions: item.specialInstructions ?? "—",
+        };
+      });
+  });
+}
+
+function flattenQueuedOrders(records: OutboxOrderRecord[]): OrderLineRow[] {
+  return records.flatMap((record) => {
+    let line = 0;
+    return record.order.items.flatMap((item) => {
+      const productRow: OrderLineRow = {
+        key: `${record.clientTxId}-${++line}`,
+        orderId: null,
+        line,
+        queue: record.provisionalNo ?? "Queued",
+        cashier: "—",
+        type: ORDER_TYPE_LABEL[record.order.type],
+        orderDate: record.createdAt,
+        status: "pending",
+        product: item.productName,
+        ingredient: "—",
+        addon: "No",
+        quantity: item.quantity,
+        unitPrice: formatPeso(item.unitPrice),
+        customization: item.customization ?? "—",
+        specialInstructions: item.specialInstructions ?? "—",
+      };
+      const addonRows: OrderLineRow[] = (item.addons ?? []).map((addon) => {
+        const addonLine = ++line;
+        return {
+          ...productRow,
+          key: `${record.clientTxId}-${addonLine}`,
+          line: addonLine,
+          ingredient: addon.label,
+          addon: "Yes",
+          unitPrice: formatPeso(addon.price),
+          customization: "—",
+          specialInstructions: "—",
+        };
+      });
+      return [productRow, ...addonRows];
+    });
+  });
+}
+
+function displayDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : DATE_FORMATTER.format(date);
+}
+
+function displayTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : TIME_FORMATTER.format(date);
+}
+
+function queueMatches(queue: string, search: string): boolean {
+  const term = search
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  if (!term) return true;
+  const number = queue.toLowerCase();
+  const numericTerm = term.replace(/^a/, "").replace(/^0+(?=\d)/, "");
+  const numericQueue = number.replace(/^0+(?=\d)/, "");
+  return (
+    number.includes(term) ||
+    `a${number}`.includes(term) ||
+    (!!numericTerm && numericQueue.includes(numericTerm))
+  );
+}
+
+function matchesBusinessDate(value: string, date: string): boolean {
+  const parsed = new Date(value);
+  return (
+    !Number.isNaN(parsed.getTime()) &&
+    BUSINESS_DATE_FORMATTER.format(parsed) === date
+  );
 }
 
 export default function PosOrdersPage() {
-  const toast = useToast();
-  const confirm = useConfirm();
-  const client = useQueryClient();
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [dateFilter, setDateFilter] = useState("");
   const orders = useQuery({
-    queryKey: ["pos-orders"],
+    queryKey: ["pos-orders", statusFilter, dateFilter],
     enabled: !USE_MOCKS,
     refetchInterval: 5000,
-    queryFn: async () => [...(await queuedRows()), ...(await listTodayOrders()).map(toOrderBoardRow)],
+    queryFn: () =>
+      listOrders({
+        status: statusFilter,
+        date: dateFilter || undefined,
+      }),
+  });
+  const outbox = useQuery({
+    queryKey: ["pos-orders-outbox"],
+    enabled: !USE_MOCKS,
+    refetchInterval: 5000,
+    queryFn: queuedOrders,
   });
 
-  const advance = async (row: PosOrderRow, status: "cancel" | "next") => {
-    const target = status === "cancel" ? "cancelled" : NEXT_STATUS[row.status as keyof typeof NEXT_STATUS];
-    if (row.orderId === null || !target) return;
-    if (
-      target === "cancelled" &&
-      !(await confirm({
-        title: "Cancel order",
-        message: `Cancel order ${row.orderNumber}? Cancelled orders cannot be reopened.`,
-        confirmLabel: "Cancel order",
-        danger: true,
-      }))
-    ) {
-      return;
-    }
-    try {
-      await updateOrderStatus(row.orderId, target);
-      await client.invalidateQueries({ queryKey: ["pos-orders"] });
-    } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not update the order.", true);
-    }
-  };
+  const allRows = USE_MOCKS
+    ? sampleRows
+    : [
+        ...flattenOrders(orders.data ?? []),
+        ...flattenQueuedOrders(outbox.data ?? []),
+      ];
+  const rows = useMemo(
+    () =>
+      allRows.filter(
+        (row) =>
+          queueMatches(row.queue, search) &&
+          (statusFilter === "all" || row.status === statusFilter) &&
+          (!dateFilter || matchesBusinessDate(row.orderDate, dateFilter)),
+      ),
+    [allRows, dateFilter, search, statusFilter],
+  );
 
-  const rows = USE_MOCKS ? samplePosOrders : (orders.data ?? []);
+  const columns: Column<OrderLineRow>[] = [
+    { key: "line", header: "Line" },
+    {
+      key: "queue",
+      header: "Queue",
+      className: "mono",
+      render: (row) =>
+        !USE_MOCKS && row.orderId !== null ? (
+          <Link
+            href={`/orders/${row.orderId}`}
+            className="order-queue-link"
+            aria-label={`View details for order ${row.queue}`}
+          >
+            {row.queue}
+          </Link>
+        ) : (
+          row.queue
+        ),
+    },
+    { key: "cashier", header: "Cashier" },
+    { key: "type", header: "Type" },
+    {
+      key: "orderDate",
+      header: "Date & Time",
+      render: (row) => (
+        <span className="whitespace-nowrap">
+          {displayDate(row.orderDate)}
+          <br />
+          {displayTime(row.orderDate)}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (row) => <StatusBadge status={row.status} />,
+    },
+    { key: "product", header: "Product" },
+    { key: "ingredient", header: "Ingredient" },
+    { key: "addon", header: "Add-on" },
+    { key: "quantity", header: "Qty", className: "num" },
+    { key: "unitPrice", header: "Unit Price", className: "num" },
+    { key: "customization", header: "Customization" },
+    { key: "specialInstructions", header: "Special Instructions" },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Today Orders</h1>
-          <p className="text-sm text-gray-500">
-            Live order queue and outbox sync status
-          </p>
-        </div>
-      </div>
+    <div className="barista-orders space-y-5">
+      <header>
+        <p className="product-page-kicker">Gunita · Order Board</p>
+        <h1>Orders</h1>
+      </header>
 
-      {orders.error && (
-        <p className="text-sm text-red-700">
-          {orders.error instanceof Error ? orders.error.message : "Could not load orders."}
+      <section aria-label="Order filters" className="barista-orders-filters">
+        <label className="block text-xs font-medium text-gray-500">
+          Search
+          <input
+            type="search"
+            className="mt-1 w-full"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Queue no. e.g. 012"
+          />
+        </label>
+        <label className="block text-xs font-medium text-gray-500">
+          Status
+          <select
+            className="mt-1 w-full"
+            value={statusFilter}
+            onChange={(event) =>
+              setStatusFilter(event.target.value as StatusFilter)
+            }
+          >
+            <option value="all">All</option>
+            <option value="pending">Pending</option>
+            <option value="preparing">Preparing</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </label>
+        <label className="block text-xs font-medium text-gray-500">
+          Date
+          <input
+            type="date"
+            className="mt-1 w-full"
+            value={dateFilter}
+            onChange={(event) => setDateFilter(event.target.value)}
+          />
+        </label>
+        <Button
+          variant="outline"
+          className="self-end"
+          disabled={!dateFilter}
+          onClick={() => setDateFilter("")}
+        >
+          Clear date
+        </Button>
+      </section>
+
+      {orders.error && !USE_MOCKS ? (
+        <p role="alert" className="recipe-message error">
+          {orders.error instanceof Error
+            ? orders.error.message
+            : "Could not load orders."}
         </p>
-      )}
+      ) : null}
+      {outbox.error && !USE_MOCKS ? (
+        <p role="alert" className="recipe-message error">
+          {outbox.error instanceof Error
+            ? outbox.error.message
+            : "Could not load queued orders."}
+        </p>
+      ) : null}
+      {!USE_MOCKS && (orders.isPending || outbox.isPending) ? (
+        <p role="status">Loading orders…</p>
+      ) : null}
 
-      <DataTable<PosOrderRow>
-        columns={[
-          { key: "orderNumber", header: "Order #" },
-          { key: "type", header: "Type" },
-          { key: "items", header: "Items" },
-          { key: "total", header: "Total" },
-          {
-            key: "status",
-            header: "Status",
-            render: (row) => <StatusBadge status={String(row.status)} />,
-          },
-          {
-            key: "syncState",
-            header: "Sync",
-            render: (row) => (
-              <StatusBadge
-                status={String(row.syncState)}
-                label={String(row.syncState)}
-              />
-            ),
-          },
-          {
-            key: "actions",
-            header: "",
-            render: (row) =>
-              row.orderId !== null && (row.status === "pending" || row.status === "preparing") ? (
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={() => void advance(row, "next")}>
-                    {row.status === "pending" ? "Start" : "Complete"}
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => void advance(row, "cancel")}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : null,
-          },
-        ]}
+      <DataTable<OrderLineRow>
+        className="tbl-orders barista-orders-table"
+        columns={columns}
         data={rows}
-        keyExtractor={(row) => row.id}
+        emptyMessage={
+          orders.error && !USE_MOCKS
+            ? "Orders could not be loaded."
+            : "No orders match these filters."
+        }
+        keyExtractor={(row) => row.key}
       />
     </div>
   );

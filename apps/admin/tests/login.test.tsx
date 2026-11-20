@@ -89,6 +89,7 @@ describe("admin login links", () => {
     renderWithProviders(<LoginPage />);
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
     expect(screen.getByLabelText("Full name")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Setup code")).not.toBeInTheDocument();
     expect(screen.getByText("Initial Owner registration only. Registration closes after setup.")).toBeInTheDocument();
   });
 });

@@ -16,9 +16,13 @@ import { logger } from "@/lib/logger";
 
 /**
  * The one-time setup code lives only in the API's environment (OWNER_SETUP_TOKEN).
- * Unset or shorter than 32 characters: setup is switched off.
+ * Unset or shorter than 32 characters: setup is switched off outside trusted local development.
  */
-function assertSetupToken(provided: string | null): void {
+function assertSetupToken(
+  provided: string | null,
+  allowLocalNoToken: boolean,
+): void {
+  if (allowLocalNoToken && provided === null) return;
   const expected = process.env.OWNER_SETUP_TOKEN ?? "";
   if (expected.length < 32) {
     throw new ForbiddenError("Owner setup is not enabled on this server");
@@ -61,8 +65,9 @@ const setupComplete = () => {
 export async function provisionInitialOwner(
   setupToken: string | null,
   data: OwnerSetupRequest,
+  options: { allowLocalNoToken?: boolean } = {},
 ): Promise<OwnerSetupResponse> {
-  assertSetupToken(setupToken);
+  assertSetupToken(setupToken, options.allowLocalNoToken === true);
 
   if (data.email.endsWith(`@${STAFF_EMAIL_DOMAIN}`)) {
     throw new AppError("Use your real email address", 400, "VALIDATION_ERROR");
@@ -75,12 +80,13 @@ export async function provisionInitialOwner(
     throw new ConflictError("Email address is already registered");
   }
 
-  // Unconfirmed until the Owner clicks the verification link.
+  // Confirmed at creation: setup already needs the setup code (or localhost in development), and
+  // the Owner must set up the authenticator (MFA) right after, before the first full sign-in.
   const { data: created, error: authError } =
     await supabaseAdmin.auth.admin.createUser({
       email: data.email,
       password: data.password,
-      email_confirm: false,
+      email_confirm: true,
       app_metadata: { role: "owner_admin" },
       user_metadata: { full_name: data.fullName, username: data.username },
     });
@@ -123,18 +129,6 @@ export async function provisionInitialOwner(
     );
   }
 
-  // Sends Supabase's "Confirm your signup" email. A failure does not undo setup;
-  // the response tells the setup page so it can say so.
-  const { error: mailError } = await supabaseAdmin.auth.resend({
-    type: "signup",
-    email: data.email,
-  });
-  if (mailError) {
-    logger.error("Owner verification email failed", {
-      error: mailError.message,
-    });
-  }
-
   await logAuditEvent({
     action: "owner.setup",
     userId: created.user.id,
@@ -153,6 +147,5 @@ export async function provisionInitialOwner(
     email: data.email,
     isActive: profile.status === "active",
     createdAt: profile.date_created,
-    verificationEmailSent: !mailError,
   };
 }

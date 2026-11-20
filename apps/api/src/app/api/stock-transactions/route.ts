@@ -21,7 +21,7 @@ export const GET = route(async (req) => {
   );
 });
 
-// FR-15/FR-16: type "in" is Owner-only, "out" is Barista-only (checked in the service).
+// FR-15/FR-16: both Owner and Barista may record stock-in or stock-out.
 export const POST = route(async (req) => {
   const user = await requireRole(req, ["owner_admin", "barista"]);
   const body = await readJson(req, CreateStockTransactionRequestSchema);

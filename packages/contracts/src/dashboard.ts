@@ -20,6 +20,7 @@ export const DashboardStatsSchema = z.object({
   /** Business day (Asia/Manila), YYYY-MM-DD. */
   date: z.string(),
   todaySales: z.number(),
+  todayOrdersCount: z.number().int(),
   todayCompletedOrders: z.number().int(),
   /** Current queue, any date. */
   pendingOrders: z.number().int(),
