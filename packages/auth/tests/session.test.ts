@@ -41,6 +41,7 @@ const apiSeen: {
   auth: string | null;
   ip: string | null;
   secret: string | null;
+  setupToken: string | null;
 }[] = [];
 const users: Record<string, { id: string; role: Role; ttl?: number }> = {
   eric: { id: "owner-1", role: "owner_admin" },
@@ -205,8 +206,22 @@ beforeAll(async () => {
       auth: req.headers.authorization ?? null,
       ip: (req.headers["x-gunita-client-ip"] as string) ?? null,
       secret: (req.headers["x-gunita-proxy-secret"] as string) ?? null,
+      setupToken: (req.headers["x-setup-token"] as string) ?? null,
     });
     res.setHeader("content-type", "application/json");
+    if (
+      req.url === "/api/setup/owner" &&
+      !req.headers["x-setup-token"] &&
+      req.headers["x-gunita-proxy-secret"] !== SECRET
+    ) {
+      res.statusCode = 403;
+      return res.end(
+        JSON.stringify({
+          success: false,
+          error: { code: "FORBIDDEN", message: "Owner setup is protected" },
+        }),
+      );
+    }
     if (req.url === "/api/auth/login") {
       const { username, password } = JSON.parse(body);
       const u = users[username];
@@ -421,6 +436,104 @@ describe("HttpOnly session: Admin", () => {
     const res = await callApi(s, jar, "auth/login", "POST");
     expect(res.status).toBe(404);
     expect(apiSeen.some((c) => c.path === "/api/auth/login")).toBe(false);
+  });
+
+  it("uses the internal proxy secret for tokenless Owner setup on localhost development", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    try {
+      const res = await callApi(admin(), new Jar(), "setup/owner", "POST");
+      expect(res.status).toBe(200);
+      expect(
+        apiSeen.find((call) => call.path === "/api/setup/owner")?.secret,
+      ).toBe(SECRET);
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
+  });
+
+  it("refuses tokenless Owner setup through a non-loopback host", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    try {
+      const remoteAdmin = site(
+        ADMIN_SESSION_COOKIE,
+        ["owner_admin"],
+        "http://192.168.1.20:3000",
+      );
+      const res = await callApi(
+        remoteAdmin,
+        new Jar(),
+        "setup/owner",
+        "POST",
+      );
+      expect(res.status).toBe(403);
+      expect(apiSeen).toHaveLength(0);
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
+  });
+
+  it("does not grant tokenless Owner setup to the POS proxy", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    try {
+      const res = await callApi(pos(), new Jar(), "setup/owner", "POST");
+      expect(res.status).toBe(403);
+      expect(
+        apiSeen.find((call) => call.path === "/api/setup/owner")?.secret,
+      ).toBeNull();
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
+  });
+
+  it("owner setup creates the account, then signs in with the first step only (MFA next)", async () => {
+    const s = site(ADMIN_SESSION_COOKIE, ["owner_admin"], "http://localhost:3000", {
+      mfaPath: "/mfa",
+    });
+    const jar = new Jar();
+    const setup = (origin?: string | null, token = "setup-secret") => {
+      const r = req(s, "/auth/setup", {
+        method: "POST",
+        body: JSON.stringify({ username: "eric", password: "good" }),
+        origin,
+      });
+      r.headers.set("x-setup-token", token);
+      return s.handlers.ownerSetup(r);
+    };
+
+    expect((await setup("https://evil.example")).status).toBe(403);
+    expect(apiSeen).toHaveLength(0);
+
+    const res = jar.take(await setup());
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.mfaRequired).toBe(true);
+    expect(apiSeen.map((c) => c.path)).toEqual([
+      "/api/setup/owner",
+      "/api/auth/login",
+    ]);
+    expect(apiSeen[0]!.setupToken).toBe("setup-secret");
+    // aal1 only: every page except /mfa sends the new Owner to the MFA setup.
+    expect(location(await visit(s, jar, "/dashboard")).pathname).toBe("/mfa");
+    expect(passed(await visit(s, jar, "/mfa"))).toBe(true);
+  });
+
+  it("owner setup: an API refusal passes through and no cookie is set", async () => {
+    const s = admin();
+    const res = await s.handlers.ownerSetup(
+      req(s, "/auth/setup", {
+        method: "POST",
+        body: JSON.stringify({ username: "eric", password: "good" }),
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(res.headers.getSetCookie()).toHaveLength(0);
+    expect(apiSeen.some((c) => c.path === "/api/auth/login")).toBe(false);
+    expect((await pos().handlers.ownerSetup(req(pos(), "/auth/setup", { method: "POST", body: "{}" }))).status).toBe(404);
   });
 
   it("refuses cross-site requests (CSRF) to login, logout and state-changing proxy calls", async () => {
@@ -642,6 +755,30 @@ describe("Owner MFA", () => {
     expect(claimsIn(jar).aal).toBe("aal2");
     expect(passed(await visit(s, jar, "/dashboard"))).toBe(true);
     expect(JSON.stringify(good.body)).not.toMatch(/token/i);
+  });
+
+  it("setup verifies the factor whose QR code was shown, even when a second start raced it", async () => {
+    const s = owner(),
+      jar = new Jar();
+    await login(s, jar, "eric");
+    const start = await post(s, jar, "mfa", { action: "start" });
+    const shown = start.body.data.factorId as string;
+    expect(shown).toBeTruthy();
+    // A racing start (reload, React's double effect in development) adds a newer factor.
+    factors["owner-1"]!.push({
+      id: "f-racer",
+      factor_type: "totp",
+      status: "unverified",
+      created_at: new Date(Date.now() + 60_000).toISOString(),
+      friendly_name: "racer",
+    });
+    const good = await post(s, jar, "mfa", {
+      action: "verify",
+      code: TOTP,
+      factorId: shown,
+    });
+    expect(good.res.status).toBe(200);
+    expect(factors["owner-1"]!.find((f) => f.id === shown)!.status).toBe("verified");
   });
 
   it("later sign-ins ask for a code only and never enroll a second factor", async () => {

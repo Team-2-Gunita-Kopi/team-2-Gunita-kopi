@@ -127,9 +127,11 @@ Reference records only; no purchase orders or automatic reordering (SRS section 
 
 ### Ingredients and inventory
 
-**`GET /api/ingredients`**: query `stockStatus` (one or a comma list of `available`, `low-stock`, `out-of-stock`), `supplierId`, `search`, paging. `Ingredient`: `{ id, name, unit, currentStock, reorderLevel, unitCost, stockStatus, supplierId, supplierName, updatedAt }`. `stockStatus` comes from `v_inventory_status`: out-of-stock at 0, low-stock at or below the reorder level. `supplierName` is null for baristas (supplier records are Owner-only). Low-stock alerts: `?stockStatus=low-stock,out-of-stock`.
+**`GET /api/ingredients`**: query `stockStatus` (one or a comma list of `available`, `low-stock`, `out-of-stock`), `supplierId`, `search`, paging. `Ingredient`: `{ id, name, unit, currentStock, reorderLevel, unitCost?, stockStatus, supplierId, supplierName, updatedAt }`. `unitCost` is Owner-only; `supplierId` and `supplierName` are null for baristas. `stockStatus` comes from `v_inventory_status`: out-of-stock at 0, low-stock at or below the reorder level. Low-stock alerts: `?stockStatus=low-stock,out-of-stock`.
 
-**`POST /api/ingredients`**: `name` (1-100, required), `unit?` (20), `supplierId?`, `reorderLevel?` (default 0), `unitCost?` (money; also the add-on price, SDS 3.5.3). New ingredients start at 0 stock: record the opening quantity as a stock-in so it appears in the history. **201**.
+**`GET /api/ingredients/suppliers`** (Barista): returns active supplier options as `{ id, name }` only. Contact details and supplier management remain Owner-only; this route cannot create suppliers.
+
+**`POST /api/ingredients`**: Owner may send `name` (1-100, required), `unit?` (20), `supplierId?`, `reorderLevel?` (default 0), `unitCost?`, and add-on configuration. Barista requests use the strict shape `{ name, unit?, supplierId?, reorderLevel?, openingStock? }`. The supplier must be an existing active supplier; costs, add-on settings, and supplier creation are not accepted. The database records positive opening stock as a stock-in in the same transaction. **201**.
 
 **`PATCH /api/ingredients/[id]`**: any subset of the create fields. `currentStock` is not editable. A `unitCost` change recosts every product that uses the ingredient.
 
@@ -137,7 +139,7 @@ Reference records only; no purchase orders or automatic reordering (SRS section 
 
 **`GET /api/stock-transactions`**: query `ingredientId`, `type` (`in`/`out`), `from`, `to`, paging; newest first. `StockTransaction`: `{ id, ingredientId, ingredientName, type, quantity, remainingStock, userId, userName, dateTime, remarks }`.
 
-**`POST /api/stock-transactions`**: body `{ ingredientId, type: "in" | "out", quantity > 0, remarks? (255) }`. `in` is Owner-only and `out` is Barista-only (SRS 2.3, FR-15, FR-16); the user is always the caller. The database updates `current_stock`, stores `remainingStock` and refuses to go below 0 in the same statement: **409 `STOCK_CONFLICT`**. Unknown ingredient: 404. **201**.
+**`POST /api/stock-transactions`**: body `{ ingredientId, type: "in" | "out", quantity > 0, remarks? (255) }`. Owner and Barista may record either type; the user is always the caller. The database updates `current_stock`, stores `remainingStock` and refuses to go below 0 in the same statement: **409 `STOCK_CONFLICT`**. Unknown ingredient: 404. **201**.
 
 ### Orders and checkout
 

@@ -646,6 +646,20 @@ export type Database = {
     Functions: {
       app_role: { Args: Record<PropertyKey, never>; Returns: string };
       app_user_id: { Args: Record<PropertyKey, never>; Returns: number };
+      create_barista_ingredient: {
+        Args: {
+          p_name: string;
+          p_opening_stock: number;
+          p_reorder_level: number;
+          p_supplier_id: number | null;
+          p_unit: string | null;
+        };
+        Returns: number;
+      };
+      barista_supplier_options: {
+        Args: Record<PropertyKey, never>;
+        Returns: { supplier_id: number; supplier_name: string }[];
+      };
       ingredient_unit_costs: {
         Args: Record<PropertyKey, never>;
         Returns: { ingredient_id: number; unit_cost: number }[];

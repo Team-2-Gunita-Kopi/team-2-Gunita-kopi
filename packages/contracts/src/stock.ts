@@ -7,7 +7,7 @@ import {
   optionalText,
 } from "./common";
 
-// STOCK_TRANSACTIONS (FR-15 to FR-18). in = stock-in (Owner), out = stock-out (Barista).
+// STOCK_TRANSACTIONS (FR-15 to FR-18). Owner and Barista can record in/out.
 export const StockTransactionTypeSchema = z.enum(["in", "out"]);
 export type StockTransactionType = z.infer<typeof StockTransactionTypeSchema>;
 

@@ -282,17 +282,14 @@ describe("Initial Owner registration", () => {
       username: "eric",
       email: "eric.owner@example.com",
       role: "owner_admin",
-      verificationEmailSent: true,
     });
+    // Confirmed at creation so the Owner can sign in and set up MFA right away.
     expect(calls.createUser[0]).toMatchObject({
       email: "eric.owner@example.com",
-      email_confirm: false,
+      email_confirm: true,
       app_metadata: { role: "owner_admin" },
     });
-    expect(calls.resend[0]).toMatchObject({
-      type: "signup",
-      email: "eric.owner@example.com",
-    });
+    expect(calls.resend).toHaveLength(0);
     expect(db.users[0]).toMatchObject({
       auth_user_id: res.authUserId,
       email: "eric.owner@example.com",
@@ -332,6 +329,16 @@ describe("Initial Owner registration", () => {
       statusCode: 403,
     });
     expect(calls.createUser).toHaveLength(0);
+  });
+
+  it("allows a tokenless setup only when the local route authorizes it", async () => {
+    const res = await provisionInitialOwner(null, ownerInput(), {
+      allowLocalNoToken: true,
+    });
+    expect(res.role).toBe("owner_admin");
+    expect(calls.createUser[0]).toMatchObject({
+      app_metadata: { role: "owner_admin" },
+    });
   });
 
   it("rejects the synthetic staff email domain", async () => {
@@ -454,7 +461,12 @@ describe("Username sign-in", () => {
     );
   });
 
-  it("asks the Owner to verify the email before the first sign-in", async () => {
+  it("signs in a new Owner right away (email confirmed at setup)", () => {
+    expect(db.auth[0]!.confirmed).toBe(true);
+  });
+
+  it("still refuses an Auth account whose email is unverified", async () => {
+    db.auth[0]!.confirmed = false;
     await expect(
       loginWithUsername({ username: "eric", password: "s3cret-pass" }, IP),
     ).rejects.toMatchObject({ statusCode: 403, code: "EMAIL_NOT_CONFIRMED" });

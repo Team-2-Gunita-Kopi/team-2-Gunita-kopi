@@ -92,7 +92,7 @@ Work on `integration/phase2-frontend`, uncommitted until the user approves. Do n
 
 - The Admin and POS screens call the real API through `apiData` / `apiAllPages` in each app's `lib/api-client.ts`, which validate every response with zod (`pageOf(...)` from contracts for lists). Feature modules: `apps/admin/src/features/{products,inventory,suppliers,reports,users,orders}/api.ts`, `apps/pos/src/features/{orders,inventory}/api.ts`. Pages keep their sample rows when `USE_MOCKS`.
 - POS order mapping between `@gunita/contracts/ui` and `@gunita/contracts` is in `apps/pos/src/features/pos/api-mappers.ts` (tests: `apps/pos/tests/api-mappers.test.ts`): one product row plus one row per add-on, `online` is sent as `pre-order`, cash only, non-numeric (demo) ids are refused locally and never synced.
-- Stock roles follow the SRS strictly: Owner records stock-in (Admin), Barista records stock-out (POS); `apps/api/src/modules/stock/service.ts` enforces it, although RLS would allow Owner stock-out. The Owner order board only changes status; checkout (`POST /api/orders`, `/api/sync`) is Barista-only.
+- Stock movement policy is Owner and Barista stock-in/out (Admin/POS), per user-approved POS permission update; API and RLS enforce it. `20261120000700_barista_stock_in.sql` was applied and verified on live Supabase on 2026-11-20. `20261120000800_restore_barista_stock_in.sql` is pending on live; it reasserts the permission after older pending migration `20261120000600` is eventually applied. Baristas may add a basic ingredient and opening stock through a restricted RPC, assigning an existing active supplier only; supplier creation/details, costs, add-on settings, edits, and deletes remain Owner-only. Migrations `20261120000900_barista_add_basic_ingredient.sql` and `20261120001000_barista_ingredient_supplier.sql` are local-only and must not be applied live without approval. The Owner order board only changes status; checkout (`POST /api/orders`, `/api/sync`) is Barista-only.
 - Add-ons follow the SDS rule that add-on name and cost come from INGREDIENTS. In real mode `CustomizeModal.tsx` lists ingredients flagged `is_addon` (`inventoryAddons(ingredients)`) for the `ADDON_DRINK_CATEGORIES` (`Iced Coffee`, `Non-Coffee`) at ₱25.00 each; demo mode still uses the static `ADDON_CATALOG`. Live has no ingredients yet, so the POS shows no add-ons until the Owner configures them.
 - Open decisions, do not guess: (1) which real ingredient and measured quantity back each of the 11 official add-ons (Handoff Notes E); (2) product images: upload route `apps/api/src/app/api/products/[id]/image/` and migration `20261120000100_product_images.sql` (private bucket `product-images`) exist locally, not applied live; (3) Owner MFA is implemented in code (`/mfa` pages, `MFA_REQUIRED` in `apps/api/src/lib/auth.ts`), but its migration `20261120000000_owner_mfa_and_stock_roles.sql` is not applied live. Report printing is not implemented. FR-40 (staff on duty) is out of scope per the SRS; do not implement it. Forgot-password needs `{{ .Token }}` in the Supabase recovery email template and has not been tested live.
 - Live testing so far is database-level only (read-only queries and one rolled-back role simulation; see Handoff Notes B). No live API test and no browser test has been run.
@@ -120,6 +120,7 @@ Last updated 2026-11-19 (live database and Git status re-verified the same day, 
   - POS: `apps/pos/src/features/{inventory,orders}/api.ts`, `apps/pos/src/features/pos/api-mappers.ts`, `apps/pos/tests/api-mappers.test.ts`, `apps/pos/tests/customize-real.test.tsx`
   - Contracts: `packages/contracts/tests/addons.test.ts`
   - Migrations `supabase/migrations/20261120000000` to `20261120000400` (5 files)
+  - `supabase/migrations/20261120000600_owner_stock_out.sql`
   - SQL tests `supabase/tests/roles_mfa_storage.test.sql`, `supabase/tests/addons_catalog_costs.test.sql`
 - Untracked, not ours (present before this work; leave alone): `Gunita_Kopi_POS_SDS_updated (1).md`, `Team 8 - SRS Documentation (Gunita Kopi POS System) - Web-Based.md`.
 - `my-skills/`: untracked and untouched. Never read, stage or commit it.
@@ -132,7 +133,7 @@ Last updated 2026-11-19 (live database and Git status re-verified the same day, 
   - Owner MFA.
   - Server-side password recovery.
   - Product images.
-  - Strict SRS stock roles.
+  - Owner stock-in/out screen and authorization update.
 - **Add-ons, uncommitted, implemented and active in real mode (verified in code):**
   - In `apps/pos/src/features/pos/components/CustomizeModal.tsx`, real mode builds the list with `inventoryAddons(ingredients)` when the product's category is in `ADDON_DRINK_CATEGORIES` (`Iced Coffee`, `Non-Coffee`). The heading reads "Add-ons — ₱25.00 each".
   - `apps/pos/src/app/(pos)/pos/page.tsx` passes the catalog `ingredients`.
@@ -240,7 +241,7 @@ Project `gunita-kopi-pos-dev`. All rows below were verified by read-only queries
   - Direct host `db.<project-ref>.supabase.co:5432` with the password from `supabase/.env.local` worked.
   - `npx supabase@2 db query` runs single statements only ("cannot insert multiple commands into a prepared statement"); use it for checks, not whole migration files.
 - **Ordering rules:**
-  - New migration files need timestamps above `20261120000400`.
+  - New migration files need timestamps above `20261120000500`.
   - Applied migrations are never edited; add a new one.
   - After deploying this branch, run `pnpm db:types` against live to confirm `packages/db-types`.
 - **Backups:** Free plan; no backup or point-in-time restore was confirmed. Before a risky change:
@@ -360,7 +361,7 @@ Written 2026-11-20 for the `testing/local-supabase-handover` branch. Details and
   - No public sign-up: the Owner is created once via `/api/setup/owner`, and baristas via `/api/admin/employees`.
 - **Roles:** `owner_admin` (Admin site) and `barista` (POS site), checked on every API call against `public.users` and again by RLS.
   - Owner MFA (TOTP, aal2) is required: the API answers `MFA_REQUIRED`, and the database does too once `20261120000000` is applied.
-  - Stock: the Owner records stock-in, the Barista records stock-out.
+  - Stock: the Owner records stock-in and stock-out; the Barista can record stock-in and stock-out from POS.
 - **Modules:**
   - Catalog: the 76 official products.
   - Ingredients and suppliers.
@@ -381,7 +382,7 @@ Written 2026-11-20 for the `testing/local-supabase-handover` branch. Details and
 
 ### C. Migrations
 
-- **Live history (read-only check, 2026-11-19).** Applied:
+- **Live history (checked 2026-11-20).** Applied:
   - `20261116000000_initial_schema`
   - `20261117000000_role_grants`
   - `20261118000000_owner_email`
@@ -390,20 +391,25 @@ Written 2026-11-20 for the `testing/local-supabase-handover` branch. Details and
   - `20261120000200_ingredient_addons_cost_privacy`
   - `20261120000300_official_menu_catalog`
   - `20261120000400_official_menu_catalog_additions`
+  - `20261120000700_barista_stock_in` (applied and recorded through Supabase SQL Editor)
 - **Pending on live:**
   - `20261120000000_owner_mfa_and_stock_roles`
   - `20261120000100_product_images`
   - `20261120000500_payments_cash_only`
+  - `20261120000600_owner_stock_out`
+  - `20261120000800_restore_barista_stock_in`
 - **Audit result:** an ordering issue in migration history, not a demonstrated schema dependency.
   - The pending files touch only `app_role()`/`app_user_id()`, the `stock_insert` policy, Storage, and one `payments` CHECK.
   - `0200`–`0400` do not create or replace any of these.
   - A fresh order and live order plus pending gave identical catalogs, and the live catalog equals the simulated applied chain.
-  - No corrective migration and no `migration repair` are needed.
+  - `00700` is recorded before older pending `00600`. Applying `00600` later would restrict Barista inserts to stock-out, so `00800` reasserts the approved policy afterward.
+  - No `migration repair` is needed.
 - **Proposed production order (a plan only; nothing here is authorized):**
   1. Deploy the compatible API and Admin, including `/mfa`.
   2. Apply `20261120000000`.
   3. Apply `20261120000100`.
   4. Apply `20261120000500`.
+  5. Apply `20261120000600`, then `20261120000800` to preserve Barista stock-in.
 - `supabase db push --include-all` applies **every** local migration missing from remote history. Run it only after a `--dry-run`, or the `db-migrations.yml` manual job, has shown exactly the approved pending versions.
 - **Limitation:** the schema comparison and SQL tests ran on PGlite. They have not run on real Supabase or Docker PostgreSQL, and hosted Storage accepting `0100` is unproven.
 

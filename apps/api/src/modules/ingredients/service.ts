@@ -1,5 +1,6 @@
 import {
   ADDON_SELLING_PRICE,
+  type CreateBaristaIngredientRequest,
   type CreateIngredientRequest,
   type Ingredient,
   type IngredientListQuery,
@@ -16,10 +17,11 @@ import { auditAction } from "@/lib/audit";
 type UnitCosts = Map<number, number | null>;
 
 // Read through v_inventory_status so stock status has one definition (the view, FR-19).
-// unitCost is added for the Owner only; Barista responses do not contain the key.
+// Owner-only costs and supplier details are excluded from Barista responses.
 const toIngredient = (
   r: Tables<"v_inventory_status">,
   costs?: UnitCosts,
+  includeOwnerDetails = false,
 ): Ingredient => ({
   id: r.ingredient_id,
   name: r.ingredient_name,
@@ -28,8 +30,8 @@ const toIngredient = (
   reorderLevel: r.reorder_level,
   ...(costs ? { unitCost: costs.get(r.ingredient_id) ?? null } : {}),
   stockStatus: r.stock_status as StockStatus,
-  supplierId: r.supplier_id,
-  supplierName: r.supplier_name,
+  supplierId: includeOwnerDetails ? r.supplier_id : null,
+  supplierName: includeOwnerDetails ? r.supplier_name : null,
   updatedAt: r.date_updated,
   isAddon: r.is_addon,
   addonSellingPrice: r.addon_selling_price,
@@ -86,7 +88,7 @@ export async function listIngredients(
   ]);
   if (error) throw dbError(error);
   return toPage(
-    data.map((r) => toIngredient(r, costs)),
+    data.map((r) => toIngredient(r, costs, user.role === "owner_admin")),
     count,
     q,
   );
@@ -103,7 +105,31 @@ export async function getIngredient(
     .maybeSingle();
   if (error) throw dbError(error);
   if (!data) throw new NotFoundError("Ingredient not found");
-  return toIngredient(data, await ownerUnitCosts(user));
+  return toIngredient(
+    data,
+    await ownerUnitCosts(user),
+    user.role === "owner_admin",
+  );
+}
+
+/** Baristas can link an existing active supplier, but cannot set its details or other Owner fields. */
+export async function createBaristaIngredient(
+  user: AuthenticatedUser,
+  body: CreateBaristaIngredientRequest,
+): Promise<Ingredient> {
+  const { data: ingredientId, error } = await user.supabaseClient.rpc(
+    "create_barista_ingredient",
+    {
+      p_name: body.name,
+      p_unit: body.unit,
+      p_supplier_id: body.supplierId,
+      p_reorder_level: body.reorderLevel,
+      p_opening_stock: body.openingStock,
+    },
+  );
+  if (error) throw dbError(error);
+  await auditAction(user, "ingredient.create", "ingredients", ingredientId, body);
+  return getIngredient(user, ingredientId);
 }
 
 /** Starts at 0 stock; the opening quantity is a stock-in, so it appears in the history (FR-17). */

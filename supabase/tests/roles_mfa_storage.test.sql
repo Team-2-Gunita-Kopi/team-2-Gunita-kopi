@@ -1,4 +1,5 @@
--- Owner MFA, stock roles and product image storage rules (migrations 20261120000000, 20261120000100).
+-- Owner MFA, stock roles, product image storage, and restricted Barista ingredient creation
+-- (migrations 20261120000000, 20261120000100, 20261120000600-20261120001000).
 -- Runs on a migrated database, alone or after phase2_core.test.sql (its fixture uses other ids).
 -- Each check raises 'TEST FAILED: ...' on a wrong result; run with psql -v ON_ERROR_STOP=1.
 
@@ -10,6 +11,9 @@ insert into auth.users (id, email) values
 insert into public.users (user_id, auth_user_id, username, full_name, role, email) overriding system value values
   (11, :owner, 'owner2', 'Owner Two', 'owner_admin', 'owner2@example.com'),
   (12, :barista, 'cora', 'Cora Barista', 'barista', null);
+insert into public.suppliers (supplier_id, supplier_name, status) overriding system value values
+  (11, 'Barista Supplier', 'active'),
+  (12, 'Inactive Supplier', 'inactive');
 insert into public.ingredients (ingredient_id, ingredient_name, unit, current_stock, reorder_level, unit_cost)
   overriding system value values (11, 'Cocoa', 'g', 100, 10, 0.20);
 insert into public.products (product_id, product_name, category, price, created_by) overriding system value values
@@ -68,7 +72,7 @@ end $$;
 reset role;
 
 -- ---------------------------------------------------------------------------
--- Owner after MFA (aal2): stock-in allowed, manual stock-out denied, images managed.
+-- Owner after MFA (aal2): stock-in/out allowed, images managed.
 -- ---------------------------------------------------------------------------
 select set_config('request.jwt.claims', json_build_object('sub', :owner, 'aal', 'aal2')::text, false);
 set role authenticated;
@@ -86,16 +90,32 @@ begin
   end if;
 end $$;
 
-do $$ begin
-  insert into public.stock_transactions (ingredient_id, user_id, type, quantity) values (11, 11, 'out', 5);
-  raise exception 'TEST FAILED: Owner recorded manual stock out';
-exception when insufficient_privilege then null;
+do $$
+declare v_remaining numeric;
+begin
+  insert into public.stock_transactions (ingredient_id, user_id, type, quantity, remarks)
+  values (11, 11, 'out', 5, 'waste') returning remaining_stock into v_remaining;
+  if v_remaining <> 145 then
+    raise exception 'TEST FAILED: Owner stock out updates stock';
+  end if;
 end $$;
 
 -- Stock-in under another user's id is refused.
 do $$ begin
   insert into public.stock_transactions (ingredient_id, user_id, type, quantity) values (11, 12, 'in', 5);
   raise exception 'TEST FAILED: Owner recorded stock under another user';
+exception when insufficient_privilege then null;
+end $$;
+
+do $$ begin
+  perform public.create_barista_ingredient('Forbidden Owner Ingredient', 'g', null, 5, 0);
+  raise exception 'TEST FAILED: Owner used the Barista ingredient function';
+exception when insufficient_privilege then null;
+end $$;
+
+do $$ begin
+  perform 1 from public.barista_supplier_options();
+  raise exception 'TEST FAILED: Owner listed Barista supplier options';
 exception when insufficient_privilege then null;
 end $$;
 
@@ -116,14 +136,91 @@ end $$;
 reset role;
 
 -- ---------------------------------------------------------------------------
--- Barista: stock-out allowed, stock-in denied, checkout still deducts stock, images read-only.
+-- Barista: stock-in/out allowed, checkout still deducts stock, images read-only.
 -- ---------------------------------------------------------------------------
 select set_config('request.jwt.claims', json_build_object('sub', :barista, 'aal', 'aal1')::text, false);
 set role authenticated;
 
+do $$
+declare
+  v_ingredient_id integer;
+begin
+  if exists (select 1 from public.suppliers) then
+    raise exception 'TEST FAILED: Barista read supplier records directly';
+  end if;
+
+  v_ingredient_id := public.create_barista_ingredient('Barista Sugar', 'g', 11, 25, 500);
+  if not exists (
+    select 1 from public.ingredients
+    where ingredient_id = v_ingredient_id
+      and supplier_id = 11
+      and current_stock = 500
+      and reorder_level = 25
+  ) then
+    raise exception 'TEST FAILED: Barista ingredient has a supplier or incorrect stock';
+  end if;
+  if not exists (
+    select 1 from public.stock_transactions
+    where ingredient_id = v_ingredient_id
+      and user_id = 12
+      and type = 'in'
+      and quantity = 500
+      and remarks = 'Opening stock'
+  ) then
+    raise exception 'TEST FAILED: opening stock was not recorded in history';
+  end if;
+  if not exists (
+    select 1 from public.barista_supplier_options()
+    where supplier_id = 11 and supplier_name = 'Barista Supplier'
+  ) or exists (
+    select 1 from public.barista_supplier_options()
+    where supplier_id = 12
+  ) then
+    raise exception 'TEST FAILED: supplier options are not limited to active suppliers';
+  end if;
+
+  v_ingredient_id := public.create_barista_ingredient('Barista Salt', null, null, 0, 0);
+  if (select current_stock from public.ingredients where ingredient_id = v_ingredient_id) <> 0
+    or exists (select 1 from public.stock_transactions where ingredient_id = v_ingredient_id) then
+    raise exception 'TEST FAILED: zero opening stock created an incorrect movement';
+  end if;
+end $$;
+
 do $$ begin
-  insert into public.stock_transactions (ingredient_id, user_id, type, quantity) values (11, 12, 'in', 5);
-  raise exception 'TEST FAILED: barista recorded stock in';
+  perform public.create_barista_ingredient('Invalid Reorder Level', 'g', null, -1, 0);
+  raise exception 'TEST FAILED: negative reorder level was accepted';
+exception when invalid_parameter_value then null;
+end $$;
+
+do $$ begin
+  perform public.create_barista_ingredient('Invalid Opening Stock', 'g', null, 0, -1);
+  raise exception 'TEST FAILED: negative opening stock was accepted';
+exception when invalid_parameter_value then null;
+end $$;
+
+do $$ begin
+  perform public.create_barista_ingredient('Inactive Supplier Link', 'g', 12, 0, 0);
+  raise exception 'TEST FAILED: inactive supplier was assigned';
+exception when invalid_parameter_value then null;
+end $$;
+
+do $$
+declare v_remaining numeric;
+begin
+  insert into public.stock_transactions (ingredient_id, user_id, type, quantity, remarks)
+  values (11, 12, 'in', 5, 'delivery') returning remaining_stock into v_remaining;
+  if v_remaining <> 150 then
+    raise exception 'TEST FAILED: barista stock in';
+  end if;
+  if not exists (select 1 from public.stock_transactions
+                  where ingredient_id = 11 and user_id = 12 and type = 'in' and remarks = 'delivery') then
+    raise exception 'TEST FAILED: barista stock-in history';
+  end if;
+end $$;
+
+do $$ begin
+  insert into public.stock_transactions (ingredient_id, user_id, type, quantity) values (11, 11, 'in', 5);
+  raise exception 'TEST FAILED: barista recorded stock under another user';
 exception when insufficient_privilege then null;
 end $$;
 
@@ -168,6 +265,24 @@ do $$ begin
 end $$;
 
 reset role;
+
+do $$ begin
+  if exists (
+    select 1 from public.ingredients
+    where ingredient_name = 'Barista Salt'
+      and (supplier_id is not null or unit_cost is not null)
+  ) then
+    raise exception 'TEST FAILED: Barista omitted supplier incorrectly or set unit cost';
+  end if;
+  if not exists (
+    select 1 from public.ingredients
+    where ingredient_name = 'Barista Sugar'
+      and supplier_id = 11
+      and unit_cost is null
+  ) then
+    raise exception 'TEST FAILED: Barista supplier assignment or unit-cost privacy';
+  end if;
+end $$;
 
 do $$ begin
   if (select public from storage.buckets where id = 'product-images') then

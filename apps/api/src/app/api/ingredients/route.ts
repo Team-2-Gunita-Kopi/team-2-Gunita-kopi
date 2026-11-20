@@ -2,10 +2,12 @@ import { requireRole } from "@/lib/auth";
 import { jsonResponse, route } from "@/lib/response";
 import { readJson, readQuery } from "@/lib/request";
 import {
+  CreateBaristaIngredientRequestSchema,
   CreateIngredientRequestSchema,
   IngredientListQuerySchema,
 } from "@gunita/contracts";
 import {
+  createBaristaIngredient,
   createIngredient,
   listIngredients,
 } from "@/modules/ingredients/service";
@@ -18,9 +20,16 @@ export const GET = route(async (req) => {
   );
 });
 
-// FR-21, Owner only (the SRS gives ingredient management to the Owner/Manager).
+// Baristas can create basic ingredients through a restricted RPC; supplier, cost, add-on settings,
+// and ingredient edits remain Owner-only.
 export const POST = route(async (req) => {
-  const user = await requireRole(req, "owner_admin");
+  const user = await requireRole(req, ["owner_admin", "barista"]);
+  if (user.role === "barista") {
+    const body = await readJson(req, CreateBaristaIngredientRequestSchema);
+    return jsonResponse(await createBaristaIngredient(user, body), {
+      status: 201,
+    });
+  }
   const body = await readJson(req, CreateIngredientRequestSchema);
   return jsonResponse(await createIngredient(user, body), { status: 201 });
 });

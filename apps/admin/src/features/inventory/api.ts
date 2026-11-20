@@ -5,6 +5,7 @@ import {
   type CreateIngredientRequest,
   type Ingredient,
   type StockTransaction,
+  type StockTransactionType,
   type UpdateIngredientRequest,
 } from "@gunita/contracts";
 import { apiAllPages, apiData } from "@/lib/api-client";
@@ -19,14 +20,25 @@ export const createIngredient = (body: CreateIngredientRequest): Promise<Ingredi
 export const updateIngredient = (id: number, body: UpdateIngredientRequest): Promise<Ingredient> =>
   apiData(`/api/ingredients/${id}`, IngredientSchema, { method: "PATCH", body: JSON.stringify(body) });
 
-export async function listStockHistory(): Promise<StockTransaction[]> {
-  const page = await apiData("/api/stock-transactions?pageSize=100", pageOf(StockTransactionSchema));
+export async function listStockHistory(filters: {
+  ingredientId?: string;
+  from?: string;
+  to?: string;
+} = {}): Promise<StockTransaction[]> {
+  const query = new URLSearchParams({ pageSize: "100" });
+  if (filters.ingredientId) query.set("ingredientId", filters.ingredientId);
+  if (filters.from) query.set("from", filters.from);
+  if (filters.to) query.set("to", filters.to);
+  const page = await apiData(
+    `/api/stock-transactions?${query}`,
+    pageOf(StockTransactionSchema),
+  );
   return page.items;
 }
 
 /**
- * FR-15: stock-in (deliveries, replenishment). The API applies SRS 2.3 strictly: the Owner records
- * stock-in, Barista/Service Staff record stock-out on the POS (403 otherwise).
+ * FR-15: stock-in (deliveries, replenishment). The API and RLS allow the Owner or Barista to record
+ * either movement type; the Barista records from the POS.
  */
 export const recordStockIn = (input: {
   ingredientId: number;
@@ -36,6 +48,17 @@ export const recordStockIn = (input: {
   apiData("/api/stock-transactions", StockTransactionSchema, {
     method: "POST",
     body: JSON.stringify({ ...input, type: "in" }),
+  });
+
+export const recordStockMovement = (input: {
+  ingredientId: number;
+  type: StockTransactionType;
+  quantity: number;
+  remarks?: string;
+}): Promise<StockTransaction> =>
+  apiData("/api/stock-transactions", StockTransactionSchema, {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 
 export const STOCK_BADGE: Record<Ingredient["stockStatus"], { status: string; label: string }> = {

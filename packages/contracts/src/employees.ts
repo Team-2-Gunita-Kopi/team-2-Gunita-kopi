@@ -68,7 +68,6 @@ export type OwnerSetupRequest = z.infer<typeof OwnerSetupRequestSchema>;
 
 export const OwnerSetupResponseSchema = EmployeeResponseSchema.extend({
   email: z.string(),
-  verificationEmailSent: z.boolean(),
 });
 export type OwnerSetupResponse = z.infer<typeof OwnerSetupResponseSchema>;
 

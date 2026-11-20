@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ADDON_DRINK_CATEGORIES,
   ADDON_SELLING_PRICE,
+  CreateBaristaIngredientRequestSchema,
   CreateIngredientRequestSchema,
   IngredientSchema,
   UpdateIngredientRequestSchema,
@@ -18,6 +19,36 @@ describe("ingredient add-on configuration (contracts)", () => {
     const r = CreateIngredientRequestSchema.parse({ name: "Rice" });
     expect(r.isAddon).toBe(false);
     expect(r.addonQuantity).toBeUndefined();
+  });
+
+  it("allows Baristas to assign an existing supplier without Owner-only fields", () => {
+    expect(
+      CreateBaristaIngredientRequestSchema.parse({
+        name: "Rice",
+        unit: "g",
+        supplierId: 6,
+        reorderLevel: 20,
+        openingStock: 300,
+      }),
+    ).toEqual({
+      name: "Rice",
+      unit: "g",
+      supplierId: 6,
+      reorderLevel: 20,
+      openingStock: 300,
+    });
+    for (const privilegedField of [
+      { supplierName: "Not an existing supplier" },
+      { unitCost: 1.25 },
+      { isAddon: true, addonQuantity: 10 },
+    ]) {
+      expect(
+        CreateBaristaIngredientRequestSchema.safeParse({
+          name: "Rice",
+          ...privilegedField,
+        }).success,
+      ).toBe(false);
+    }
   });
 
   it("requires a positive quantity for an add-on, and none for a regular ingredient", () => {

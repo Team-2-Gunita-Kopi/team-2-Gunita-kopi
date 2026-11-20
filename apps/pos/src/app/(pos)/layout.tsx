@@ -3,7 +3,14 @@
 import React, { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { AppShell, IdleLogout, NavItem, OverlayProvider, useConfirm, useToast } from "@gunita/ui";
+import {
+  AppShell,
+  IdleLogout,
+  NavItem,
+  OverlayProvider,
+  useConfirm,
+  useToast,
+} from "@gunita/ui";
 import { getSession, signOut } from "@/features/auth";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { SyncIndicator } from "@/components/SyncIndicator";
@@ -69,7 +76,10 @@ function PosShell({ children }: { children: React.ReactNode }) {
   const menuItems = [
     ...(USE_MOCKS
       ? [
-          { label: "Simulate offline", onSelect: () => setSimulatedOffline(!simulatedOffline) },
+          {
+            label: "Simulate offline",
+            onSelect: () => setSimulatedOffline(!simulatedOffline),
+          },
           { label: "Reset demo data", onSelect: resetDemo },
         ]
       : []),
@@ -90,22 +100,40 @@ function PosShell({ children }: { children: React.ReactNode }) {
         currentPath={pathname}
         onNavigate={(href) => router.push(href)}
         topBarProps={{
-          title: "Barista POS",
+          title:
+            pathname === "/orders" || pathname.startsWith("/orders/")
+              ? "Orders"
+              : "Barista POS",
           userName,
           roleLabel: "Barista",
           onLogout: handleLogout,
-          statusSlot: <SyncIndicator pending={pendingCount} failed={failedCount} syncing={isSyncing} onSync={handleSyncNow} />,
+          statusSlot: (
+            <SyncIndicator
+              pending={pendingCount}
+              failed={failedCount}
+              syncing={isSyncing}
+              onSync={handleSyncNow}
+            />
+          ),
           menuItems,
         }}
       >
         {children}
       </AppShell>
-      <IdleLogout timeoutMs={IDLE_MS} onLogout={handleLogout} warning={warning} />
+      <IdleLogout
+        timeoutMs={IDLE_MS}
+        onLogout={handleLogout}
+        warning={warning}
+      />
     </>
   );
 }
 
-export default function PosAppLayout({ children }: { children: React.ReactNode }) {
+export default function PosAppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <QueryProvider>
       <OverlayProvider>

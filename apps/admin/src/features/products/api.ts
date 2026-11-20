@@ -16,6 +16,9 @@ import { apiAllPages, apiData } from "@/lib/api-client";
 export const listProducts = (): Promise<Product[]> =>
   apiAllPages("/api/products", pageOf(ProductSchema));
 
+export const getProduct = (id: number): Promise<Product> =>
+  apiData(`/api/products/${id}`, ProductSchema);
+
 export const createProduct = (body: CreateProductRequest): Promise<Product> =>
   apiData("/api/products", ProductSchema, { method: "POST", body: JSON.stringify(body) });
 
@@ -82,11 +85,15 @@ export async function listProductsWithCosting(): Promise<ProductsWithCosting> {
 export interface ProductRow extends Record<string, unknown> {
   id: string;
   name: string;
+  description: string;
   category: string;
   sellingPrice: string;
   costPrice: string;
   margin: string;
+  marginPercent: number | null;
   available: boolean;
+  createdAt: string;
+  createdBy: number | null;
   imageSrc?: string;
 }
 
@@ -95,10 +102,14 @@ export function toProductRow(p: Product, c: ProductCosting | null): ProductRow {
     id: String(p.id),
     imageSrc: productImageSrc(p),
     name: p.name,
+    description: p.description ?? "",
     category: p.category ?? "",
     sellingPrice: formatPeso(p.price),
     costPrice: c ? formatPeso(c.totalCost) : "",
-    margin: c?.marginPercent === null || !c ? "" : `${c.marginPercent.toFixed(1)}%`,
+    margin: c?.marginPercent === null || !c ? "" : `${Math.round(c.marginPercent)}%`,
+    marginPercent: c?.marginPercent ?? null,
     available: p.isAvailable,
+    createdAt: p.createdAt,
+    createdBy: p.createdBy,
   };
 }

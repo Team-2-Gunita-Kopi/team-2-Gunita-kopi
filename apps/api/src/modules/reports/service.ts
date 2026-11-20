@@ -8,6 +8,7 @@ import type {
 } from "@gunita/contracts";
 import { AuthenticatedUser } from "@/lib/auth";
 import { dbError } from "@/lib/errors";
+import { manilaDayStart, manilaNextDayStart } from "@/lib/dates";
 
 const sum = (values: number[]) =>
   Math.round(values.reduce((a, b) => a + b, 0) * 100) / 100;
@@ -74,25 +75,102 @@ export async function generateReport(
       };
     }
     case "best-sellers":
-      return { type, rows: await bestSellers(user, q.limit) };
+      return {
+        type,
+        rows: await bestSellers(user, q.limit, q.from, q.to),
+      };
     case "stock-status":
       return { type, rows: await stockStatus(user) };
   }
 }
 
-/** FR-34: ranking from completed sales, with the current unit cost from product costing. */
+/** FR-34: completed-sales ranking, optionally filtered to inclusive Manila dates. */
 export async function bestSellers(
   user: AuthenticatedUser,
   limit: number,
+  from?: string,
+  to?: string,
 ): Promise<BestSellerRow[]> {
-  const { data, error } = await user.supabaseClient
-    .from("v_best_sellers")
-    .select("*")
-    .order("units_sold", { ascending: false })
-    .order("product_id")
-    .limit(limit);
-  if (error) throw dbError(error);
-  const ids = data.map((r) => r.product_id);
+  const ranked: Omit<BestSellerRow, "currentUnitCost">[] = [];
+
+  if (!from && !to) {
+    const { data, error } = await user.supabaseClient
+      .from("v_best_sellers")
+      .select("*")
+      .order("units_sold", { ascending: false })
+      .order("product_id")
+      .limit(limit);
+    if (error) throw dbError(error);
+    ranked.push(
+      ...data.map((row) => ({
+        productId: row.product_id,
+        productName: row.product_name,
+        unitsSold: row.units_sold ?? 0,
+        revenue: row.revenue ?? 0,
+      })),
+    );
+  } else {
+    const totals = new Map<number, { unitsSold: number; revenue: number }>();
+    const pageSize = 1000;
+    let offset = 0;
+
+    while (true) {
+      let query = user.supabaseClient
+        .from("v_sales")
+        .select("order_line_id, product_id, quantity, subtotal")
+        .eq("is_addon", false)
+        .order("order_line_id")
+        .range(offset, offset + pageSize - 1);
+      if (from) query = query.gte("order_date", manilaDayStart(from));
+      if (to) query = query.lt("order_date", manilaNextDayStart(to));
+      const { data, error } = await query;
+      if (error) throw dbError(error);
+
+      for (const sale of data) {
+        if (sale.product_id === null) continue;
+        const total = totals.get(sale.product_id) ?? {
+          unitsSold: 0,
+          revenue: 0,
+        };
+        total.unitsSold += sale.quantity;
+        total.revenue += sale.subtotal;
+        totals.set(sale.product_id, total);
+      }
+
+      if (data.length < pageSize) break;
+      offset += pageSize;
+    }
+
+    const productIds = [...totals.keys()];
+    if (productIds.length > 0) {
+      const { data, error } = await user.supabaseClient
+        .from("products")
+        .select("product_id, product_name")
+        .in("product_id", productIds);
+      if (error) throw dbError(error);
+      const names = new Map(data.map((product) => [product.product_id, product.product_name]));
+
+      for (const [productId, total] of totals) {
+        const productName = names.get(productId);
+        if (productName === undefined) {
+          throw new Error(`Product ${productId} is missing from the best-sellers report.`);
+        }
+        ranked.push({
+          productId,
+          productName,
+          unitsSold: total.unitsSold,
+          revenue: Math.round(total.revenue * 100) / 100,
+        });
+      }
+    }
+
+    ranked.sort(
+      (a, b) => b.unitsSold - a.unitsSold || a.productId - b.productId,
+    );
+    ranked.length = Math.min(ranked.length, limit);
+  }
+
+  const ids = ranked.map((row) => row.productId);
   const costs = new Map<number, number>();
   if (ids.length > 0) {
     const costing = await user.supabaseClient
@@ -103,12 +181,9 @@ export async function bestSellers(
     for (const c of costing.data)
       if (c.total_cost !== null) costs.set(c.product_id, c.total_cost);
   }
-  return data.map((r) => ({
-    productId: r.product_id,
-    productName: r.product_name,
-    unitsSold: r.units_sold ?? 0,
-    revenue: r.revenue ?? 0,
-    currentUnitCost: costs.get(r.product_id) ?? null,
+  return ranked.map((row) => ({
+    ...row,
+    currentUnitCost: costs.get(row.productId) ?? null,
   }));
 }
 

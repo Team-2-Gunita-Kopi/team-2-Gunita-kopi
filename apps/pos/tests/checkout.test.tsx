@@ -15,23 +15,42 @@ let rpcCalls: string[] = [];
 let failOps = new Set<string>();
 
 function stubService() {
-  const db = createOwnerMockDb({ storage: null, now: () => new Date("2026-11-16T06:00:00Z") });
-  const view = createPosView(db) as unknown as Record<string, (...a: unknown[]) => unknown>;
+  const db = createOwnerMockDb({
+    storage: null,
+    now: () => new Date("2026-11-16T06:00:00Z"),
+  });
+  const view = createPosView(db) as unknown as Record<
+    string,
+    (...a: unknown[]) => unknown
+  >;
   rpcCalls = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (_url: string, init: { body: string }) => {
-      const { op, args } = JSON.parse(init.body) as { op: string; args: unknown[] };
+      const { op, args } = JSON.parse(init.body) as {
+        op: string;
+        args: unknown[];
+      };
       rpcCalls.push(op);
-      if (failOps.has(op)) return { json: async () => ({ ok: false, error: { code: "X", message: `${op} failed` } }) } as Response;
-      return { json: async () => ({ ok: true, data: view[op]!(...args) ?? null }) } as Response;
+      if (failOps.has(op))
+        return {
+          json: async () => ({
+            ok: false,
+            error: { code: "X", message: `${op} failed` },
+          }),
+        } as Response;
+      return {
+        json: async () => ({ ok: true, data: view[op]!(...args) ?? null }),
+      } as Response;
     }),
   );
 }
 
 async function openPayment(offline = false) {
   renderWithProviders(<PosPage />);
-  const tile = await screen.findByRole("button", { name: /^Iced Spanish Latte/ });
+  const tile = await screen.findByRole("button", {
+    name: /^Iced Spanish Latte/,
+  });
   if (offline) connectivityStore.setState({ simulatedOffline: true });
   await userEvent.click(tile);
   await userEvent.click(tile);
@@ -62,7 +81,9 @@ describe("payment", () => {
     await userEvent.clear(input);
     await userEvent.type(input, "100");
     expect(confirm).toBeDisabled();
-    expect(within(dialog).getByText("Amount paid is less than the total.")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Amount paid is less than the total."),
+    ).toBeInTheDocument();
     await userEvent.clear(input);
     await userEvent.type(input, "300");
     expect(confirm).toBeEnabled();
@@ -82,25 +103,33 @@ describe("payment", () => {
 });
 
 describe("checkout", () => {
-  it("online: receipt shows the server queue number, no Pending sync, then New order clears the cart", async () => {
+  it("online: receipt shows the numeric server queue number, no Pending sync, then New order clears the cart", async () => {
     const dialog = await openPayment();
     await userEvent.type(within(dialog).getByLabelText("Amount paid"), "300");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Confirm" }),
+    );
     const receipt = await screen.findByRole("dialog", { name: "Receipt" });
-    expect(await within(receipt).findByText(/^20261116-A-/)).toBeInTheDocument();
+    expect(await within(receipt).findByText(/^\d{3}$/)).toBeInTheDocument();
     expect(within(receipt).queryByText("Pending sync")).not.toBeInTheDocument();
     expect(rpcCalls).toContain("syncOrders");
     const [rec] = await posDb.ordersOutbox.toArray();
     expect(rec!.status).toBe("synced");
-    await userEvent.click(within(receipt).getByRole("button", { name: "New order" }));
+    await userEvent.click(
+      within(receipt).getByRole("button", { name: "New order" }),
+    );
     expect(useCartStore.getState().lines).toHaveLength(0);
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
   });
 
   it("offline: receipt shows OFF-001 and Pending sync, record stays pending", async () => {
     const dialog = await openPayment(true);
     await userEvent.type(within(dialog).getByLabelText("Amount paid"), "300");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Confirm" }),
+    );
     const receipt = await screen.findByRole("dialog", { name: "Receipt" });
     expect(within(receipt).getByText("OFF-001")).toBeInTheDocument();
     expect(within(receipt).getByText("Pending sync")).toBeInTheDocument();
@@ -112,17 +141,23 @@ describe("checkout", () => {
   it("FR-09: order slip shows the same order for staff without prices or payment", async () => {
     const dialog = await openPayment();
     await userEvent.type(within(dialog).getByLabelText("Amount paid"), "300");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Confirm" }),
+    );
     const receipt = await screen.findByRole("dialog", { name: "Receipt" });
-    const queue = (await within(receipt).findByText(/^20261116-A-/)).textContent;
+    const queue = (await within(receipt).findByText(/^\d{3}$/)).textContent;
     expect(within(receipt).getByText("Total")).toBeInTheDocument();
-    await userEvent.click(within(receipt).getByRole("button", { name: "Order slip" }));
+    await userEvent.click(
+      within(receipt).getByRole("button", { name: "Order slip" }),
+    );
     expect(within(receipt).getByText("Order slip")).toBeInTheDocument();
     expect(within(receipt).getByText(queue!)).toBeInTheDocument();
     expect(within(receipt).queryByText("Total")).not.toBeInTheDocument();
     expect(within(receipt).queryByText("Change")).not.toBeInTheDocument();
     expect(within(receipt).queryByText(/₱/)).not.toBeInTheDocument();
-    await userEvent.click(within(receipt).getByRole("button", { name: "Show receipt" }));
+    await userEvent.click(
+      within(receipt).getByRole("button", { name: "Show receipt" }),
+    );
     expect(within(receipt).getByText("Total")).toBeInTheDocument();
   });
 
@@ -130,16 +165,22 @@ describe("checkout", () => {
     const print = vi.spyOn(window, "print").mockImplementation(() => {});
     const dialog = await openPayment();
     await userEvent.type(within(dialog).getByLabelText("Amount paid"), "300");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Confirm" }),
+    );
     const receipt = await screen.findByRole("dialog", { name: "Receipt" });
-    await userEvent.click(within(receipt).getByRole("button", { name: "Print" }));
+    await userEvent.click(
+      within(receipt).getByRole("button", { name: "Print" }),
+    );
     expect(print).toHaveBeenCalledTimes(1);
   });
 
   async function confirmAndGetReceipt(offline = false) {
     const dialog = await openPayment(offline);
     await userEvent.type(within(dialog).getByLabelText("Amount paid"), "300");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Confirm" }),
+    );
     return await screen.findByRole("dialog", { name: "Receipt" });
   }
 
@@ -150,7 +191,10 @@ describe("checkout", () => {
     expect(within(receipt).getByText("Pending sync")).toBeInTheDocument();
     const recs = await posDb.ordersOutbox.toArray();
     expect(recs).toHaveLength(1);
-    expect(recs[0]).toMatchObject({ status: "failed", provisionalNo: "OFF-001" });
+    expect(recs[0]).toMatchObject({
+      status: "failed",
+      provisionalNo: "OFF-001",
+    });
   });
 
   it("synced but getOrder fails: no OFF number, no Pending sync, record untouched", async () => {

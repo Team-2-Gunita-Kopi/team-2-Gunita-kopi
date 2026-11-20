@@ -1,5 +1,6 @@
 import type {
   CreateSupplierRequest,
+  IngredientSupplierOption,
   Page,
   Supplier,
   SupplierListQuery,
@@ -44,6 +45,20 @@ export async function listSuppliers(
   const { data, error, count } = await query;
   if (error) throw dbError(error);
   return toPage(data.map(toSupplier), count, q);
+}
+
+/** Baristas may choose an existing active supplier, but cannot read supplier contact details. */
+export async function listBaristaSupplierOptions(
+  user: AuthenticatedUser,
+): Promise<IngredientSupplierOption[]> {
+  const { data, error } = await user.supabaseClient.rpc(
+    "barista_supplier_options",
+  );
+  if (error) throw dbError(error);
+  return data.map((supplier) => ({
+    id: supplier.supplier_id,
+    name: supplier.supplier_name,
+  }));
 }
 
 export async function getSupplier(

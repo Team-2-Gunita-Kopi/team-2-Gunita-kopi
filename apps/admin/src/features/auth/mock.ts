@@ -48,6 +48,7 @@ export interface RegisterOwnerRequest {
   email: string;
   username: string;
   password: string;
+  setupCode?: string;
 }
 
 export async function requestPasswordRecovery(email: string): Promise<void> {

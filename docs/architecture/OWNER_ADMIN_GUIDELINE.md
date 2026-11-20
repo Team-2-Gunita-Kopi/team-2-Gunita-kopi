@@ -266,7 +266,7 @@ supabase/migrations/
 | Q7 | Stock type casing (`in/out` vs `IN/OUT`) | Follow ERD (lowercase) |
 | Q8 | Role naming (`Owner/Barista` vs `owner_admin/barista`) | Use `owner_admin` / `barista` |
 | Q10 | Product images base64 vs Storage | Supabase Storage, path in `products.image` |
-| Q12 | Prototype lets Barista edit/delete ingredients too | Owner-only for ingredient add/edit/delete; Barista keeps Stock In/Out (see Barista guideline) |
+| Q12 | Prototype lets Barista edit/delete ingredients too | Barista may assign an existing supplier when adding a basic ingredient, but cannot create suppliers or view their contact details. Unit cost, add-on settings, and ingredient edit/delete remain Owner-only; Barista keeps stock movement access (see Barista guideline). |
 | Q13 | Add-on catalogue is hard-coded | Keep as config for v1 |
 
 Mark answered items **Decided: …** instead of deleting.

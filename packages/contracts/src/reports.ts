@@ -13,7 +13,8 @@ export type ReportType = z.infer<typeof ReportTypeSchema>;
 
 /**
  * daily: from/to filter sale dates. monthly: from/to filter the month (any day in it).
- * best-sellers: all-time ranking; limit caps the rows. stock-status: current stock, no dates.
+ * best-sellers: completed-sales ranking with optional inclusive date filters; limit caps the rows.
+ * stock-status: current stock, no dates.
  */
 export const ReportQuerySchema = z.object({
   from: DateSchema.optional(),

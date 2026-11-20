@@ -82,8 +82,8 @@ BLOCKED by missing accounts and data unless stated otherwise.
 | FR-12 | Order deducts stock via recipe | checkout stock-out loop | `validation_calculations`: beans −36, milk −360 in one movement | PASS | BLOCKED (0 recipes live) |
 | FR-13 | Completed sales to D3 | `v_sales` (completed only) | `validation_calculations`: cancelled excluded | PASS | BLOCKED |
 | FR-14 | Both roles view inventory and status | `v_inventory_status`, both apps | `addons_catalog_costs`, POS/Admin inventory pages | PASS | BLOCKED |
-| FR-15 | Owner records stock-in | `stock/service.ts` `ROLE_FOR_TYPE`, RLS | `phase2-api.test.ts`; `validation_calculations` (barista stock-in refused by RLS) | PASS | BLOCKED |
-| FR-16 | Stock-out from orders and manual entries | checkout, `POST /api/stock-transactions` (barista) | `validation_calculations` (spoilage, over-deduction refused) | PASS (R-04: live RLS also lets the Owner record stock-out) | BLOCKED |
+| FR-15 | Owner and Barista record manual stock-in (Barista access is user-approved for POS) | `stock/service.ts`, `stock_insert` | `phase2-api.test.ts`; `roles_mfa_storage.test.sql` | PASS (local code; live RLS policy verified 2026-11-20) | BLOCKED; live API/browser submission not tested |
+| FR-16 | Stock-out from orders and manual entries | checkout; Owner and Barista `POST /api/stock-transactions` | `phase2-api.test.ts`; `roles_mfa_storage.test.sql` (both roles can record manual in/out) | PASS (local code; live RLS policy verified 2026-11-20) | BLOCKED; live API/browser submission not tested |
 | FR-17 | Movement: ingredient, user, type, qty, remaining, date, remarks | `stock_transactions` + trigger | `validation_calculations`: milk movement 360, remaining 1640, user 32 | PASS | BLOCKED |
 | FR-18 | Remaining stock updated after each movement | `apply_stock_transaction` | L-SQL; seed check: current = Σin − Σout for all ingredients | PASS | BLOCKED |
 | FR-19 | Available / Low-Stock / Out-of-Stock | `v_inventory_status` | `validation_calculations` (all three states) | PASS | BLOCKED |

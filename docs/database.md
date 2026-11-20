@@ -39,7 +39,7 @@ Payments are cash only at the database level too: CHECK `payments_method_cash_ch
 - **Order status transitions** (trigger `orders_status_transition`): `pending -> preparing -> completed`, and `pending`/`preparing -> cancelled`. `completed` and `cancelled` are final. Anything else raises `INVALID_TRANSITION` (API: 409).
 - **Product costing** (`recalculate_product_costing`, triggers on `product_ingredients` and on `ingredients.unit_cost`): `product_costing.ingredient_cost` is always `round(sum(quantity_needed * unit_cost), 2)`; a missing `unit_cost` counts as 0. `total_cost` stays the generated column `ingredient_cost + packaging_cost`. Only `packaging_cost` is entered by the Owner.
 - **Recipe replace** (`set_product_recipe(product_id, items jsonb)`): deletes, updates and inserts recipe lines in one transaction. Owner only (`FORBIDDEN` otherwise, so RLS never turns it into a silent no-op).
-- **`v_inventory_status`** gains `supplier_id`, `supplier_name`, `unit_cost`, `date_updated` (appended). Suppliers are Owner-only by RLS, so a barista sees `supplier_name` as NULL. (`20261120000200` recreates the view without `unit_cost` and with the three add-on columns.)
+- **`v_inventory_status`** gains `supplier_id`, `supplier_name`, `unit_cost`, `date_updated` (appended). Suppliers remain Owner-only by RLS, so a barista sees `supplier_name` as NULL. The Barista-only `barista_supplier_options()` function separately exposes active supplier IDs and names for ingredient assignment, never contact details. (`20261120000200` recreates the view without `unit_cost` and with the three add-on columns.)
 - No table or column changes. All new functions are `SECURITY INVOKER` with `search_path = ''`.
 
 ### Testing the database rules locally
@@ -55,7 +55,7 @@ docker rm -f gk-pg
 
 `supabase-stub.sql` creates the few Supabase objects the migrations need (`anon`, `authenticated`, `service_role`, `auth.users`, `auth.uid()`, `auth.jwt()`, and minimal `storage.buckets` / `storage.objects`). With `supabase start`, skip the stub and run only the test files. Owner sessions in the tests set `"aal": "aal2"` in `request.jwt.claims`.
 
-`roles_mfa_storage.test.sql` checks the Owner `aal2` rule, manual stock-in/stock-out by role, checkout deduction, and the product image Storage policies.
+`roles_mfa_storage.test.sql` checks the Owner `aal2` rule, Owner and Barista stock-in/out, restricted Barista ingredient creation, active-supplier assignment/options, opening-stock history, caller-bound movement rows, checkout deduction, and the product image Storage policies.
 
 `addons_catalog_costs.test.sql` checks the add-on columns and constraint, Owner-only `unit_cost`, add-on checkout (rows, prices, stock, retries, conflicts), that configuration changes leave stock history and saved orders alone, and the official catalog (count per category, excluded items, re-run through `\ir`). Test fixtures use product ids from 901 because the catalog migration takes the first ids.
 
@@ -64,9 +64,9 @@ docker rm -f gk-pg
 ## Security
 
 - RLS on every table. `app_role()` / `app_user_id()` read the caller's **active** profile.
-- Both roles read catalog, inventory, orders and payments. Owner writes catalog, inventory, suppliers and costing.
+- Both roles read catalog, inventory, orders and payments. The Owner writes catalog, ingredient details, suppliers and costing; both roles may write their own stock transactions.
 - Ingredient costs are Owner-only (team decision; SRS NFR-02). `authenticated` has column-level SELECT on `ingredients` without `unit_cost`, so no signed-in token can select it, including through the Data API. The Owner reads costs through `ingredient_unit_costs()` (SECURITY DEFINER; raises `FORBIDDEN` unless `app_role()` is `owner_admin`). The costing triggers `product_ingredients_recost` and `ingredients_recost` run as SECURITY DEFINER because they read `unit_cost`; they fire only on Owner writes. `recalculate_product_costing` is no longer executable by `authenticated`.
-- Manual stock movements follow SRS 2.3, FR-15 and FR-16: the Owner inserts `stock_transactions` of type `in` only, the Barista of type `out` only (`stock_insert`, migration `20261120000000`). Checkout stock-out goes through `process_checkout_transaction` (SECURITY DEFINER) and is not affected. Baristas update only `orders.status`.
+- Manual stock movements: the Owner and Barista may insert `stock_transactions` of type `in` or `out`, with `user_id` bound to the caller. This is a user-approved POS permission change. In the clean migration order, `20261120000700` follows `20261120000600`; live already records `00700` out of order, so pending `20261120000800` restores the permission after `00600` is eventually applied. Baristas may create basic ingredients through `create_barista_ingredient`; the function can assign an existing active supplier but cannot create suppliers or expose contact details, costs, or add-on settings. Optional opening stock is recorded as a stock-in in the same transaction. Ingredient edits, unit costs, supplier management, and add-on settings remain Owner-only. This permission is local-only until `20261120000900` and `20261120001000` are separately approved for live. Checkout stock-out goes through `process_checkout_transaction` (SECURITY DEFINER) and is not affected. Baristas update only `orders.status`.
 - An Owner session counts only at `aal2` (after MFA): `app_role()` and `app_user_id()` return NULL for an Owner below it.
 - `anon` has no access. `audit_logs` has no policies.
 - `users`: a barista reads only their own row, so never the Owner's email. Signed-in users may update only `full_name` and `status` (RLS: Owner only); `role`, `email`, `username` and `auth_user_id` change only through the API, so nobody can grant themselves `owner_admin`.
@@ -147,9 +147,9 @@ JSON logs, no passwords, tokens or setup codes. Sign-in events: `auth.login_fail
 
 ## First owner account (one time)
 
-1. Set `OWNER_SETUP_TOKEN` (32+ random characters) in the API environment.
-2. Open the Admin site at `/setup`. Enter the setup code, email, full name, username, password and confirmation.
-3. `POST /api/setup/owner` (header `X-Setup-Token`) creates the Auth account on the real email (unconfirmed), then calls `provision_initial_owner()` to add the `owner_admin` profile. The role is set by the API; the request has no role field. Supabase sends the confirmation email.
+1. Outside localhost development, set `OWNER_SETUP_TOKEN` (32+ random characters) in the API environment.
+2. On the Admin sign-in page, choose **Create account** and enter the email, full name, username, password and confirmation. Localhost development uses the trusted local proxy and does not ask for a setup code; all other environments require the setup token. A visit to the former `/setup` page returns to sign-in.
+3. `POST /api/setup/owner` creates the Auth account on the real email (unconfirmed), then calls `provision_initial_owner()` to add the `owner_admin` profile. The role is set by the API; the request has no role field. Supabase sends the confirmation email.
 4. After the Owner exists, setup returns `409 SETUP_COMPLETE`. Remove `OWNER_SETUP_TOKEN` to switch the endpoint off.
 
 The Owner then creates barista accounts through `POST /api/admin/employees` (username, password, full name, role `barista` only; no email).
@@ -168,11 +168,13 @@ The Owner then creates barista accounts through `POST /api/admin/employees` (use
 - Live Auth settings: turn off "Allow new users to sign up" (it is on) and set up custom SMTP (the built-in sender only mails project team members and about 2 emails per hour). The old `/reset-password` link page is gone, so no Redirect URL is needed for recovery.
 - Supabase's per-IP limits on code checks (`/verify`, MFA verify) see the Admin server's IP for every user, as with sign-in. The app does not add its own throttle to recovery or MFA codes.
 
-## Pending live configuration (not applied; needs approval)
+## Live configuration and pending migrations (updated 2026-11-20)
 
-### Migration order audit (2026-11-19)
+### Migration order audit (2026-11-20)
 
-Live history has 8 rows, through `20261120000400`. Pending on live: `20261120000000` (Owner MFA and stock roles), `20261120000100` (product image Storage) and `20261120000500` (cash only). The gap is a **history-order issue only**, not a schema dependency:
+Live history has 9 recorded rows, including `20261120000700_barista_stock_in`. On 2026-11-20, that migration was applied to the live `gunita-kopi-pos-dev` project in one guarded SQL Editor transaction. The live `stock_insert` policy was verified afterward: `user_id` must equal `app_user_id()`, and `app_role()` must be `owner_admin` or `barista`, allowing either manual movement type. No other migration was applied.
+
+Pending on live: `20261120000000` (Owner MFA and stock roles), `20261120000100` (product image Storage), `20261120000500` (cash only), `20261120000600_owner_stock_out.sql`, `20261120000800_restore_barista_stock_in.sql`, `20261120000900_barista_add_basic_ingredient.sql`, and `20261120001000_barista_ingredient_supplier.sql`. `00600` re-allows Owner stock-out after `20261120000000` restricts it, but it would also narrow Barista writes to stock-out if applied after the already-recorded `00700`. `00800` reasserts the approved Owner/Barista stock-in/out policy after those older migrations run. `00900` adds the Barista ingredient-creation RPC; `01000` adds existing-active-supplier assignment and limited supplier-name options. Neither has been applied to live. The gap is a **history-order issue only**, not a schema dependency:
 
 - `0000` replaces only `app_role()` and `app_user_id()` (same signatures and grants) and the `stock_insert` policy. All three come from the initial schema and are unchanged on live.
 - `0100` touches only `storage.buckets` and four new `storage.objects` policies.
@@ -185,16 +187,16 @@ Checks run:
 - **PGlite fingerprint:** applying `0000`, `0100`, `0500` after `0400` gives the same fingerprint as the fresh order.
 - **Live preconditions:** the `stock_insert` policy and the initial function bodies exist. There is no bucket and no conflicting policy name. `postgres` has INSERT on `storage.buckets`, and `supautils.policy_grants` lets `postgres` create policies on `storage.objects`. There are 0 payments.
 
-No corrective migration and no `supabase migration repair` are needed. Recommended order, when approved:
+No history repair is needed. The still-pending MFA, Storage, cash-only, and Owner stock-out migrations each need approval before live application. Recommended order, when approved:
 
 1. Deploy this branch's API and Admin (`/mfa`) first.
-2. Apply `20261120000000`, `20261120000100`, `20261120000500`, in that order. Use `supabase db push --include-all` after a `--dry-run` that lists exactly these three, or the `db-migrations.yml` manual job with those three versions.
+2. Apply `20261120000000`, `20261120000100`, `20261120000500`, `20261120000600`, then `20261120000800`. `20261120000700` is already applied and recorded. Use `supabase db push --include-all` only after a `--dry-run` that lists exactly these five pending versions, or the `db-migrations.yml` manual job with those five versions.
 
 Not yet proven on real Supabase: that the hosted Storage service accepts the `0100` bucket insert and policies. Try it on staging or a local `supabase start` first.
 
-Except where item 4 says otherwise, nothing below has been done on the live project or tested against it.
+Except where noted above and in item 4, nothing below has been done on the live project or tested against it.
 
-1. **Migrations** `20261120000000_owner_mfa_and_stock_roles.sql`, `20261120000100_product_images.sql` and `20261120000500_payments_cash_only.sql`: check with `npx supabase@2 db push --dry-run --db-url "<url>"`, then push. Deploy the Admin site (with `/mfa`) and the API **before** the first migration: from then on an Owner session without the second step reads no data.
+1. **Migrations** `20261120000000_owner_mfa_and_stock_roles.sql`, `20261120000100_product_images.sql`, `20261120000500_payments_cash_only.sql`, `20261120000600_owner_stock_out.sql` and `20261120000800_restore_barista_stock_in.sql`: check with `npx supabase@2 db push --dry-run --db-url "<url>"`, then push only after separate approval. Deploy the Admin site (with `/mfa`) and the API **before the first MFA migration**: from then on an Owner session without the second step reads no data. `20261120000700` is already applied and recorded.
 2. **Owner MFA (TOTP):** enabled by default on hosted projects. In the Dashboard (Authentication, Multi-Factor) confirm TOTP enrollment and verification are on. Nothing else is required; the Owner enrolls on the next sign-in. Check the MFA verification rate limit (Authentication, Rate Limits).
 3. **Recovery email:** Authentication, Email Templates, "Reset Password": the body must contain `{{ .Token }}` (the 6-digit code), for example `Your Gunita Kopi password reset code is {{ .Token }}. It expires soon; ignore this email if you did not ask for it.` The `{{ .ConfirmationURL }}` link is not used. Code lifetime is the Email OTP expiry (Authentication, Providers, Email; keep it short, for example 900 seconds). Custom SMTP is needed for real delivery.
 4. **Catalog migrations.** Live state on 2026-11-19:

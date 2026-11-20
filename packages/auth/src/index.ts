@@ -2,6 +2,7 @@ import { Role, ROLES, RoleSchema } from "@gunita/contracts";
 
 export type { Role };
 export { ROLES, RoleSchema };
+export { isLoopbackHost, isLoopbackUrl } from "./local-url";
 
 /**
  * Staff sign in with a username, but Supabase Auth needs an email.

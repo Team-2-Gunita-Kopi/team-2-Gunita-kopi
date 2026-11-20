@@ -33,8 +33,9 @@ export const IngredientSchema = z.object({
   /** Owner only (null when not entered). Barista responses never contain this key. */
   unitCost: z.number().nullable().optional(),
   stockStatus: StockStatusSchema,
+  /** Owner only; null for Baristas. */
   supplierId: z.number().int().nullable(),
-  /** Null for baristas: supplier records are Owner-only. */
+  /** Owner only; null for Baristas. */
   supplierName: z.string().nullable(),
   updatedAt: z.string(),
   isAddon: z.boolean(),
@@ -85,6 +86,20 @@ export const CreateIngredientRequestSchema =
   IngredientFieldsSchema.superRefine(addonRule);
 export type CreateIngredientRequest = z.infer<
   typeof CreateIngredientRequestSchema
+>;
+
+/** Baristas may link an existing supplier but cannot set supplier details, cost, or add-on fields. */
+export const CreateBaristaIngredientRequestSchema = z
+  .object({
+    name: z.string().trim().min(1, "Ingredient name is required").max(100),
+    unit: optionalText(20).default(null),
+    supplierId: IdSchema.nullable().default(null),
+    reorderLevel: NonNegativeQuantitySchema.default(0),
+    openingStock: NonNegativeQuantitySchema.default(0),
+  })
+  .strict();
+export type CreateBaristaIngredientRequest = z.infer<
+  typeof CreateBaristaIngredientRequestSchema
 >;
 
 /** Partial update. current_stock is not here: it changes only through stock transactions. */
