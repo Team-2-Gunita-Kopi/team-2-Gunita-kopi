@@ -4,6 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Gunita Kopi POS: coffee-shop POS and inventory system. pnpm + Turborepo monorepo, Next.js 15 apps, Supabase (Postgres + Auth). Requirements come from the team's SRS/SDS; code comments cite them as `FR-xx` / `SDS x.y`.
 
+## Setting up a new developer machine
+
+When someone asks to set up, install, or run this project on their computer, run `bash scripts/setup-local.sh` from the repo root (Git Bash on Windows). It checks Git, Node 22 and Docker, installs packages, copies `supabase/.env.example` to `supabase/.env` if missing, starts the LOCAL Supabase stack, applies migrations, seeds synthetic test accounts once, and prints the links and test passwords. Then start the apps with `npx -y pnpm@12.21.0 dev` (run it in the background) and give the user the links: Admin http://localhost:3000, POS http://localhost:3001, sign-in codes http://127.0.0.1:54326.
+
+- If the script stops on a missing tool, tell the user exactly what to install (Git https://git-scm.com, Node.js 22 https://nodejs.org, Docker Desktop https://www.docker.com/products/docker-desktop) or to open Docker Desktop and wait until it runs, then run the script again. It is safe to rerun.
+- Local setup never needs the live project, keys or `supabase/.env.local`. Never point a new machine at live, and never run `supabase link`, `db push` or `migration repair` for setup.
+- Optional real email for the Owner code: a Resend account and key in `supabase/.env` (`SMTP_ENABLED=true`, `SMTP_PASS=...`), the local Owner's email changed to the Resend account email, then `npx -y supabase@2.122.1 stop` and `start`.
+
 ## Commands
 
 Use Node 22 (`.nvmrc`): on Node 25+ the `@gunita/ui` jsdom tests fail because Node's own experimental `localStorage` global shadows jsdom's. pnpm is pinned (`packageManager: pnpm@12.21.0`); without a global pnpm, prefix commands with `npx -y pnpm@12.21.0`.
