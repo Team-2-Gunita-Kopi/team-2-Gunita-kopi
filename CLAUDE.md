@@ -426,6 +426,7 @@ cd team-2-Gunita-kopi
 node -v                                        # v22.x
 npx -y pnpm@12.21.0 install --frozen-lockfile
 docker ps                                      # Docker Desktop running
+cp -n supabase/.env.example supabase/.env      # email settings for the local stack (codes go to http://127.0.0.1:54326)
 npx -y supabase@2.122.1 start
 bash supabase/seed/seed-localhost.sh
 npx -y pnpm@12.21.0 dev

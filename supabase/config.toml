@@ -36,12 +36,13 @@ otp_length = 6
 otp_expiry = 300
 max_frequency = "60s"
 
-# Real delivery for local testing through Resend (resend.com, free). The key comes from
-# supabase/.env (gitignored): SMTP_PASS=<Resend API key>. With the onboarding@resend.dev sender,
-# Resend only delivers to the email the Resend account was created with. Without that file,
-# comment this section out and codes go to the local inbox (http://127.0.0.1:54326) instead.
+# Optional real delivery through Resend (resend.com, free), set in supabase/.env (gitignored,
+# copy supabase/.env.example first; `supabase start` needs that file):
+#   SMTP_ENABLED=false  -> codes go to the local inbox, http://127.0.0.1:54326 (default)
+#   SMTP_ENABLED=true and SMTP_PASS=<Resend API key> -> real email. With the onboarding@resend.dev
+#   sender, Resend delivers only to the email the Resend account was created with.
 [auth.email.smtp]
-enabled = true
+enabled = "env(SMTP_ENABLED)"
 host = "smtp.resend.com"
 port = 587
 user = "resend"
