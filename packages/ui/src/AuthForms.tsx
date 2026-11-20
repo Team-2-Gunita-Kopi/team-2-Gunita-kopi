@@ -304,3 +304,82 @@ export const CreateAccountForm: React.FC<CreateAccountFormProps> = ({
     </div>
   );
 };
+
+// ---------------------------------------------------------------------------
+
+export interface EmailCodeFormProps {
+  /** Rejects with a message when the code is wrong, expired or over the attempt limit. */
+  onVerify: (code: string) => Promise<void>;
+  /** Emails a new code; rejects with a message (for example "wait a minute"). */
+  onResend: () => Promise<void>;
+  onBack: () => void;
+}
+
+/** Second Owner sign-in step: the 6-digit code emailed after the password. */
+export const EmailCodeForm: React.FC<EmailCodeFormProps> = ({ onVerify, onResend, onBack }) => {
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(false);
+  const ref = useAutoFocus<HTMLInputElement>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading) return;
+    setNotice("");
+    if (!/^\d{6}$/.test(code)) return setError("Enter the 6-digit code from your email.");
+    setLoading(true);
+    const err = await run(() => onVerify(code));
+    setLoading(false);
+    setError(err ?? "");
+  };
+
+  const resend = async () => {
+    if (loading) return;
+    setLoading(true);
+    const err = await run(onResend);
+    setLoading(false);
+    setError(err ?? "");
+    setNotice(err ? "" : "A new code has been sent.");
+  };
+
+  return (
+    <div className="login-wrap">
+      <form className="login-card card" onSubmit={submit} noValidate>
+        <Brand sub="Check your email" />
+        <p className="login-help">
+          We sent a 6-digit sign-in code to the Owner email address. It expires in 5 minutes.
+        </p>
+        {notice ? (
+          <div className="login-notice" role="status">
+            {notice}
+          </div>
+        ) : null}
+        <label className="field">
+          Sign-in code
+          <input
+            ref={ref}
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+          />
+        </label>
+        <div className="field-err" role="alert">
+          {error}
+        </div>
+        <Button type="submit" variant="primary" block disabled={loading}>
+          {loading ? "Please wait…" : "Verify"}
+        </Button>
+        <div className="login-links">
+          <button type="button" className="login-link" onClick={() => void resend()}>
+            Send a new code
+          </button>
+        </div>
+        <BackLink onBack={onBack} />
+      </form>
+    </div>
+  );
+};

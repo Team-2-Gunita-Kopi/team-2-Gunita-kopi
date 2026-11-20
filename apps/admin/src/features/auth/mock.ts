@@ -43,14 +43,6 @@ export function getSession(): MockSession | null {
   return decodeMockSession(match?.slice(MOCK_SESSION_COOKIE.length + 1));
 }
 
-export interface RegisterOwnerRequest {
-  fullName: string;
-  email: string;
-  username: string;
-  password: string;
-  setupCode?: string;
-}
-
 export async function requestPasswordRecovery(email: string): Promise<void> {
   await mockRpc<null>("requestPasswordRecovery", email);
 }
@@ -61,8 +53,4 @@ export async function verifyRecoveryCode(email: string, code: string): Promise<v
 
 export async function resetPassword(email: string, code: string, password: string): Promise<void> {
   await mockRpc<true>("resetPasswordWithCode", email, code, password);
-}
-
-export async function registerOwner(req: RegisterOwnerRequest): Promise<void> {
-  await mockRpc<UserProfile>("registerOwner", req);
 }

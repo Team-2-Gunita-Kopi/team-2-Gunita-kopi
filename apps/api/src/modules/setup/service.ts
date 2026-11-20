@@ -16,13 +16,9 @@ import { logger } from "@/lib/logger";
 
 /**
  * The one-time setup code lives only in the API's environment (OWNER_SETUP_TOKEN).
- * Unset or shorter than 32 characters: setup is switched off outside trusted local development.
+ * Unset or shorter than 32 characters: setup is switched off.
  */
-function assertSetupToken(
-  provided: string | null,
-  allowLocalNoToken: boolean,
-): void {
-  if (allowLocalNoToken && provided === null) return;
+function assertSetupToken(provided: string | null): void {
   const expected = process.env.OWNER_SETUP_TOKEN ?? "";
   if (expected.length < 32) {
     throw new ForbiddenError("Owner setup is not enabled on this server");
@@ -65,9 +61,8 @@ const setupComplete = () => {
 export async function provisionInitialOwner(
   setupToken: string | null,
   data: OwnerSetupRequest,
-  options: { allowLocalNoToken?: boolean } = {},
 ): Promise<OwnerSetupResponse> {
-  assertSetupToken(setupToken, options.allowLocalNoToken === true);
+  assertSetupToken(setupToken);
 
   if (data.email.endsWith(`@${STAFF_EMAIL_DOMAIN}`)) {
     throw new AppError("Use your real email address", 400, "VALIDATION_ERROR");
@@ -80,8 +75,8 @@ export async function provisionInitialOwner(
     throw new ConflictError("Email address is already registered");
   }
 
-  // Confirmed at creation: setup already needs the setup code (or localhost in development), and
-  // the Owner must set up the authenticator (MFA) right after, before the first full sign-in.
+  // Confirmed at creation: setup needs the setup code, and every sign-in proves the inbox again
+  // with an emailed code.
   const { data: created, error: authError } =
     await supabaseAdmin.auth.admin.createUser({
       email: data.email,

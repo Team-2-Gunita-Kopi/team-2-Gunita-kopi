@@ -6,11 +6,18 @@
 \set owner   '''00000000-0000-0000-0000-0000000000a3'''
 \set barista '''00000000-0000-0000-0000-0000000000b3'''
 
+-- One Owner per database (users_single_owner): retire an Owner left by an earlier test file.
+update public.users set role = 'barista', email = null where role = 'owner_admin';
 insert into auth.users (id, email) values
   (:owner, 'owner3@example.com'), (:barista, 'dani@staff.gunitakopi.local');
 insert into public.users (user_id, auth_user_id, username, full_name, role, email) overriding system value values
   (21, :owner, 'owner3', 'Owner Three', 'owner_admin', 'owner3@example.com'),
   (22, :barista, 'dani', 'Dani Barista', 'barista', null);
+
+-- The Owner signed in with password + emailed code: apps/api approved this session (20261120001100).
+-- The test uses the Owner's id as the session id.
+insert into public.owner_login_challenges (token_hash, auth_user_id, session_id, verified_at)
+  values ('test-' || :owner, :owner, :owner, now());
 insert into public.ingredients (ingredient_id, ingredient_name, unit, current_stock, reorder_level, unit_cost)
   overriding system value values
   (21, 'Espresso Beans', 'g', 200, 20, 1.00),
@@ -62,9 +69,9 @@ exception when check_violation then null;
 end $$;
 
 -- ---------------------------------------------------------------------------
--- Owner (aal2): configures add-ons, reads costs only through ingredient_unit_costs()
+-- Owner (approved session): configures add-ons, reads costs only through ingredient_unit_costs()
 -- ---------------------------------------------------------------------------
-select set_config('request.jwt.claims', json_build_object('sub', :owner, 'aal', 'aal2')::text, false);
+select set_config('request.jwt.claims', json_build_object('sub', :owner, 'session_id', :owner)::text, false);
 set role authenticated;
 
 do $$ begin
@@ -243,7 +250,7 @@ create temp table orders_before as
   select order_line_id, quantity, unit_price, subtotal from public.orders;
 grant select on history_before, orders_before to authenticated;
 
-select set_config('request.jwt.claims', json_build_object('sub', :owner, 'aal', 'aal2')::text, false);
+select set_config('request.jwt.claims', json_build_object('sub', :owner, 'session_id', :owner)::text, false);
 set role authenticated;
 
 do $$ begin

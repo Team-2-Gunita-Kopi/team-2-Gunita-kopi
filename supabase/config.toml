@@ -29,13 +29,34 @@ additional_redirect_urls = ["http://localhost:3001"]
 jwt_expiry = 3600
 enable_signup = false
 
-# Owner sign-in needs a second step (SDS 2.4); the API refuses an Owner session below aal2.
-[auth.mfa]
-max_enrolled_factors = 10
+# Owner sign-in: password, then a 6-digit code from the Magic Link email (signInWithOtp), valid
+# 5 minutes and single use. apps/api approves only sessions created through its challenge.
+[auth.email]
+otp_length = 6
+otp_expiry = 300
+max_frequency = "60s"
 
+# Real delivery for local testing through Resend (resend.com, free). The key comes from
+# supabase/.env (gitignored): SMTP_PASS=<Resend API key>. With the onboarding@resend.dev sender,
+# Resend only delivers to the email the Resend account was created with. Without that file,
+# comment this section out and codes go to the local inbox (http://127.0.0.1:54326) instead.
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 587
+user = "resend"
+pass = "env(SMTP_PASS)"
+admin_email = "onboarding@resend.dev"
+sender_name = "Gunita Kopi"
+
+[auth.email.template.magic_link]
+subject = "Your Gunita Kopi sign-in code"
+content_path = "./supabase/templates/owner-sign-in-code.html"
+
+# No authenticator apps: the second step is the emailed code.
 [auth.mfa.totp]
-enroll_enabled = true
-verify_enabled = true
+enroll_enabled = false
+verify_enabled = false
 
 [storage]
 enabled = true

@@ -1,10 +1,5 @@
 import { NextRequest } from "next/server";
-import {
-  decodeJwtPayload,
-  needsSecondFactor,
-  Role,
-  RoleSchema,
-} from "@gunita/auth";
+import { Role, RoleSchema } from "@gunita/auth";
 import { AppError, UnauthorizedError, ForbiddenError } from "./errors";
 import { createScopedUserClient } from "./supabase-user";
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -69,14 +64,18 @@ export async function requireUser(
   if (!role.success) {
     throw new ForbiddenError("Account has an unrecognized role");
   }
-  // SDS 2.4: an Owner session counts only after the second sign-in step. The token was verified
-  // by getUser above, so its aal claim can be read without another check.
-  if (needsSecondFactor(role.data, decodeJwtPayload(token)?.aal)) {
-    throw new AppError(
-      "Complete the second sign-in step first",
-      403,
-      "MFA_REQUIRED",
-    );
+  // An Owner session counts only after the emailed code (SDS 2.4): app_role() returns the role only
+  // for a session apps/api approved, so the database and this check apply the same rule.
+  if (role.data === "owner_admin") {
+    const { data: dbRole, error: roleError } = await scopedClient.rpc("app_role");
+    if (roleError) throw new AppError(roleError.message, 500, "DATABASE_ERROR");
+    if (dbRole !== "owner_admin") {
+      throw new AppError(
+        "Complete the second sign-in step first",
+        403,
+        "MFA_REQUIRED",
+      );
+    }
   }
 
   return {

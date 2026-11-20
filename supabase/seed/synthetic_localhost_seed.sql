@@ -161,7 +161,10 @@ select ingredient_id, public.app_user_id(), 'out', 500, 'Spoilage (synthetic)'
 reset role;
 
 -- Order board states (as the Owner): 1-6 completed, 7 preparing, 8 cancelled, 9-10 pending.
-select set_config('request.jwt.claims', json_build_object('sub', :owner_id, 'role', 'authenticated', 'aal', 'aal2')::text, false);
+-- An approved Owner session (20261120001100); the seed's own row, not a real sign-in.
+insert into public.owner_login_challenges (token_hash, auth_user_id, session_id, verified_at)
+  values ('synthetic-seed', :owner_id, :owner_id, now());
+select set_config('request.jwt.claims', json_build_object('sub', :owner_id, 'role', 'authenticated', 'session_id', :owner_id)::text, false);
 set role authenticated;
 do $$
 declare v integer;
