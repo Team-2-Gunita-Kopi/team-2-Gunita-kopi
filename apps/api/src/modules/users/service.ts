@@ -11,6 +11,7 @@ import { AuthenticatedUser } from "@/lib/auth";
 import { AppError, dbError, NotFoundError } from "@/lib/errors";
 import { pageRange, toPage } from "@/lib/request";
 import { auditAction } from "@/lib/audit";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 const COLUMNS =
   "user_id, username, full_name, role, status, email, date_created";
@@ -68,7 +69,7 @@ export async function getUser(
 }
 
 /**
- * Name and active status only; the database grants no update on role, username, email or the
+ * Name, active status and password; the database grants no update on role, username, email or the
  * Auth link. A deactivated user is refused on their next API call (requireUser checks status).
  */
 export async function updateUser(
@@ -83,14 +84,37 @@ export async function updateUser(
       "VALIDATION",
     );
   }
-  const { data, error } = await user.supabaseClient
+  const { password, ...fields } = body;
+  let profile: UserProfile;
+  if (fields.fullName !== undefined || fields.status !== undefined) {
+    const { data, error } = await user.supabaseClient
+      .from("users")
+      .update({ full_name: fields.fullName, status: fields.status })
+      .eq("user_id", id)
+      .select(COLUMNS)
+      .maybeSingle();
+    if (error) throw dbError(error);
+    if (!data) throw new NotFoundError("User not found");
+    profile = toProfile(data);
+  } else {
+    // Password only: still confirm the Owner can see this account before touching Auth.
+    profile = await getUser(user, id);
+  }
+  if (password !== undefined) await setPassword(id, password);
+  // Never write the password itself to the audit log.
+  await auditAction(user, "user.update", "users", id, password === undefined ? fields : { ...fields, passwordChanged: true });
+  return profile;
+}
+
+/** Owner-set password: Supabase Auth admin API (service role), keyed by the profile's Auth link. */
+async function setPassword(id: number, password: string): Promise<void> {
+  const { data, error } = await supabaseAdmin
     .from("users")
-    .update({ full_name: body.fullName, status: body.status })
+    .select("auth_user_id")
     .eq("user_id", id)
-    .select(COLUMNS)
     .maybeSingle();
   if (error) throw dbError(error);
-  if (!data) throw new NotFoundError("User not found");
-  await auditAction(user, "user.update", "users", id, body);
-  return toProfile(data);
+  if (!data?.auth_user_id) throw new NotFoundError("User not found");
+  const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(data.auth_user_id, { password });
+  if (authError) throw new AppError(authError.message, 400, "VALIDATION");
 }

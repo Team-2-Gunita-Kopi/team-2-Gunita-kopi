@@ -11,7 +11,7 @@ export const UsernameSchema = z
     "Username: 3-50 letters, numbers, dots, dashes or underscores",
   );
 
-const PasswordSchema = z
+export const PasswordSchema = z
   .string()
   .min(8, "Password must be at least 8 characters")
   .max(72, "Password must be at most 72 characters");

@@ -118,6 +118,27 @@ vi.mock("../src/lib/supabase-user", () => ({
     },
   }),
 }));
+// Service-role client: only the Owner-set password path (users service) uses it in these tests.
+const passwordUpdates: { authId: string; attrs: unknown }[] = [];
+vi.mock("../src/lib/supabase-admin", () => ({
+  supabaseAdmin: {
+    from: () => ({
+      select: () => ({
+        eq: (_col: string, id: number) => ({
+          maybeSingle: async () => ({ data: id === 404 ? null : { auth_user_id: `auth-of-${id}` }, error: null }),
+        }),
+      }),
+    }),
+    auth: {
+      admin: {
+        updateUserById: async (authId: string, attrs: unknown) => {
+          passwordUpdates.push({ authId, attrs });
+          return { data: {}, error: null };
+        },
+      },
+    },
+  },
+}));
 const audits: unknown[] = [];
 vi.mock("../src/lib/audit", () => ({
   logAuditEvent: async (e: unknown) => void audits.push(e),
@@ -1456,5 +1477,43 @@ describe("costing and error mapping", () => {
       dbError({ code: "XX000", message: "relation secret_internal" }),
     ).json();
     expect(masked.error.message).toBe("An unexpected error occurred");
+  });
+});
+
+describe("users: Owner-set password (FR-49)", () => {
+  const profile = { user_id: 2, username: "testbarista", full_name: "Test Barista", role: "barista", status: "active", email: null, date_created: "2026-11-21T00:00:00Z" };
+
+  it("sets a new password through Supabase Auth and keeps it out of the audit log", async () => {
+    passwordUpdates.length = 0;
+    audits.length = 0;
+    onQuery = () => ({ data: profile });
+    const res = await call(
+      users.PATCH(req("PATCH", "/api/users/2", OWNER, { password: "newpass123" }), params({ id: "2" })),
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.data.username).toBe("testbarista");
+    expect(passwordUpdates).toEqual([{ authId: "auth-of-2", attrs: { password: "newpass123" } }]);
+    expect(JSON.stringify(audits)).not.toContain("newpass123");
+    expect(JSON.stringify(audits)).toContain("passwordChanged");
+    // Password only: the profile row is read, never updated.
+    expect(calls.some((c) => c.table === "users" && c.op === "update")).toBe(false);
+  });
+
+  it("refuses a password shorter than 8 characters", async () => {
+    passwordUpdates.length = 0;
+    const res = await call(
+      users.PATCH(req("PATCH", "/api/users/2", OWNER, { password: "short" }), params({ id: "2" })),
+    );
+    expect(res.status).toBe(400);
+    expect(passwordUpdates).toHaveLength(0);
+  });
+
+  it("does not let a Barista set passwords", async () => {
+    passwordUpdates.length = 0;
+    const res = await call(
+      users.PATCH(req("PATCH", "/api/users/2", "barista-token", { password: "newpass123" }), params({ id: "2" })),
+    );
+    expect(res.status).toBe(403);
+    expect(passwordUpdates).toHaveLength(0);
   });
 });
