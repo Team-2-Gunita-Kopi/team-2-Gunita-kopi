@@ -12,6 +12,32 @@ When someone asks to set up, install, or run this project on their computer, run
 - Local setup never needs the live project, keys or `supabase/.env.local`. Never point a new machine at live, and never run `supabase link`, `db push` or `migration repair` for setup.
 - Optional real email for the Owner code: a Resend account and key in `supabase/.env` (`SMTP_ENABLED=true`, `SMTP_PASS=...`), the local Owner's email changed to the Resend account email, then `npx -y supabase@2.122.1 stop` and `start`.
 
+## Design freeze (set 2026-11-21) — read before changing any screen
+
+The POS (Barista) and Admin (Owner) design and layout were matched to the team's Figma file on
+2026-11-21 by jhnjffryyy: https://www.figma.com/design/dt2Pzmp3Eo1Nq9M2UUwZiq/SAD---Phase-3--Systems-Design
+("Staff Mockup Design" and "Owner Mockup Design" frames). These rules apply to every teammate and
+every AI agent working on this repository:
+
+- Do not change the design or layout of any POS or Owner screen: colors, fonts, font sizes, spacing,
+  sidebar and top bar, page headings, tables, badges, buttons, forms, scrollbars, card layout,
+  breakpoints, or the print layout. This includes "cleanups", restyles and component swaps.
+- Protected files and areas:
+  - `packages/ui/css/styles.css`, especially the `.staff-mode` / `.owner-mode` rules, the scrollbar
+    rules, the table box rules, the Owner typography block, the user form styles and both
+    `@media print` blocks.
+  - `apps/pos/src/app/layout.tsx` and `apps/admin/src/app/layout.tsx` (body classes `staff-mode` /
+    `owner-mode`, fonts) and the bundled font `apps/*/src/app/fonts/FiraCode-VF.woff2`.
+  - The POS screens (`apps/pos/src/app/(pos)/**`, `apps/pos/src/features/pos/components/**`,
+    `apps/pos/public/icons/cat-*.svg`) and the Owner pages (`apps/admin/src/app/(app)/**`).
+  - Shared components whose look changed: `packages/ui/src/StatusBadge.tsx` (`withIcon`),
+    `LoginForm.tsx`, `Receipt.tsx`.
+- Allowed without asking: bug fixes and data or backend work that leave the look unchanged, and new
+  screens that reuse the existing classes and components.
+- Any visual or layout change needs jhnjffryyy's approval first. If a task seems to require one, stop
+  and ask instead of changing it. After any change, check the screen at 1536, 1366, 1180, 1024,
+  820 and 390 px wide.
+
 ## Commands
 
 Use Node 22 (`.nvmrc`): on Node 25+ the `@gunita/ui` jsdom tests fail because Node's own experimental `localStorage` global shadows jsdom's. pnpm is pinned (`packageManager: pnpm@12.21.0`); without a global pnpm, prefix commands with `npx -y pnpm@12.21.0`.
@@ -469,3 +495,80 @@ npx -y pnpm@12.21.0 dev
 - Never commit secrets or `.env*` files (only `.env.example`).
 - Never touch or commit `my-skills/`.
 - Keep the SRS and SDS Markdown files in the repository root out of this branch.
+
+## Session summary — 2026-11-21 afternoon (from about 3 PM), jhnjffryyy with Claude Code
+
+Branch `testing/local-supabase-handover`. Testing was on the local Docker Supabase stack (see
+"Local Supabase handover"); live means project `gunita-kopi-pos-dev`. Earlier the same day the POS
+was matched to the Figma Staff frames and pushed (see below).
+
+### Pushed to GitHub (`testing/local-supabase-handover`, no co-author trailers)
+
+- `51a5838 feat(pos): match the Staff POS Figma mockups at 1180x820`: 197 px sidebar, compact top bar
+  with per-screen titles, one-row scrolling category tabs, 259 px cart, Figma category icons,
+  name/description/price cards, search icon, payment dialog layout, centered tables, stock badge
+  icons, clickable order rows with hover, light calendar icons, dark scrollbars, staff login wording,
+  phone layout fix, "…" menu only in demo mode.
+- `1617d62 chore(supabase): local draft descriptions for all 76 products`.
+
+### Live database changes (all approved by jhnjffryyy, verified with read-only queries)
+
+- Product descriptions: all 76 products got short drafted descriptions (only empty ones were filled).
+- Demo ingredients and recipes: 67 ingredients with unit, unit cost and reorder level, and 484
+  `product_ingredients` rows, so every product has a recipe; costing recalculated by trigger
+  (e.g. Spanish Latte PHP 50.60). Script: `supabase/seed/demo_ingredients_recipes.sql`. The client has
+  no real recipe data; these are invented demo values to replace when real recipes arrive.
+- Add-ons: the 11 menu-board add-ons (PHP 25, drinks only) mapped to existing ingredients: Biscoff
+  Spread 20 g, Caramel Sauce 20 ml, Chocolate Sauce 20 ml, Espresso Beans 18 g, Gunita House Syrup
+  20 ml, Strawberry Jam 25 g, Matcha Powder 3 g, Fresh Milk 60 ml, Oreo Biscuits 2 pcs, Salted
+  Caramel Sauce 20 ml, Sugar Syrup 20 ml. The POS shows the ingredient name as the add-on label.
+- Live stock is still 0 for every ingredient, so the live POS shows products as out of stock until
+  stock-ins are recorded. No migrations were run; the CLI link file was removed after each query.
+
+### Local stack
+
+- The local database was reset (by jhnjffryyy) and reseeded with `SEED_DATA=demo bash
+  supabase/seed/seed-localhost.sh`: the same demo ingredients, recipes and add-ons as live, test
+  accounts `testowner` / `testbarista` (passwords in `supabase/.env.seed-accounts.local`), and opening
+  stock (4 x reorder level) recorded as stock-ins with realistic remarks such as "Dairy delivery".
+  Without `SEED_DATA=demo` the script still loads the old synthetic data.
+- New seed files: `demo_ingredients_recipes.sql`, `demo_localhost_accounts_stock.sql`,
+  `product_descriptions_localhost.sql` (all in `supabase/seed/`).
+
+### Uncommitted code changes (not pushed yet)
+
+- Owner portal matched to the Figma Owner frames: header "…" menu only in demo mode; header shows the
+  signed-in name (display-only `sessionStorage` key `gk-admin-owner-name`); invisible light-theme
+  page titles and grays replaced with the dark palette; "GUNITA · ADMIN" headings; green "+ Add"
+  buttons; stock and account status badges with icons; Owner typography (title 28 px, small heading
+  11.5 px, section titles 17.6 px).
+- Fonts: Fira Code is bundled locally (`next/font/local`) in both apps because the Google Fonts
+  download failed at dev start and left all numbers in a fallback font.
+- Scrollbars and tables (Owner and POS): green scrollbar thumb on a dark track; table boxes capped at
+  `max(260px, 100dvh - 22rem)` so the bottom and right scrollbars stay on screen; sticky table headers;
+  Products and Inventory tables fit without sideways scrolling from 1200 px up.
+- Suppliers: Name, Contact Person, Number, Address, Status, Ingredients (count), Actions (Edit,
+  Deactivate).
+- Reports: per-tab titles; Daily Sales with a date picker, Sales / Orders / Avg Order cards, a 7-day
+  table and the orders of that day; Stock Status with Unit, Current Stock, Reorder Level, Status and a
+  "Low stock only" filter. Export CSV uses the table headings, readable labels and a UTF-8 BOM (Excel
+  shows PHP signs) and downloads in every browser (`downloadCsv` in
+  `apps/admin/src/features/reports/api.ts`). Print now prints the page (it was blank); receipts still
+  print only the receipt.
+- Users: list, Add User and Edit User views like Figma. No role field: new accounts are always
+  baristas; roles never change. Edit changes the full name, status (baristas) and password. API:
+  `PATCH /api/users/{id}` accepts `password` (Owner only, 8-72 characters, set through Supabase Auth
+  admin; the audit log records `passwordChanged`, never the password).
+- Order slip: removed on request, then restored; it is unchanged from the committed version.
+- Tests added: `apps/admin/tests/users-page.test.tsx`, `reports-export.test.ts`,
+  `reports-buttons.test.tsx`, and Owner-password tests in `apps/api/tests/phase2-api.test.ts`.
+  Last runs: api 137, admin 71, pos 106, ui 54, contracts 46, all passing.
+
+### Open items
+
+- Commit and push the uncommitted changes above after review.
+- Typecheck still reports the old `tailwind.config.ts` type error in admin and pos (not from today).
+- Repeated automated Owner sign-ins trip the sign-in throttle; wait a few minutes before retrying.
+- Live: record stock-ins before live POS testing; real recipes, add-on amounts and descriptions
+  should come from the shop.
+- FR-09 (order slip) stays implemented.
