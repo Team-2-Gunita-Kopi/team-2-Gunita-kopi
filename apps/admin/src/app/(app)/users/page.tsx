@@ -2,11 +2,11 @@
 
 import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, DataTable, Dialog, Input, StatusBadge, useConfirm, useToast } from "@gunita/ui";
-import type { EmployeeResponse } from "@gunita/contracts";
+import { Button, DataTable, Icon, StatusBadge, useConfirm, useToast } from "@gunita/ui";
+import type { EmployeeResponse, Status, UpdateUserRequest } from "@gunita/contracts";
 import { apiClient } from "@/lib/api-client";
 import { USE_MOCKS } from "@/lib/use-mocks";
-import { listUsers, setUserStatus } from "@/features/users/api";
+import { listUsers, setUserStatus, updateUser } from "@/features/users/api";
 
 interface UserRow extends Record<string, unknown> {
   id: string;
@@ -14,6 +14,7 @@ interface UserRow extends Record<string, unknown> {
   username: string;
   role: string;
   isActive: boolean;
+  createdAt: string;
 }
 
 const sampleUsers: UserRow[] = [
@@ -23,6 +24,7 @@ const sampleUsers: UserRow[] = [
     username: "owner",
     role: "owner_admin",
     isActive: true,
+    createdAt: "2026-08-06T00:00:00Z",
   },
   {
     id: "u-2",
@@ -30,15 +32,21 @@ const sampleUsers: UserRow[] = [
     username: "maria",
     role: "barista",
     isActive: true,
+    createdAt: "2026-08-06T00:00:00Z",
   },
 ];
 
+const ROLE_LABEL: Record<string, string> = { owner_admin: "Owner", barista: "Barista" };
+
+type View = { kind: "list" } | { kind: "add" } | { kind: "edit"; user: UserRow };
+
+const EMPTY_FORM = { fullName: "", username: "", password: "", status: "active" as Status };
+
 export default function UsersPage() {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [fullName, setFullName] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [view, setView] = useState<View>({ kind: "list" });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [errorMessage, setErrorMessage] = useState("");
+  const [saving, setSaving] = useState(false);
   const toast = useToast();
   const confirm = useConfirm();
   const client = useQueryClient();
@@ -52,7 +60,25 @@ export default function UsersPage() {
         username: u.username,
         role: u.role,
         isActive: u.status === "active",
+        createdAt: u.createdAt,
       }));
+
+  const set = (key: keyof typeof EMPTY_FORM) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm({ ...form, [key]: e.target.value });
+
+  const openAdd = () => {
+    setErrorMessage("");
+    setForm(EMPTY_FORM);
+    setView({ kind: "add" });
+  };
+
+  const openEdit = (user: UserRow) => {
+    setErrorMessage("");
+    setForm({ ...EMPTY_FORM, fullName: user.fullName, username: user.username, status: user.isActive ? "active" : "inactive" });
+    setView({ kind: "edit", user });
+  };
+
+  const backToList = () => setView({ kind: "list" });
 
   // FR-45 to FR-47: an inactive account is refused on its next request. The Owner account
   // itself is not deactivated here (there is only one).
@@ -76,124 +102,178 @@ export default function UsersPage() {
     }
   };
 
-  // Barista accounts only: username sign-in, no email. The Owner account comes from /setup.
-  const handleCreateEmployee = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage("");
+  // Barista accounts only: username sign-in, no email. The role is always barista (no role field);
+  // the single Owner account comes from /setup.
+  const createUser = async () => {
     const res = await apiClient<EmployeeResponse>("/api/admin/employees", {
       method: "POST",
-      body: JSON.stringify({ username, password, fullName, role: "barista" }),
+      body: JSON.stringify({ username: form.username, password: form.password, fullName: form.fullName, role: "barista" }),
     });
-    if (!res.success) {
-      setErrorMessage(res.error?.message ?? "Could not create the account");
-      return;
-    }
-    setIsModalOpen(false);
-    setFullName("");
-    setUsername("");
-    setPassword("");
-    await client.invalidateQueries({ queryKey: ["users"] });
+    if (!res.success) throw new Error(res.error?.message ?? "Could not create the account");
   };
+
+  // Name, status and password only (UpdateUserRequestSchema); the role stays as it is.
+  const saveChanges = async (user: UserRow) => {
+    const changes: UpdateUserRequest = {};
+    if (form.fullName.trim() !== user.fullName) changes.fullName = form.fullName;
+    if (user.role === "barista" && form.status !== (user.isActive ? "active" : "inactive")) changes.status = form.status;
+    if (form.password !== "") changes.password = form.password;
+    if (Object.keys(changes).length > 0) await updateUser(Number(user.id), changes);
+  };
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (saving) return;
+    setErrorMessage("");
+    setSaving(true);
+    try {
+      if (view.kind === "add") await createUser();
+      else if (view.kind === "edit") await saveChanges(view.user);
+      await client.invalidateQueries({ queryKey: ["users"] });
+      backToList();
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Could not save the account.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (view.kind !== "list") {
+    const editing = view.kind === "edit" ? view.user : null;
+    return (
+      <div className="space-y-5">
+        <header className="product-page-header">
+          <div>
+            <p className="product-page-kicker">Gunita · Admin</p>
+            <h1>{editing ? `Edit — ${editing.fullName}` : "Add User"}</h1>
+          </div>
+        </header>
+
+        <form className="user-form" onSubmit={save} noValidate={false}>
+          {errorMessage ? (
+            <p className="user-form-error" role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
+          <div className="user-form-grid">
+            <label className="field">
+              Full name
+              <input required minLength={2} maxLength={100} value={form.fullName} onChange={set("fullName")} />
+            </label>
+            <label className="field">
+              Username
+              {editing ? (
+                <input value={form.username} readOnly aria-readonly="true" />
+              ) : (
+                <input required autoComplete="off" value={form.username} onChange={set("username")} placeholder="e.g. maria" />
+              )}
+            </label>
+            <label className={editing?.role === "barista" ? "field" : "field user-form-wide"}>
+              {editing ? "New password (blank = keep)" : "Password (min 8 chars)"}
+              <input
+                type="password"
+                required={!editing}
+                minLength={8}
+                maxLength={72}
+                autoComplete="new-password"
+                value={form.password}
+                onChange={set("password")}
+                placeholder={editing ? "leave blank to keep" : "required"}
+              />
+            </label>
+            {editing?.role === "barista" ? (
+              <label className="field">
+                Status
+                <select value={form.status} onChange={set("status")}>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </label>
+            ) : null}
+          </div>
+          <p className="user-form-note">
+            {editing
+              ? `Role: ${ROLE_LABEL[editing.role] ?? editing.role}. Username and role cannot be changed.`
+              : "New accounts are Barista accounts and sign in on the POS."}
+          </p>
+          <div className="user-form-actions">
+            <Button type="submit" variant="primary" disabled={saving || USE_MOCKS}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+            <Button onClick={backToList} disabled={saving}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <header className="product-page-header">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Team & Users</h1>
-          <p className="text-sm text-gray-500">
-            Manage employee accounts. Public sign-up is disabled; all accounts
-            are provisioned here.
-          </p>
+          <p className="product-page-kicker">Gunita · Admin</p>
+          <h1>Users</h1>
         </div>
-        <Button onClick={() => setIsModalOpen(true)}>
-          Create Employee Account
+        <Button variant="primary" onClick={openAdd}>
+          <Icon name="plus" />
+          Add user
         </Button>
-      </div>
+      </header>
 
       <DataTable<UserRow>
         columns={[
-          { key: "fullName", header: "Name" },
-          { key: "username", header: "Username" },
           {
-            key: "role",
-            header: "Role",
+            key: "fullName",
+            header: "Full Name",
             render: (row) => (
-              <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-800">
-                {String(row.role)}
+              <span>
+                <strong>{row.fullName}</strong>
+                {row.role === "owner_admin" ? <span className="muted"> (you)</span> : null}
               </span>
             ),
           },
+          { key: "username", header: "Username", className: "mono" },
+          { key: "role", header: "Role", render: (row) => ROLE_LABEL[row.role] ?? row.role },
           {
             key: "isActive",
             header: "Status",
             render: (row) => (
-              <StatusBadge
-                status={row.isActive ? "completed" : "cancelled"}
-                label={row.isActive ? "Active" : "Inactive"}
-              />
+              <StatusBadge status={row.isActive ? "ok" : "out_of_stock"} label={row.isActive ? "Active" : "Inactive"} withIcon />
             ),
           },
           {
+            key: "createdAt",
+            header: "Date Created",
+            render: (row) => new Date(row.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+          },
+          {
             key: "actions",
-            header: "",
-            render: (row) =>
-              row.role === "barista" ? (
-                <Button size="sm" variant="outline" disabled={USE_MOCKS} onClick={() => void toggleStatus(row)}>
-                  {row.isActive ? "Deactivate" : "Activate"}
+            header: "Actions",
+            render: (row) => (
+              <div className="flex gap-2">
+                <Button size="sm" disabled={USE_MOCKS} onClick={() => openEdit(row)}>
+                  <Icon name="pencil" />
+                  Edit
                 </Button>
-              ) : null,
+                {row.role === "barista" ? (
+                  <Button
+                    size="sm"
+                    variant={row.isActive ? "danger" : "default"}
+                    disabled={USE_MOCKS}
+                    onClick={() => void toggleStatus(row)}
+                  >
+                    {row.isActive ? "Deactivate" : "Activate"}
+                  </Button>
+                ) : null}
+              </div>
+            ),
           },
         ]}
         data={rows}
         keyExtractor={(row) => row.id}
       />
-
-      <Dialog
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title="Create Barista Account"
-      >
-        <form onSubmit={handleCreateEmployee} className="space-y-4">
-          {errorMessage && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">
-              {errorMessage}
-            </div>
-          )}
-          <Input
-            label="Full Name"
-            required
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="Barista Name"
-          />
-          <Input
-            label="Username"
-            required
-            autoComplete="off"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="e.g. maria"
-          />
-          <Input
-            label="Temporary Password"
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Minimum 8 characters"
-          />
-          <div className="flex justify-end space-x-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit">Create Account</Button>
-          </div>
-        </form>
-      </Dialog>
     </div>
   );
 }

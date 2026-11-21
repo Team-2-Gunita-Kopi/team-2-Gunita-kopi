@@ -56,10 +56,8 @@ function OwnerShell({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const menuItems = [
-    ...(USE_MOCKS ? [{ label: "Reset demo data", onSelect: resetDemo }] : []),
-    { label: "Sign out", onSelect: handleLogout },
-  ];
+  // Log out has its own button; the menu only holds the demo reset, so real mode shows no menu.
+  const menuItems = USE_MOCKS ? [{ label: "Reset demo data", onSelect: resetDemo }] : [];
   const pageTitle =
     ADMIN_NAV_ITEMS.find(
       (item) =>

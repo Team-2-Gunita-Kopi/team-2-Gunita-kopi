@@ -242,16 +242,18 @@ export default function OrdersPage() {
 
   return (
     <div className="space-y-5">
-      <header>
-        <p className="mb-1 text-sm text-gray-500">Gunita · Order Board</p>
-        <h1 className="text-2xl font-bold text-gray-900">Orders</h1>
+      <header className="product-page-header">
+        <div>
+          <p className="product-page-kicker">Gunita · Order Board</p>
+          <h1>Orders</h1>
+        </div>
       </header>
 
       <section
         aria-label="Order filters"
         className="grid gap-3 md:grid-cols-[minmax(12rem,1fr)_10rem_10rem_auto]"
       >
-        <label className="block text-xs font-medium text-gray-500">
+        <label className="block text-xs font-medium text-[var(--fg-muted)]">
           Search
           <input
             type="search"
@@ -261,7 +263,7 @@ export default function OrdersPage() {
             placeholder="Queue no. e.g. 012"
           />
         </label>
-        <label className="block text-xs font-medium text-gray-500">
+        <label className="block text-xs font-medium text-[var(--fg-muted)]">
           Status
           <select
             className="mt-1 w-full"
@@ -277,7 +279,7 @@ export default function OrdersPage() {
             <option value="cancelled">Cancelled</option>
           </select>
         </label>
-        <label className="block text-xs font-medium text-gray-500">
+        <label className="block text-xs font-medium text-[var(--fg-muted)]">
           Date
           <input
             type="date"
@@ -297,7 +299,7 @@ export default function OrdersPage() {
       </section>
 
       {orders.error && !USE_MOCKS && (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-[var(--danger)]">
           {orders.error instanceof Error
             ? orders.error.message
             : "Could not load orders."}
