@@ -72,7 +72,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("payment", () => {
   it("rejects empty and non-numeric amounts, shows change for a valid one", async () => {
     const dialog = await openPayment();
-    const confirm = within(dialog).getByRole("button", { name: "Confirm" });
+    const confirm = within(dialog).getByRole("button", { name: "Confirm payment" });
     const input = within(dialog).getByLabelText("Amount paid");
     expect(input).toHaveAttribute("inputmode", "decimal");
     expect(confirm).toBeDisabled();
@@ -94,7 +94,7 @@ describe("payment", () => {
   it("double confirm creates one outbox record", async () => {
     const dialog = await openPayment();
     await userEvent.type(within(dialog).getByLabelText("Amount paid"), "300");
-    const confirm = within(dialog).getByRole("button", { name: "Confirm" });
+    const confirm = within(dialog).getByRole("button", { name: "Confirm payment" });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
     await screen.findByRole("dialog", { name: "Receipt" });
@@ -107,7 +107,7 @@ describe("checkout", () => {
     const dialog = await openPayment();
     await userEvent.type(within(dialog).getByLabelText("Amount paid"), "300");
     await userEvent.click(
-      within(dialog).getByRole("button", { name: "Confirm" }),
+      within(dialog).getByRole("button", { name: "Confirm payment" }),
     );
     const receipt = await screen.findByRole("dialog", { name: "Receipt" });
     expect(await within(receipt).findByText(/^\d{3}$/)).toBeInTheDocument();
@@ -128,7 +128,7 @@ describe("checkout", () => {
     const dialog = await openPayment(true);
     await userEvent.type(within(dialog).getByLabelText("Amount paid"), "300");
     await userEvent.click(
-      within(dialog).getByRole("button", { name: "Confirm" }),
+      within(dialog).getByRole("button", { name: "Confirm payment" }),
     );
     const receipt = await screen.findByRole("dialog", { name: "Receipt" });
     expect(within(receipt).getByText("OFF-001")).toBeInTheDocument();
@@ -142,7 +142,7 @@ describe("checkout", () => {
     const dialog = await openPayment();
     await userEvent.type(within(dialog).getByLabelText("Amount paid"), "300");
     await userEvent.click(
-      within(dialog).getByRole("button", { name: "Confirm" }),
+      within(dialog).getByRole("button", { name: "Confirm payment" }),
     );
     const receipt = await screen.findByRole("dialog", { name: "Receipt" });
     const queue = (await within(receipt).findByText(/^\d{3}$/)).textContent;
@@ -166,7 +166,7 @@ describe("checkout", () => {
     const dialog = await openPayment();
     await userEvent.type(within(dialog).getByLabelText("Amount paid"), "300");
     await userEvent.click(
-      within(dialog).getByRole("button", { name: "Confirm" }),
+      within(dialog).getByRole("button", { name: "Confirm payment" }),
     );
     const receipt = await screen.findByRole("dialog", { name: "Receipt" });
     await userEvent.click(
@@ -179,7 +179,7 @@ describe("checkout", () => {
     const dialog = await openPayment(offline);
     await userEvent.type(within(dialog).getByLabelText("Amount paid"), "300");
     await userEvent.click(
-      within(dialog).getByRole("button", { name: "Confirm" }),
+      within(dialog).getByRole("button", { name: "Confirm payment" }),
     );
     return await screen.findByRole("dialog", { name: "Receipt" });
   }

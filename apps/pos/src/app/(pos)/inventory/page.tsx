@@ -70,7 +70,7 @@ const samplePosIngredients: PosIngredientRow[] = [
     currentStock: "8.5",
     reorderAt: "5.0",
     unit: "kg",
-    status: "completed",
+    status: "ok",
     label: "In Stock",
   },
   {
@@ -88,7 +88,7 @@ const samplePosIngredients: PosIngredientRow[] = [
     currentStock: "2.5",
     reorderAt: "2.0",
     unit: "L",
-    status: "completed",
+    status: "ok",
     label: "In Stock",
   },
 ];
@@ -348,7 +348,7 @@ export default function PosInventoryPage() {
             {
               key: "status",
               header: "Status",
-              render: (row) => <StatusBadge status={row.status} label={row.label} />,
+              render: (row) => <StatusBadge status={row.status} label={row.label} withIcon />,
             },
             {
               key: "actions",

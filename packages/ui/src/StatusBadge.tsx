@@ -2,6 +2,7 @@ import React from "react";
 import { ORDER_STATUS_LABEL, STOCK_STATUS_LABEL } from "@gunita/contracts/ui";
 import type { OrderStatus, StockStatus } from "@gunita/contracts/ui";
 import { Chip, type ChipTone } from "./Chip";
+import { Icon } from "./Icon";
 
 const TONE: Record<string, ChipTone> = {
   // orders
@@ -32,6 +33,8 @@ export interface StatusBadgeProps {
   label?: string;
   /** Legacy prop; the tone is derived from `status`. */
   variant?: string;
+  /** Stock badges only: check or alert icon before the label (Staff POS design). */
+  withIcon?: boolean;
 }
 
 function defaultLabel(status: string): string {
@@ -41,6 +44,12 @@ function defaultLabel(status: string): string {
   return SYNC_LABEL[status] ?? status.replace(/_/g, " ");
 }
 
-export function StatusBadge({ status, label }: StatusBadgeProps) {
-  return <Chip tone={TONE[status] ?? "neutral"}>{label ?? defaultLabel(status)}</Chip>;
+export function StatusBadge({ status, label, withIcon }: StatusBadgeProps) {
+  const icon = withIcon && (status in STOCK_STATUS_LABEL || status === "low_stock") ? (status === "ok" ? "check" : "alert") : null;
+  return (
+    <Chip tone={TONE[status] ?? "neutral"}>
+      {icon ? <Icon name={icon} aria-hidden="true" /> : null}
+      {label ?? defaultLabel(status)}
+    </Chip>
+  );
 }

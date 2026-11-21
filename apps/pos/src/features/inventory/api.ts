@@ -69,7 +69,7 @@ export function recordStockMovement(input: {
 }
 
 export const STOCK_BADGE: Record<Ingredient["stockStatus"], { status: string; label: string }> = {
-  available: { status: "completed", label: "In Stock" },
+  available: { status: "ok", label: "In Stock" },
   "low-stock": { status: "low_stock", label: "Low Stock" },
   "out-of-stock": { status: "out_of_stock", label: "Out of Stock" },
 };

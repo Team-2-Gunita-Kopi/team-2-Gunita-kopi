@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Order, OrderStatus } from "@gunita/contracts";
 import { ORDER_TYPE_LABEL } from "@gunita/contracts/ui";
 import {
@@ -305,6 +306,7 @@ function matchesBusinessDate(value: string, date: string): boolean {
 }
 
 export default function PosOrdersPage() {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [dateFilter, setDateFilter] = useState("");
@@ -469,6 +471,10 @@ export default function PosOrdersPage() {
             : "No orders match these filters."
         }
         keyExtractor={(row) => row.key}
+        // The whole row opens the order, not only the small queue number.
+        onRowClick={(row) => {
+          if (!USE_MOCKS && row.orderId !== null) router.push(`/orders/${row.orderId}`);
+        }}
       />
     </div>
   );

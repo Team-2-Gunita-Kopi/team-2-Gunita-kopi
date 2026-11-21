@@ -2,7 +2,7 @@
 
 import React, { useRef, useState } from "react";
 import { computeChange, parseAmount, type OrderType } from "@gunita/contracts/ui";
-import { Button, Input, Modal, Seg, formatPeso } from "@gunita/ui";
+import { Button, Icon, Input, Modal, Seg, formatPeso } from "@gunita/ui";
 
 const TYPES: { value: OrderType; label: string }[] = [
   { value: "dine-in", label: "Dine-in" },
@@ -47,14 +47,20 @@ export function PaymentModal({
   return (
     <Modal isOpen onClose={onClose} title="Payment" sticky={submitting}>
       <div className="pay-panel">
-        <Seg label="Order type" options={TYPES} value={type} onChange={setType} />
-        <div>
+        <div className="pay-type">
+          <span className="pay-label">Order type</span>
+          <Seg label="Order type" options={TYPES} value={type} onChange={setType} />
+        </div>
+        <div className="pay-row">
           <span className="muted">Total due</span>
           <div className="due num">{formatPeso(total)}</div>
         </div>
-        <div>
+        <div className="pay-row">
           <span className="muted">Payment method</span>
-          <div>Cash</div>
+          <div className="pay-cash">
+            <Icon name="cash" aria-hidden="true" />
+            Cash
+          </div>
         </div>
         <Input
           label="Amount paid"
@@ -64,7 +70,7 @@ export function PaymentModal({
           error={error}
           onChange={(e) => setRaw(e.target.value)}
         />
-        <div>
+        <div className="pay-row">
           <span className="muted">Change</span>
           <div className="change-out num" aria-live="polite">
             {result?.ok ? formatPeso(result.change) : formatPeso(0)}
@@ -74,10 +80,11 @@ export function PaymentModal({
       </div>
       <div className="modal-actions">
         <Button onClick={onClose} disabled={submitting}>
-          Cancel
+          Back
         </Button>
         <Button variant="primary" disabled={!valid || submitting} onClick={confirm}>
-          Confirm
+          <Icon name="cash" aria-hidden="true" />
+          Confirm payment
         </Button>
       </div>
     </Modal>

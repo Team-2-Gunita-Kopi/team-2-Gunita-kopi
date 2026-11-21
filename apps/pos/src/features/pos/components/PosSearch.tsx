@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { Icon } from "@gunita/ui";
 
 const DEBOUNCE_MS = 200;
 
@@ -19,6 +20,7 @@ export function PosSearch({ onSearch }: { onSearch: (q: string) => void }) {
 
   return (
     <label className="field pos-search">
+      <Icon name="search" aria-hidden="true" />
       <input
         type="search"
         aria-label="Search menu"
