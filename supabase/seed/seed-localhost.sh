@@ -74,9 +74,14 @@ BARISTA_USERNAME=testbarista
 BARISTA_PASSWORD=$BARISTA_PW
 EOF
 
-docker exec -i "$DB_CONTAINER" psql -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
-  -v owner_id="'$OWNER_ID'" -v barista_id="'$BARISTA_ID'" < supabase/seed/synthetic_localhost_seed.sql
-docker exec -i "$DB_CONTAINER" psql -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
-  < supabase/seed/product_descriptions_localhost.sql
+psql_run() { docker exec -i "$DB_CONTAINER" psql -q -v ON_ERROR_STOP=1 -U postgres -d postgres "$@"; }
+if [ "${SEED_DATA:-synthetic}" = demo ]; then
+  # Same demo ingredients and recipes as the live project, plus accounts and opening stock.
+  psql_run < supabase/seed/demo_ingredients_recipes.sql
+  psql_run -v owner_id="'$OWNER_ID'" -v barista_id="'$BARISTA_ID'" < supabase/seed/demo_localhost_accounts_stock.sql
+else
+  psql_run -v owner_id="'$OWNER_ID'" -v barista_id="'$BARISTA_ID'" < supabase/seed/synthetic_localhost_seed.sql
+fi
+psql_run < supabase/seed/product_descriptions_localhost.sql
 
 echo "Seed complete. Accounts: $ACCOUNTS"
