@@ -76,5 +76,7 @@ EOF
 
 docker exec -i "$DB_CONTAINER" psql -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
   -v owner_id="'$OWNER_ID'" -v barista_id="'$BARISTA_ID'" < supabase/seed/synthetic_localhost_seed.sql
+docker exec -i "$DB_CONTAINER" psql -q -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  < supabase/seed/product_descriptions_localhost.sql
 
 echo "Seed complete. Accounts: $ACCOUNTS"
