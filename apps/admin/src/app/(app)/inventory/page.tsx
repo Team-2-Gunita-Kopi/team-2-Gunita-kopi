@@ -63,7 +63,7 @@ const sampleIngredients: IngredientRow[] = [
     unit: "kg",
     cost: "₱750.00/kg",
     supplier: "—",
-    status: "completed",
+    status: "ok",
     label: "In Stock",
   },
   {
@@ -279,7 +279,7 @@ export default function InventoryPage() {
   const selectedIngredient = byId.get(move.ingredientId);
 
   const errorBox = errorMessage && (
-    <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">{errorMessage}</div>
+    <div className="p-3 bg-[var(--surface)] border border-[var(--danger)] text-[var(--danger)] text-xs rounded-lg">{errorMessage}</div>
   );
 
   return (
@@ -313,7 +313,7 @@ export default function InventoryPage() {
       <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
 
       {ingredients.error && (
-        <p className="text-sm text-red-700">
+        <p className="text-sm text-[var(--danger)]">
           {ingredients.error instanceof Error ? ingredients.error.message : "Could not load the inventory."}
         </p>
       )}
@@ -333,7 +333,7 @@ export default function InventoryPage() {
               key: "status",
               header: "Status",
               render: (row) =>
-                <StatusBadge status={row.status} label={row.label} />,
+                <StatusBadge status={row.status} label={row.label} withIcon />,
             },
             {
               key: "actions",
@@ -529,7 +529,7 @@ export default function InventoryPage() {
             />
           </div>
           {history.error && (
-            <p className="text-sm text-red-700" role="alert">
+            <p className="text-sm text-[var(--danger)]" role="alert">
               {history.error instanceof Error
                 ? history.error.message
                 : "Could not load stock history."}
@@ -605,9 +605,9 @@ export default function InventoryPage() {
                 .map((s) => ({ value: String(s.id), label: s.name })),
             ]}
           />
-          <div className="space-y-4 border-t border-gray-200 pt-4">
-            <h4 className="text-sm font-semibold text-gray-900">Add-on Configuration</h4>
-            <label className="flex items-center gap-2 text-sm text-gray-700">
+          <div className="space-y-4 border-t border-[var(--border)] pt-4">
+            <h4 className="text-sm font-semibold">Add-on Configuration</h4>
+            <label className="flex items-center gap-2 text-sm text-[var(--fg-muted)]">
               <input
                 type="checkbox"
                 checked={form.isAddon}

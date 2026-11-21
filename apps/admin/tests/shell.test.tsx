@@ -66,12 +66,11 @@ describe("owner shell", () => {
     expect(JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({ app: "owner", op: "reset", args: [] });
   });
 
-  it("hides Reset demo data when USE_MOCKS is false", async () => {
+  it("shows no user menu when USE_MOCKS is false; Log out stays", () => {
     flags.useMocks = false;
     render(<AdminAppLayout>content</AdminAppLayout>);
-    await userEvent.click(screen.getByRole("button", { name: "User menu" }));
-    expect(screen.queryByText("Reset demo data")).not.toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Sign out" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "User menu" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
   });
 });
 

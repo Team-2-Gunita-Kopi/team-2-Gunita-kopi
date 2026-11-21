@@ -3,6 +3,8 @@ import { apiClient } from "@/lib/api-client";
 
 /** otpRequired: no session yet; the Owner enters the emailed code next (verifySignInCode). */
 type SessionUser = MockSession & { otpRequired?: boolean };
+// Display name for the header only (not authoritative); authorization stays server-side.
+const OWNER_NAME_KEY = "gk-admin-owner-name";
 
 /**
  * Real sign-in: this site's server (/auth/login) signs in through apps/api and keeps the session
@@ -16,20 +18,28 @@ export async function signIn(identifier: string, password: string): Promise<Sess
   if (!res.success || !res.data) {
     throw new Error(res.error?.message ?? "Incorrect username or password.");
   }
-  return {
+  const session = {
     ...res.data,
     fullName: res.data.fullName || identifier,
     username: res.data.username || identifier,
   };
+  window.sessionStorage.setItem(OWNER_NAME_KEY, session.fullName);
+  return session;
 }
 
 /** Revokes the session and clears the HttpOnly cookie on the server. */
 export async function signOut(): Promise<void> {
-  await apiClient<null>("/auth/logout", { method: "POST" });
+  try {
+    await apiClient<null>("/auth/logout", { method: "POST" });
+  } finally {
+    window.sessionStorage.removeItem(OWNER_NAME_KEY);
+  }
 }
 
-export function getSession(): MockSession | null {
-  return null; // The session cookie is HttpOnly; pages rely on the middleware guard.
+/** Only the cached display name; the session cookie is HttpOnly and pages rely on the middleware guard. */
+export function getSession(): Pick<MockSession, "fullName"> | null {
+  const fullName = window.sessionStorage.getItem(OWNER_NAME_KEY);
+  return fullName ? { fullName } : null;
 }
 
 // Password recovery runs on this site's server (/auth/recovery): the recovery session stays in an

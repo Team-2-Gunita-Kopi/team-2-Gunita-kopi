@@ -169,15 +169,15 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <p className="text-xs uppercase tracking-[0.2em] text-[var(--fg-muted)]">
-          Gunita Kopi · Overview
-        </p>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-      </div>
+      <header className="product-page-header">
+        <div>
+          <p className="product-page-kicker">Gunita Kopi · Overview</p>
+          <h1>Dashboard</h1>
+        </div>
+      </header>
 
       {dashboard.error && (
-        <p className="text-sm text-red-700">
+        <p className="text-sm text-[var(--danger)]">
           {dashboard.error instanceof Error
             ? dashboard.error.message
             : "Could not load the dashboard."}
@@ -197,7 +197,7 @@ export default function DashboardPage() {
         </div>
         <div className="kpi">
           <div className="lbl">Pending / Preparing</div>
-          <div className="val num" style={{ color: "var(--coffee)" }}>
+          <div className="val num warn">
             {d ? d.pendingOrders + d.preparingOrders : "…"}
           </div>
         </div>
@@ -234,6 +234,7 @@ export default function DashboardPage() {
                     <StatusBadge
                       status={outOfStock ? "out_of_stock" : "low_stock"}
                       label={outOfStock ? "Out of Stock" : "Low Stock"}
+                      withIcon
                     />
                     <span className="min-w-0 flex-1 truncate">
                       {item.ingredientName}{" "}

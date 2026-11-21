@@ -2,11 +2,11 @@
 
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart, Button, DataTable, StatCard, StatusBadge, Tabs, formatPeso } from "@gunita/ui";
+import { BarChart, Button, DataTable, Icon, StatusBadge, Tabs, formatPeso, formatQueueNumber } from "@gunita/ui";
 import type { BestSellerRow, ReportType } from "@gunita/contracts";
 import { USE_MOCKS } from "@/lib/use-mocks";
-import { getReport, toCsv } from "@/features/reports/api";
-import { manilaToday } from "@/features/orders/api";
+import { downloadCsv, getReport, toCsv } from "@/features/reports/api";
+import { listOrders, manilaToday } from "@/features/orders/api";
 
 type Row = Record<string, unknown>;
 
@@ -29,11 +29,20 @@ function monthsEndingAt(month: string, source: { month: string; orderCount: numb
   });
 }
 
-/** Report query per tab (FR-31 to FR-34). */
-const QUERY: Record<Exclude<ReportType, "monthly" | "best-sellers">, () => string> = {
-  daily: () => `from=${daysAgo(29)}&to=${manilaToday()}`,
-  "stock-status": () => "",
+/** The 7 business days ending on `date` (YYYY-MM-DD), oldest first. */
+function weekEndingAt(date: string): string[] {
+  const end = Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)));
+  return Array.from({ length: 7 }, (_, i) => new Date(end - (6 - i) * 86_400_000).toISOString().slice(0, 10));
+}
+
+const TITLES: Record<ReportType, string> = {
+  daily: "Daily Sales Report",
+  monthly: "Monthly Sales Report",
+  "best-sellers": "Best Sellers Report",
+  "stock-status": "Stock Status Report",
 };
+
+const TYPE_LABEL: Record<string, string> = { "dine-in": "Dine-in", "take-out": "Take-out", "pre-order": "Pre-order" };
 
 const MOCK_BEST_SELLERS: BestSellerRow[] = [
   { productId: 1, productName: "Salabat", unitsSold: 46, revenue: 3450, currentUnitCost: null },
@@ -65,7 +74,10 @@ const SAMPLE: Record<ReportType, Row[]> = {
 };
 
 export default function ReportsPage() {
-  const [activeTab, setActiveTab] = useState<ReportType>("monthly");
+  const [activeTab, setActiveTab] = useState<ReportType>("daily");
+  const [selectedDate, setSelectedDate] = useState(() => manilaToday());
+  const [lowStockOnly, setLowStockOnly] = useState(false);
+  const week = weekEndingAt(selectedDate);
   const [selectedMonth, setSelectedMonth] = useState(() => manilaToday().slice(0, 7));
   const [bestSellersFrom, setBestSellersFrom] = useState(() => daysAgo(6));
   const [bestSellersTo, setBestSellersTo] = useState(() => manilaToday());
@@ -81,11 +93,20 @@ export default function ReportsPage() {
       ? `from=${monthAtOffset(selectedMonth, -11)}-01&to=${selectedMonth}-01`
       : activeTab === "best-sellers"
         ? bestSellerQuery
-        : QUERY[activeTab]();
+        : activeTab === "daily"
+          ? `from=${week[0]}&to=${selectedDate}`
+          : "";
   const report = useQuery({
     queryKey: ["report", activeTab, query],
     enabled: !USE_MOCKS,
     queryFn: () => getReport(activeTab, query),
+  });
+
+  // FR-31: the orders taken on the selected day, listed under the daily summary.
+  const dayOrders = useQuery({
+    queryKey: ["report-day-orders", selectedDate],
+    enabled: !USE_MOCKS && activeTab === "daily",
+    queryFn: () => listOrders({ date: selectedDate }),
   });
 
   const tabs = [
@@ -122,43 +143,43 @@ export default function ReportsPage() {
     1,
   );
   let rows: Row[] = USE_MOCKS ? SAMPLE[activeTab] : [];
+  const dailyByDate = new Map(r?.type === "daily" ? r.rows.map((d) => [d.date.slice(0, 10), d]) : []);
   if (r?.type === "daily") {
-    rows = r.rows.map((d) => ({ date: d.date, orders: d.orderCount, itemsSold: d.itemsSold, totalSales: formatPeso(d.totalSales) }));
+    rows = week.map((date) => ({
+      date,
+      orders: dailyByDate.get(date)?.orderCount ?? 0,
+      sales: formatPeso(dailyByDate.get(date)?.totalSales ?? 0),
+    }));
   } else if (r?.type === "monthly") {
     rows = monthlyRows.map((m) => ({ month: m.month, orders: m.orderCount, sales: formatPeso(m.totalSales) }));
   } else if (r?.type === "best-sellers") {
     rows = bestSellerRows;
   } else if (r?.type === "stock-status") {
-    rows = r.rows.map((s) => ({
-      ingredient: s.ingredientName,
-      stock: `${s.currentStock} ${s.unit ?? ""}`.trim(),
-      reorder: `${s.reorderLevel} ${s.unit ?? ""}`.trim(),
-      status: s.stockStatus,
-    }));
+    rows = r.rows
+      .filter((s) => !lowStockOnly || s.stockStatus !== "available")
+      .map((s) => ({
+        ingredient: s.ingredientName,
+        unit: s.unit ?? "",
+        stock: s.currentStock,
+        reorder: s.reorderLevel,
+        status: s.stockStatus,
+      }));
   }
   if (USE_MOCKS && activeTab === "monthly") {
     rows = monthlyRows.map((m) => ({ month: m.month, orders: m.orderCount, sales: formatPeso(m.totalSales) }));
   }
   if (USE_MOCKS && activeTab === "best-sellers") rows = bestSellerRows;
 
-  const todayRow = r?.type === "daily" ? r.rows.find((d) => d.date === today) : undefined;
+  const dayRow = dailyByDate.get(selectedDate);
+  const daySales = dayRow?.totalSales ?? 0;
+  const dayCount = dayRow?.orderCount ?? 0;
 
-  const exportCsv = () => {
-    const blob = new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `gunita-kopi-${activeTab}-${today}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   const columns: Record<ReportType, { key: string; header: string; render?: (row: Row) => React.ReactNode; className?: string }[]> = {
     daily: [
-      { key: "date", header: "Date" },
-      { key: "orders", header: "Orders" },
-      { key: "itemsSold", header: "Items Sold" },
-      { key: "totalSales", header: "Total Sales" },
+      { key: "date", header: "Date", className: "mono" },
+      { key: "orders", header: "Orders", className: "num" },
+      { key: "sales", header: "Sales", className: "num" },
     ],
     monthly: [
       { key: "month", header: "Month" },
@@ -172,43 +193,53 @@ export default function ReportsPage() {
       { key: "sales", header: "Sales", className: "num" },
     ],
     "stock-status": [
-      { key: "ingredient", header: "Ingredient" },
-      { key: "stock", header: "Current Stock" },
-      { key: "reorder", header: "Reorder Level" },
+      { key: "ingredient", header: "Ingredient", render: (row) => <strong>{String(row.ingredient)}</strong> },
+      { key: "unit", header: "Unit" },
+      { key: "stock", header: "Current Stock", className: "num" },
+      { key: "reorder", header: "Reorder Level", className: "num" },
       {
         key: "status",
-        header: "Alert",
+        header: "Status",
         render: (row) =>
           row.status === "out-of-stock" ? (
-            <StatusBadge status="out_of_stock" label="Out of Stock" />
+            <StatusBadge status="out_of_stock" label="Out of Stock" withIcon />
           ) : row.status === "low-stock" ? (
-            <StatusBadge status="low_stock" label="Low Stock Alert" />
+            <StatusBadge status="low_stock" label="Low Stock" withIcon />
           ) : (
-            <StatusBadge status="completed" label="Normal" />
+            <StatusBadge status="ok" label="In Stock" withIcon />
           ),
       },
     ],
   };
 
+  // FR-35: the CSV holds exactly what the table shows, with the table's column names.
+  const exportCsv = () => {
+    const stockLabel: Record<string, string> = { available: "In Stock", "low-stock": "Low Stock", "out-of-stock": "Out of Stock" };
+    const csvRows =
+      activeTab === "stock-status" ? rows.map((r) => ({ ...r, status: stockLabel[String(r.status)] ?? r.status })) : rows;
+    const period = activeTab === "daily" ? selectedDate : activeTab === "monthly" ? selectedMonth : today;
+    downloadCsv(`gunita-kopi-${activeTab}-${period}.csv`, toCsv(csvRows, columns[activeTab]));
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <header className="product-page-header">
         <div>
-          {activeTab === "monthly" || activeTab === "best-sellers" ? (
-            <>
-              <p className="text-xs uppercase tracking-[0.2em] text-[var(--fg-muted)]">Gunita · Admin</p>
-              <h1 className="text-2xl font-bold">
-                {activeTab === "monthly" ? "Monthly Sales Report" : "Best Sellers Report"}
-              </h1>
-            </>
-          ) : (
-            <>
-              <h1 className="text-2xl font-bold text-gray-900">Reports &amp; Analytics</h1>
-              <p className="text-sm text-gray-500">Business performance, sales trends, and inventory health</p>
-            </>
-          )}
+          <p className="product-page-kicker">Gunita · Admin</p>
+          <h1>{TITLES[activeTab]}</h1>
         </div>
         <div className="flex flex-wrap items-end justify-end gap-2">
+          {activeTab === "daily" && (
+            <label className="field min-w-36">
+              Date
+              <input type="date" value={selectedDate} max={today} onChange={(event) => setSelectedDate(event.target.value || today)} />
+            </label>
+          )}
+          {activeTab === "stock-status" && (
+            <Button aria-pressed={lowStockOnly} onClick={() => setLowStockOnly((v) => !v)}>
+              Low stock only
+            </Button>
+          )}
           {activeTab === "monthly" && (
             <label className="field min-w-36">
               Month
@@ -237,34 +268,64 @@ export default function ReportsPage() {
               </label>
             </>
           )}
-          <Button variant="outline" onClick={exportCsv} disabled={rows.length === 0}>
+          <Button onClick={exportCsv} disabled={rows.length === 0}>
+            <Icon name="download" />
             Export CSV
           </Button>
-          {(activeTab === "monthly" || activeTab === "best-sellers") && (
-            <Button variant="outline" onClick={() => window.print()}>
-              Print
-            </Button>
-          )}
+          <Button onClick={() => window.print()}>
+            <Icon name="printer" />
+            Print
+          </Button>
         </div>
-      </div>
+      </header>
 
       <Tabs tabs={tabs} activeTab={activeTab} onChange={(id) => setActiveTab(id as ReportType)} />
 
       {report.isLoading && !USE_MOCKS && <p role="status">Loading report…</p>}
       {report.error && (
-        <p className="text-sm text-red-700">
+        <p className="text-sm text-[var(--danger)]">
           {report.error instanceof Error ? report.error.message : "Could not load the report."}
         </p>
       )}
 
       {activeTab === "daily" && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <StatCard title="Daily Revenue" value={formatPeso(todayRow?.totalSales ?? 0)} subtitle="Today" />
-          <StatCard title="Total Tickets" value={String(todayRow?.orderCount ?? 0)} subtitle="Completed orders today" />
-          <StatCard
-            title="Last 30 Days"
-            value={formatPeso(r?.type === "daily" ? r.totals.totalSales : 0)}
-            subtitle={`${r?.type === "daily" ? r.totals.orderCount : 0} orders`}
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="kpi">
+              <div className="lbl">Sales</div>
+              <div className="val num">{formatPeso(daySales)}</div>
+            </div>
+            <div className="kpi">
+              <div className="lbl">Orders</div>
+              <div className="val num coffee">{dayCount}</div>
+            </div>
+            <div className="kpi">
+              <div className="lbl">Avg Order</div>
+              <div className="val num">{formatPeso(dayCount > 0 ? daySales / dayCount : 0)}</div>
+            </div>
+          </div>
+          <h2 className="report-section-title">7 days ending {selectedDate}</h2>
+          <DataTable<Row> columns={columns.daily} data={rows} keyExtractor={(row) => String(row.date)} />
+          <h2 className="report-section-title">Orders on {selectedDate}</h2>
+          <DataTable<Row>
+            columns={[
+              { key: "queue", header: "Queue", className: "mono" },
+              { key: "time", header: "Time" },
+              { key: "type", header: "Type" },
+              { key: "status", header: "Status", render: (row) => <StatusBadge status={String(row.status)} /> },
+              { key: "total", header: "Total", className: "num" },
+              { key: "payment", header: "Payment" },
+            ]}
+            data={(dayOrders.data ?? []).map((o) => ({
+              queue: formatQueueNumber(o.orderId),
+              time: new Date(o.orderDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" }),
+              type: o.orderType ? (TYPE_LABEL[o.orderType] ?? o.orderType) : "—",
+              status: o.status,
+              total: formatPeso(o.total),
+              payment: "Cash",
+            }))}
+            keyExtractor={(row) => String(row.queue)}
+            emptyMessage={dayOrders.isLoading ? "Loading orders…" : "No orders on this date."}
           />
         </div>
       )}
@@ -322,7 +383,7 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {activeTab !== "monthly" && activeTab !== "best-sellers" && (
+      {activeTab === "stock-status" && (
         <DataTable<Row>
           columns={columns[activeTab]}
           data={rows}

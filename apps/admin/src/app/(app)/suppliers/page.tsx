@@ -2,10 +2,11 @@
 
 import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, DataTable, Dialog, Input, StatusBadge, useToast } from "@gunita/ui";
+import { Button, DataTable, Dialog, Icon, Input, StatusBadge, useToast } from "@gunita/ui";
 import type { Supplier } from "@gunita/contracts";
 import { USE_MOCKS } from "@/lib/use-mocks";
 import { createSupplier, listSuppliers, updateSupplier } from "@/features/suppliers/api";
+import { listIngredients } from "@/features/inventory/api";
 
 interface SupplierRow extends Record<string, unknown> {
   id: string;
@@ -14,6 +15,7 @@ interface SupplierRow extends Record<string, unknown> {
   phone: string;
   address: string;
   status: string;
+  ingredients: number;
 }
 
 const sampleSuppliers: SupplierRow[] = [
@@ -24,6 +26,7 @@ const sampleSuppliers: SupplierRow[] = [
     phone: "+63 917 123 4567",
     address: "La Trinidad, Benguet",
     status: "active",
+    ingredients: 3,
   },
   {
     id: "sup-2",
@@ -32,6 +35,7 @@ const sampleSuppliers: SupplierRow[] = [
     phone: "+63 918 765 4321",
     address: "Calamba, Laguna",
     status: "active",
+    ingredients: 2,
   },
 ];
 
@@ -41,6 +45,11 @@ export default function SuppliersPage() {
   const toast = useToast();
   const client = useQueryClient();
   const suppliers = useQuery({ queryKey: ["suppliers"], enabled: !USE_MOCKS, queryFn: listSuppliers });
+  // Same query key as the Inventory page, so the list is shared from the cache.
+  const ingredients = useQuery({ queryKey: ["ingredients"], enabled: !USE_MOCKS, queryFn: listIngredients });
+  const ingredientCount = new Map<number, number>();
+  for (const i of ingredients.data ?? [])
+    if (i.supplierId !== null) ingredientCount.set(i.supplierId, (ingredientCount.get(i.supplierId) ?? 0) + 1);
   const [editing, setEditing] = useState<Supplier | "new" | null>(null);
   const [form, setForm] = useState(EMPTY);
   const [errorMessage, setErrorMessage] = useState("");
@@ -55,6 +64,7 @@ export default function SuppliersPage() {
         phone: s.contactNumber ?? "",
         address: s.address ?? "",
         status: s.status,
+        ingredients: ingredientCount.get(s.id) ?? 0,
       }));
 
   const open = (s: Supplier | "new") => {
@@ -102,52 +112,59 @@ export default function SuppliersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <header className="product-page-header">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Suppliers</h1>
-          <p className="text-sm text-gray-500">
-            Manage coffee bean and ingredient suppliers
-          </p>
+          <p className="product-page-kicker">Gunita · Admin</p>
+          <h1>Suppliers</h1>
         </div>
-        <Button onClick={() => open("new")} disabled={USE_MOCKS}>
-          Add Supplier
+        <Button variant="primary" onClick={() => open("new")} disabled={USE_MOCKS}>
+          <Icon name="plus" />
+          Add supplier
         </Button>
-      </div>
+      </header>
 
       {suppliers.error && (
-        <p className="text-sm text-red-700">
+        <p className="text-sm text-[var(--danger)]">
           {suppliers.error instanceof Error ? suppliers.error.message : "Could not load suppliers."}
         </p>
       )}
 
       <DataTable<SupplierRow>
         columns={[
-          { key: "name", header: "Supplier Name" },
+          { key: "name", header: "Name", render: (row) => <strong>{row.name}</strong> },
           { key: "contactPerson", header: "Contact Person" },
-          { key: "phone", header: "Phone" },
+          { key: "phone", header: "Number", className: "mono" },
           { key: "address", header: "Address" },
           {
             key: "status",
             header: "Status",
             render: (row) => (
               <StatusBadge
-                status={row.status === "active" ? "completed" : "cancelled"}
+                status={row.status === "active" ? "ok" : "out_of_stock"}
                 label={row.status === "active" ? "Active" : "Inactive"}
+                withIcon
               />
             ),
           },
+          { key: "ingredients", header: "Ingredients", className: "num" },
           {
             key: "actions",
-            header: "",
+            header: "Actions",
             render: (row) => (
               <div className="flex gap-2">
-                <Button size="sm" variant="ghost" disabled={USE_MOCKS} onClick={() => {
+                <Button size="sm" disabled={USE_MOCKS} onClick={() => {
                   const s = byId.get(row.id);
                   if (s) open(s);
                 }}>
+                  <Icon name="pencil" />
                   Edit
                 </Button>
-                <Button size="sm" variant="outline" disabled={USE_MOCKS} onClick={() => void toggleStatus(row)}>
+                <Button
+                  size="sm"
+                  variant={row.status === "active" ? "danger" : "default"}
+                  disabled={USE_MOCKS}
+                  onClick={() => void toggleStatus(row)}
+                >
                   {row.status === "active" ? "Deactivate" : "Activate"}
                 </Button>
               </div>
@@ -165,7 +182,7 @@ export default function SuppliersPage() {
       >
         <form onSubmit={save} className="space-y-4">
           {errorMessage && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">
+            <div className="p-3 bg-[var(--surface)] border border-[var(--danger)] text-[var(--danger)] text-xs rounded-lg">
               {errorMessage}
             </div>
           )}

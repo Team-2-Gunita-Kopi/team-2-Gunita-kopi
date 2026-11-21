@@ -705,13 +705,29 @@ table.tbl.recipe-table{width:100%;min-width:720px;font-size:.78rem;}
 /* Receipt modal */ .slip .queue-num{font-size:2.6rem;line-height:1.1;margin:.2rem 0;}
 .slip table{margin-top:.4rem;}
 
-/* Print: only the slip */
+/* Print. A receipt or order slip on screen: print only that slip. */
 @media print {
-body *{visibility:hidden;}
-.print-area, .print-area *{visibility:visible;}
+body:has(.print-area) *{visibility:hidden;}
+body:has(.print-area) .print-area, body:has(.print-area) .print-area *{visibility:visible;}
 .print-area{position:fixed;inset:0;background:#fff;color:#000;}
 .print-area .slip{background:#fff;color:#000;border:1px dashed #999;}
 .print-area .bay-head{color:#333;}
+}
+/* Any other page (reports, order details): the page content only, black on white, whole tables */
+@media print {
+@page{margin:12mm;}
+html, body{background:#fff !important;color:#000 !important;}
+body{background-image:none !important;}
+.sidebar, .bottomnav, .topbar, .subtabs, .btn, .cart-fab, header .field, .sb-toggle{display:none !important;}
+.app{display:block;}
+.main{padding:0 !important;}
+#screen{max-width:none !important;}
+h1, h2, h3, .product-page-kicker, .muted, .lbl, .kpi .val, .tbl th, .tbl td, .chart-card, .legend{color:#000 !important;}
+.kpi, .chart-card, .tbl-wrap, .tbl th, .tbl td{background:#fff !important;box-shadow:none !important;border-color:#bbb !important;}
+.tbl-wrap{max-height:none !important;overflow:visible !important;}
+.tbl thead th{position:static !important;}
+.tbl tr{break-inside:avoid;}
+.chip{background:#fff !important;}
 }
 
 /* shared component states (@gunita/ui) */ .lowstock-banner.banner-danger{border-color:var(--danger);background:rgba(224,113,90,.08);}
@@ -789,10 +805,36 @@ to{background-position:-200% 0;}
 /* Orders: whole row is clickable; hover shows it */
 .staff-mode .tbl tr.row-click:hover td{background:var(--card-2);}
 .staff-mode .tbl tr.row-click:hover .order-queue-link{text-decoration:underline;}
-/* POS scrollbars: dark track, border-colored thumb instead of the default white bar */
-:root:has(body.staff-mode){color-scheme:dark;scrollbar-color:var(--border) var(--bg);}
-.staff-mode *{scrollbar-color:var(--border) transparent;}
+/* POS and Owner scrollbars: dark track, green thumb that stays clearly visible (no default white bar) */
+:root:has(body.staff-mode), :root:has(body.owner-mode){color-scheme:dark;scrollbar-color:var(--moss-strong) var(--bg);}
+.staff-mode *, .owner-mode *{scrollbar-color:var(--moss-strong) var(--surface);}
 /* Card description: up to two lines, between name and price */
 .staff-mode .menu-tag{line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 /* Gap between the category tabs and their horizontal scrollbar */
 .staff-mode .pos-tools .cat-tabs{padding-bottom:.5rem;}
+/* Table headers keep the header font; .num/.mono only style the cell values */
+.tbl th.num, .tbl th.mono{font-family:inherit;}
+/* Owner portal typography from the Figma "Owner Mockup Design" frames (1536 wide) */
+body.owner-mode h1{font-size:1.75rem;}
+.owner-mode .product-page-kicker{font-size:.72rem;letter-spacing:.22em;}
+.owner-mode .chart-card h2, .owner-mode .report-section-title{font-family:var(--font-head);font-size:1.1rem;font-weight:700;margin:0 0 .5rem;}
+/* Wide screens: tables fit the width (no bottom scrollbar); smaller screens keep sideways scrolling */
+@media (min-width: 1200px) {
+.owner-mode table.tbl-products, .owner-mode table.tbl-inventory{min-width:0;}
+}
+/* Tables: the box never runs past the screen, so its bottom (sideways) and right (vertical)
+   scrollbars are always in view; column headers stay on top while scrolling */
+.owner-mode .tbl-wrap, .staff-mode .tbl-wrap{max-height:max(260px, calc(100dvh - 22rem));overflow:auto;}
+.owner-mode .tbl thead th, .staff-mode .tbl thead th{position:sticky;top:0;z-index:2;}
+/* Owner Add / Edit User card (Figma "Owner User Frame (Add User)" and "Owner Edit User") */
+.user-form{max-width:460px;display:flex;flex-direction:column;gap:.9rem;padding:1rem 1.1rem 1.1rem;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);}
+.user-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem 1rem;}
+.user-form-grid .field input, .user-form-grid .field select{min-height:40px;}
+.user-form-grid input[readonly]{color:var(--fg-muted);cursor:not-allowed;}
+.user-form-wide{grid-column:1/-1;}
+.user-form-note{margin:0;font-size:.8rem;color:var(--fg-muted);}
+.user-form-error{margin:0;padding:.55rem .7rem;border:1px solid var(--danger);border-radius:10px;color:var(--danger);font-size:.85rem;}
+.user-form-actions{display:flex;gap:.6rem;}
+@media (max-width: 520px) {
+.user-form-grid{grid-template-columns:1fr;}
+}

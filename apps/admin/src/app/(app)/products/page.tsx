@@ -289,14 +289,14 @@ export default function ProductsPage() {
       </div>
 
       {products.error && (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-[var(--danger)]">
           {products.error instanceof Error
             ? products.error.message
             : "Could not load products."}
         </p>
       )}
       {users.error && (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-[var(--danger)]">
           Creator names could not be loaded:{" "}
           {users.error instanceof Error
             ? users.error.message
@@ -304,7 +304,7 @@ export default function ProductsPage() {
         </p>
       )}
       {products.data?.costingError && (
-        <p className="text-sm text-red-700">
+        <p className="text-sm text-[var(--danger)]">
           Costs and margins could not be loaded: {products.data.costingError}
         </p>
       )}
@@ -427,7 +427,7 @@ export default function ProductsPage() {
       >
         <form onSubmit={save} className="space-y-4">
           {errorMessage && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">
+            <div className="p-3 bg-[var(--surface)] border border-[var(--danger)] text-[var(--danger)] text-xs rounded-lg">
               {errorMessage}
             </div>
           )}
@@ -461,7 +461,7 @@ export default function ProductsPage() {
           <div className="space-y-2">
             <label
               htmlFor="product-image"
-              className="block text-sm font-medium text-gray-700"
+              className="block text-sm font-medium text-[var(--fg-muted)]"
             >
               Image (PNG, JPEG or WebP, up to 2 MB)
             </label>
