@@ -73,18 +73,16 @@ function PosShell({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const menuItems = [
-    ...(USE_MOCKS
-      ? [
-          {
-            label: "Simulate offline",
-            onSelect: () => setSimulatedOffline(!simulatedOffline),
-          },
-          { label: "Reset demo data", onSelect: resetDemo },
-        ]
-      : []),
-    { label: "Sign out", onSelect: handleLogout },
-  ];
+  // Log out has its own button; the menu only holds demo tools, so real mode shows no menu.
+  const menuItems = USE_MOCKS
+    ? [
+        {
+          label: "Simulate offline",
+          onSelect: () => setSimulatedOffline(!simulatedOffline),
+        },
+        { label: "Reset demo data", onSelect: resetDemo },
+      ]
+    : [];
 
   const unsynced = pendingCount + failedCount;
   const warning =
@@ -103,7 +101,9 @@ function PosShell({ children }: { children: React.ReactNode }) {
           title:
             pathname === "/orders" || pathname.startsWith("/orders/")
               ? "Orders"
-              : "Barista POS",
+              : pathname.startsWith("/inventory")
+                ? "Inventory"
+                : "POS — Menu & Cart",
           userName,
           roleLabel: "Barista",
           onLogout: handleLogout,

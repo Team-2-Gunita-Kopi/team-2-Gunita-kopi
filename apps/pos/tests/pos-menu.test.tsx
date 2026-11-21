@@ -99,7 +99,7 @@ describe("pos menu", () => {
     await userEvent.click(screen.getByRole("button", { name: /^Charge/ }));
     await userEvent.type(screen.getByLabelText("Amount paid"), "500");
     active = false;
-    await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm payment" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Iced Spanish Latte is no longer available. Remove it from the cart.",

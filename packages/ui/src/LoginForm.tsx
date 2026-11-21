@@ -28,6 +28,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({ roleLabel, onSubmit, onFor
   const fails = useRef(0);
   const lockUntil = useRef(0);
   const userRef = useRef<HTMLInputElement>(null);
+  // Baristas have no email (username only); copy follows the Staff POS Figma login.
+  const staff = roleLabel === "Barista";
 
   useEffect(() => {
     userRef.current?.focus();
@@ -72,7 +74,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ roleLabel, onSubmit, onFor
             ᜄᜓᜈᜒᜆ ᜃᜓᜉᜒ
           </span>
           <span className="brand-word">Gunita Kopi</span>
-          <span className="brand-sub">{roleLabel} Sign-in</span>
+          <span className="brand-sub">{staff ? "POS System · Staff Sign-in" : `${roleLabel} Sign-in`}</span>
         </div>
         {notice ? (
           <div className="login-notice" role="status">
@@ -80,7 +82,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ roleLabel, onSubmit, onFor
           </div>
         ) : null}
         <label className="field">
-          Email or username
+          {staff ? "Username" : "Email or username"}
           <input
             ref={userRef}
             type="text"

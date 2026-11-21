@@ -31,7 +31,7 @@ beforeEach(() => {
 
 async function login(user: string, pw: string) {
   renderWithProviders(<LoginPage />);
-  await userEvent.type(screen.getByLabelText(/email or username/i), user);
+  await userEvent.type(screen.getByLabelText(/^username$/i), user);
   await userEvent.type(screen.getByLabelText(/^password$/i), pw);
   await userEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
 }

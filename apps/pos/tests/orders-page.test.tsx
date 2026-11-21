@@ -8,6 +8,9 @@ import { renderWithProviders } from "@/test/render";
 
 vi.mock("@/lib/use-mocks", () => ({ USE_MOCKS: false }));
 
+const nav = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => nav }));
+
 const ordersApi = vi.hoisted(() => ({ listOrders: vi.fn() }));
 const outboxApi = vi.hoisted(() => ({ toArray: vi.fn() }));
 vi.mock("@/features/orders/api", () => ordersApi);
@@ -101,6 +104,13 @@ describe("Barista orders page", () => {
     expect(
       screen.queryByRole("button", { name: /Start|Complete|Cancel/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("opens the order when any cell of its row is clicked", async () => {
+    nav.push.mockReset();
+    renderWithProviders(<PosOrdersPage />);
+    await userEvent.click(await screen.findByText("Hazelnut syrup"));
+    expect(nav.push).toHaveBeenCalledWith("/orders/18");
   });
 
   it("filters by queue, status, and Manila business date", async () => {

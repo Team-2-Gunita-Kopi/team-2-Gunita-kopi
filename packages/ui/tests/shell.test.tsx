@@ -231,6 +231,13 @@ describe("LoginForm", () => {
     expect((await screen.findByRole("alert")).textContent).toBe("Incorrect username or password.");
   });
 
+  it("uses staff wording for the Barista sign-in", () => {
+    render(<LoginForm roleLabel="Barista" onSubmit={async () => null} />);
+    expect(screen.getByText("POS System · Staff Sign-in")).toBeTruthy();
+    expect(screen.getByLabelText("Username")).toBeTruthy();
+    expect(screen.queryByLabelText("Email or username")).toBeNull();
+  });
+
   it("eye toggle switches the password input type and label", async () => {
     const user = userEvent.setup();
     render(<LoginForm roleLabel="Barista" onSubmit={async () => null} />);
