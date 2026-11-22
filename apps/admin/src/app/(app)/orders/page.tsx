@@ -104,38 +104,50 @@ const sampleRows: OrderLineRow[] = [
   },
 ];
 
+// One row per drink or food item. Add-on lines (stored as their own order lines, right after
+// their item) are folded into that row: names under Ingredient, price added per unit.
 function flattenOrders(orders: Order[]): OrderLineRow[] {
   return orders.flatMap((order) => {
-    let parentProduct = "—";
-    return [...order.items]
-      .sort((a, b) => a.lineId - b.lineId)
-      .map((item) => {
-        if (!item.isAddon) parentProduct = item.name ?? "—";
-        return {
-          key: `${order.orderId}-${item.lineId}`,
-          line: item.lineId,
-          orderId: order.orderId,
-          queue: String(order.orderId).padStart(3, "0"),
-          cashier: order.cashierName ?? "—",
-          type:
-            order.orderType === "dine-in"
-              ? "Dine-in"
-              : order.orderType === "take-out"
-                ? "Take-out"
-                : order.orderType === "pre-order"
-                  ? "Pre-order"
-                  : "—",
-          orderDate: order.orderDate,
-          status: order.status,
-          product: item.isAddon ? parentProduct : (item.name ?? "—"),
-          ingredient: item.isAddon ? (item.name ?? "—") : "—",
-          addon: item.isAddon ? "Yes" : "No",
-          quantity: item.quantity,
-          unitPrice: formatPeso(item.unitPrice),
-          customization: item.customization ?? "—",
-          specialInstructions: item.specialInstructions ?? "—",
-        };
-      });
+    const rows: OrderLineRow[] = [];
+    let parent: { row: OrderLineRow; quantity: number; unit: number; addons: string[] } | null = null;
+    for (const item of [...order.items].sort((a, b) => a.lineId - b.lineId)) {
+      if (item.isAddon && parent) {
+        const perUnit = parent.quantity > 0 ? item.quantity / parent.quantity : 0;
+        parent.unit += item.unitPrice * perUnit;
+        parent.addons.push(perUnit > 1 ? `${item.name ?? "—"} ×${perUnit}` : (item.name ?? "—"));
+        parent.row.ingredient = parent.addons.join(", ");
+        parent.row.addon = "Yes";
+        parent.row.unitPrice = formatPeso(parent.unit);
+        continue;
+      }
+      const row: OrderLineRow = {
+        key: `${order.orderId}-${item.lineId}`,
+        line: item.lineId,
+        orderId: order.orderId,
+        queue: String(order.orderId).padStart(3, "0"),
+        cashier: order.cashierName ?? "—",
+        type:
+          order.orderType === "dine-in"
+            ? "Dine-in"
+            : order.orderType === "take-out"
+              ? "Take-out"
+              : order.orderType === "pre-order"
+                ? "Pre-order"
+                : "—",
+        orderDate: order.orderDate,
+        status: order.status,
+        product: item.name ?? "—",
+        ingredient: item.isAddon ? (item.name ?? "—") : "—",
+        addon: item.isAddon ? "Yes" : "No",
+        quantity: item.quantity,
+        unitPrice: formatPeso(item.unitPrice),
+        customization: item.customization ?? "—",
+        specialInstructions: item.specialInstructions ?? "—",
+      };
+      rows.push(row);
+      parent = item.isAddon ? null : { row, quantity: item.quantity, unit: item.unitPrice, addons: [] };
+    }
+    return rows;
   });
 }
 
@@ -244,7 +256,7 @@ export default function OrdersPage() {
     <div className="space-y-5">
       <header className="product-page-header">
         <div>
-          <p className="product-page-kicker">Gunita · Order Board</p>
+          <p className="product-page-kicker">Gunita · Orders Board</p>
           <h1>Orders</h1>
         </div>
       </header>

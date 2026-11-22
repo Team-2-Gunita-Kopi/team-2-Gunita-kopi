@@ -204,71 +204,72 @@ async function queuedOrders(): Promise<OutboxOrderRecord[]> {
     .toArray();
 }
 
+// One row per drink or food item; its add-ons (own order lines, right after the item) are shown
+// under Ingredient and their price is added to the item's unit price.
+const addonLabel = (name: string, perUnit: number) => (perUnit > 1 ? `${name} ×${perUnit}` : name);
+
 function flattenOrders(orders: Order[]): OrderLineRow[] {
   return orders.flatMap((order) => {
-    let parentProduct = "—";
-    return [...order.items]
-      .sort((a, b) => a.lineId - b.lineId)
-      .map((item) => {
-        if (!item.isAddon) parentProduct = item.name ?? "—";
-        return {
-          key: `${order.orderId}-${item.lineId}`,
-          orderId: order.orderId,
-          line: item.lineId,
-          queue: formatQueueNumber(order.orderId),
-          cashier: order.cashierName ?? "—",
-          type: order.orderType ? ORDER_TYPE_LABEL[order.orderType] : "—",
-          orderDate: order.orderDate,
-          status: order.status,
-          product: item.isAddon ? parentProduct : (item.name ?? "—"),
-          ingredient: item.isAddon ? (item.name ?? "—") : "—",
-          addon: item.isAddon ? "Yes" : "No",
-          quantity: item.quantity,
-          unitPrice: formatPeso(item.unitPrice),
-          customization: item.customization ?? "—",
-          specialInstructions: item.specialInstructions ?? "—",
-        };
-      });
+    const rows: OrderLineRow[] = [];
+    let parent: { row: OrderLineRow; quantity: number; unit: number; addons: string[] } | null = null;
+    for (const item of [...order.items].sort((a, b) => a.lineId - b.lineId)) {
+      if (item.isAddon && parent) {
+        const perUnit = parent.quantity > 0 ? item.quantity / parent.quantity : 0;
+        parent.unit += item.unitPrice * perUnit;
+        parent.addons.push(addonLabel(item.name ?? "—", perUnit));
+        parent.row.ingredient = parent.addons.join(", ");
+        parent.row.addon = "Yes";
+        parent.row.unitPrice = formatPeso(parent.unit);
+        continue;
+      }
+      const row: OrderLineRow = {
+        key: `${order.orderId}-${item.lineId}`,
+        orderId: order.orderId,
+        line: item.lineId,
+        queue: formatQueueNumber(order.orderId),
+        cashier: order.cashierName ?? "—",
+        type: order.orderType ? ORDER_TYPE_LABEL[order.orderType] : "—",
+        orderDate: order.orderDate,
+        status: order.status,
+        product: item.name ?? "—",
+        ingredient: item.isAddon ? (item.name ?? "—") : "—",
+        addon: item.isAddon ? "Yes" : "No",
+        quantity: item.quantity,
+        unitPrice: formatPeso(item.unitPrice),
+        customization: item.customization ?? "—",
+        specialInstructions: item.specialInstructions ?? "—",
+      };
+      rows.push(row);
+      parent = item.isAddon ? null : { row, quantity: item.quantity, unit: item.unitPrice, addons: [] };
+    }
+    return rows;
   });
 }
 
 function flattenQueuedOrders(records: OutboxOrderRecord[]): OrderLineRow[] {
-  return records.flatMap((record) => {
-    let line = 0;
-    return record.order.items.flatMap((item) => {
-      const productRow: OrderLineRow = {
-        key: `${record.clientTxId}-${++line}`,
+  return records.flatMap((record) =>
+    record.order.items.map((item, i) => {
+      const addons = item.addons ?? [];
+      const unit = item.unitPrice + addons.reduce((sum, a) => sum + a.price * a.quantity, 0);
+      return {
+        key: `${record.clientTxId}-${i + 1}`,
         orderId: null,
-        line,
+        line: i + 1,
         queue: record.provisionalNo ?? "Queued",
         cashier: "—",
         type: ORDER_TYPE_LABEL[record.order.type],
         orderDate: record.createdAt,
         status: "pending",
         product: item.productName,
-        ingredient: "—",
-        addon: "No",
+        ingredient: addons.length ? addons.map((a) => addonLabel(a.label, a.quantity)).join(", ") : "—",
+        addon: addons.length ? "Yes" : "No",
         quantity: item.quantity,
-        unitPrice: formatPeso(item.unitPrice),
+        unitPrice: formatPeso(unit),
         customization: item.customization ?? "—",
         specialInstructions: item.specialInstructions ?? "—",
       };
-      const addonRows: OrderLineRow[] = (item.addons ?? []).map((addon) => {
-        const addonLine = ++line;
-        return {
-          ...productRow,
-          key: `${record.clientTxId}-${addonLine}`,
-          line: addonLine,
-          ingredient: addon.label,
-          addon: "Yes",
-          unitPrice: formatPeso(addon.price),
-          customization: "—",
-          specialInstructions: "—",
-        };
-      });
-      return [productRow, ...addonRows];
-    });
-  });
+    }),
+  );
 }
 
 function displayDate(value: string): string {

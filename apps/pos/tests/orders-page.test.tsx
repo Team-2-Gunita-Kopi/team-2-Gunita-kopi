@@ -68,10 +68,10 @@ describe("Barista orders page", () => {
     outboxApi.toArray.mockReset().mockResolvedValue([]);
   });
 
-  it("shows line-level order details and no status action buttons", async () => {
+  it("shows one row per item with its add-ons and no status action buttons", async () => {
     renderWithProviders(<PosOrdersPage />);
 
-    expect(await screen.findAllByText("018")).toHaveLength(2);
+    expect(await screen.findAllByText("018")).toHaveLength(1);
     const table = await screen.findByRole("table");
     expect(
       within(table)
@@ -92,15 +92,17 @@ describe("Barista orders page", () => {
       "Customization",
       "Special Instructions",
     ]);
-    expect(within(table).getAllByText("018")).toHaveLength(2);
+    expect(within(table).getAllByText("018")).toHaveLength(1);
     const queueLinks = within(table).getAllByRole("link", {
       name: "View details for order 018",
     });
-    expect(queueLinks).toHaveLength(2);
+    expect(queueLinks).toHaveLength(1);
     expect(queueLinks[0]).toHaveAttribute("href", "/orders/18");
-    expect(within(table).getAllByText("Iced Spanish Latte")).toHaveLength(2);
+    expect(within(table).getAllByText("Iced Spanish Latte")).toHaveLength(1);
     expect(within(table).getByText("Hazelnut syrup")).toBeInTheDocument();
-    expect(within(table).getAllByText("Pending")).toHaveLength(2);
+    // 145 + one Hazelnut syrup add-on at 25, per drink.
+    expect(within(table).getByText("₱170.00")).toBeInTheDocument();
+    expect(within(table).getAllByText("Pending")).toHaveLength(1);
     expect(
       screen.queryByRole("button", { name: /Start|Complete|Cancel/ }),
     ).not.toBeInTheDocument();
