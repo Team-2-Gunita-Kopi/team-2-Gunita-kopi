@@ -5,7 +5,6 @@ import {
   LoginResponse,
   LoginSession,
   OwnerOtpRequest,
-  usernameToAuthEmail,
 } from "./schema";
 import { AppError, UnauthorizedError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
@@ -62,7 +61,19 @@ export async function loginWithUsername(
   if (!profile) throw await fail("unknown_user");
   if (profile.status !== "active") throw await fail("inactive");
 
-  const email = profile.email ?? usernameToAuthEmail(profile.username);
+  // Baristas: the Auth email of the linked account, not one rebuilt from today's username, so a
+  // username edited after creation still signs in to the same Auth user (same password).
+  let email = profile.email;
+  if (!email) {
+    const { data: linked, error: linkError } =
+      await supabaseAdmin.auth.admin.getUserById(profile.auth_user_id);
+    if (linkError && (linkError.status ?? 500) >= 500) {
+      logger.error("auth.linked_user_lookup_failed", { status: linkError.status });
+      throw signInUnavailable();
+    }
+    email = linked?.user?.email ?? null;
+    if (!email) throw await fail("unlinked_account");
+  }
   const { data: auth, error: signInError } =
     await createAuthClient().auth.signInWithPassword({
       email,

@@ -265,6 +265,12 @@ vi.mock("../src/lib/supabase-admin", () => ({
           db.auth.push(user);
           return { data: { user }, error: null };
         },
+        getUserById: async (id: string) => {
+          const u = db.auth.find((x) => x.id === id);
+          return u
+            ? { data: { user: { id: u.id, email: u.email } }, error: null }
+            : { data: { user: null }, error: { status: 404, message: "User not found" } };
+        },
         signOut: async (token: string) => {
           calls.signOut.push(token);
           return { error: null };
@@ -626,6 +632,18 @@ describe("Username sign-in", () => {
     const bea = db.auth.find((u) => u.email === usernameToAuthEmail("bea"));
     expect(res).toMatchObject({ accessToken: `at-${bea!.id}` });
     expect(db.challenges).toHaveLength(0);
+  });
+
+  it("signs a renamed barista in to the same Auth account, by the new username only", async () => {
+    // Regression: the profile username was edited after creation; the Auth email still carries
+    // the old name. Sign-in must use the linked Auth account, not rebuild the email.
+    db.users[1]!.username = "juan";
+    const bea = db.auth.find((u) => u.email === usernameToAuthEmail("bea"));
+    const res = await loginWithUsername({ username: "juan", password: "barista-pass" }, IP);
+    expect(res).toMatchObject({ accessToken: `at-${bea!.id}` });
+    await expect(
+      loginWithUsername({ username: "bea", password: "barista-pass" }, IP),
+    ).rejects.toMatchObject({ statusCode: 401 });
   });
 
   it("gives the same answer for a wrong password, an unknown user and an inactive user", async () => {

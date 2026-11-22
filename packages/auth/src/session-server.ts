@@ -148,7 +148,11 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
       access_token: tokens.accessToken,
       refresh_token: tokens.refreshToken,
     });
-    if (error || !data.user) return fail(502, "AUTH_ERROR", "Sign-in failed");
+    if (error || !data.user) {
+      // Usually this site's Supabase URL or publishable key differs from apps/api's.
+      logError("auth.store_session_failed", error?.status, error?.code);
+      return fail(502, "AUTH_ERROR", "Sign-in failed");
+    }
     if (!hasRole(data.user.app_metadata?.role, opts.allowedRoles)) {
       // Revoke the session just issued; no cookie is written.
       await client.auth.signOut();
