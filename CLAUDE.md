@@ -572,3 +572,87 @@ was matched to the Figma Staff frames and pushed (see below).
 - Live: record stock-ins before live POS testing; real recipes, add-on amounts and descriptions
   should come from the shop.
 - FR-09 (order slip) stays implemented.
+
+## Session summary — 2026-11-22/23, branch `testing/frontend-and-backend-v2` (mnrdmsqt with Claude Code)
+
+Work started on `testing/local-supabase-handover` by mistake; switched (approved) to a local
+`testing/frontend-and-backend-v2` tracking origin at `3a94abd`. Everything below is **uncommitted**
+unless marked live. A classmate's log (`~/Downloads/session-log-2026-11-22.md`) was from the wrong
+branch; its `hardNavigate()` and recovery-link changes are NOT on this branch.
+
+### Environment (this machine)
+
+- No Docker, so no local Supabase. `apps/{admin,pos,api}/.env.local` point at hosted
+  `gunita-kopi-pos-dev` (ref `ntgk…`), so every edit in the apps (users, passwords, orders, stock)
+  writes to live. Approved by the user for live testing.
+- Fixed env (gitignored files, approved): `INTERNAL_PROXY_SECRET` was missing in admin/pos (API logged
+  `auth.proxy_secret_rejected`, sign-in 503); `NEXT_PUBLIC_SUPABASE_ANON_KEY` in admin/pos held the
+  Supabase URL instead of a key (Owner code accepted, then "Sign-in failed" in `storeSession`). Both now
+  match `apps/api/.env.local` (publishable key).
+- Do not start a second `next dev` while the user's `pnpm dev` runs (ports 3000-3002, shared `.next`).
+- Hosted DB from this network: session pooler `aws-0-ap-southeast-1.pooler.supabase.com:5432`, user
+  `postgres.<ref>`, password from `supabase/.env.local`; run the CLI with a temp `--workdir` holding a
+  minimal `config.toml` (the repo config fails on `auth.email.smtp.enabled` without `supabase/.env`).
+
+### Code changes (uncommitted)
+
+- **Auth / sign-in**
+  - `packages/auth/src/session-server.ts`: `storeSession` logs `auth.store_session_failed` (status, code).
+  - Double sign-in fixed: opening `/` gave `/login?redirect=/`, and `/` always redirected to `/login`.
+    `apps/admin/src/app/page.tsx` now redirects to `/dashboard`, `apps/pos/src/app/page.tsx` to `/pos`.
+    Tests `apps/{admin,pos}/tests/home-redirect.test.ts`.
+  - Barista sign-in uses the linked Auth account's email (`auth.admin.getUserById`) instead of rebuilding
+    it from the username (`apps/api/src/modules/session/service.ts`), so renamed users still sign in.
+    Usernames must be lowercase with no spaces (sign-in input is normalized).
+- **Users module** (approved by jhnjffryyy): Owner can edit any username and full name;
+  `PATCH /api/users/{id}` writes `username` with the service role, then syncs Auth `user_metadata` and, for
+  Baristas, the internal email `<username>@staff.gunitakopi.local`. The Owner's own new password needs
+  `currentPassword` (checked with `signInWithPassword`, check session revoked); Owner-set Barista
+  passwords do not. Files: `packages/contracts/src/users.ts`, `apps/api/src/modules/users/service.ts`,
+  `apps/admin/src/app/(app)/users/page.tsx` (Username editable, "Current password" box on the Owner).
+- **API root**: `apps/api/src/app/route.ts` serves a small HTML status page (API running + a live
+  Supabase Auth `/auth/v1/health` check, 3 s timeout, no URLs or keys). `/api/health` unchanged JSON.
+- **Orders lists** (Admin `/orders`, POS `/orders`, queued offline orders): one row per item; add-on lines
+  folded in (names under Ingredient, `×n`, Unit Price = item + add-ons per unit). Display only; the DB
+  still stores one line per add-on. Dashboard "Orders today" was already correct (distinct `order_id`).
+- **Design changes approved by jhnjffryyy** (Design Freeze still applies to everything else):
+  - Dashboard Low stock alerts matched to Figma 510:6830 (`.owner-mode .stock-alerts*` CSS).
+  - Dashboard Recent orders show date + time ("Nov 22, 7:56 PM"), time column 150px.
+  - Add Product is a page `/products/new` (Figma 1076:5) using shared
+    `apps/admin/src/features/products/ProductForm.tsx` (also used by Edit); old dialog removed.
+  - Admin Add/Edit ingredient dialog (Figma 510:4463): two-column grid, Unit select (g/ml/pcs), Opening
+    stock on add (recorded as a stock-in "Opening stock"), add-on settings kept below.
+  - POS Add ingredient dialog (Figma 317:17034): equal columns, disabled "Unit cost (₱) — Set by
+    Owner" (Baristas never send costs), note removed.
+- Not mine, left for review: kicker text on Products/Reports/Suppliers changed to "Gunita · … Board".
+
+### Database
+
+- New migration `supabase/migrations/20261120001200_cancel_returns_stock.sql`: statement trigger
+  `orders_cancel_returns_stock` records one stock-in per ingredient ("Cancelled order #N") when an order
+  is cancelled. Test `supabase/tests/cancel_returns_stock.test.sql`; `docs/database.md` updated.
+- SQL tests run on PGlite **0.2.17** under **Node 22** (0.3.x crashes); runner only in the session
+  scratchpad. All 5 SQL test files pass.
+
+### Live changes (each approved by the user)
+
+- Migration `20261120001200` applied (dry run listed only it). Live history: 16 rows, latest
+  `20261120001200`. Still NOT applied: `0900`, `1000` (the POS Add ingredient dialog needs them).
+- Opening stock: 66 ingredients got one Owner stock-in of 4 × reorder level, remark "Opening stock
+  (demo values, replace with real count)". Oreo Biscuits kept the user's own 1000 pcs.
+- User 6 renamed by hand in Supabase to `"Juan "`: set to `juan`, Auth email
+  `juan@staff.gunitakopi.local`, metadata `juan` / `Juan Dela Cruz`; `gelo1414` no longer exists
+  except one `employee.create` audit row. Barista `makmak` is inactive and its profile row was deleted
+  outside the app (Auth user remains).
+- Test order #5 (cancelled, 14 lines) deleted with its payment, 17 stock-outs (amounts added back) and
+  1 audit row.
+- Owner `admingunita` exists on live (password shared in chat; weak, change it).
+
+### Checks and open items
+
+- Last runs (Node 22): api 143, admin 75, pos 107, contracts 46, auth 31 vitest pass; typecheck clean;
+  lint only the old `apps/api` mock-db warning.
+- Not done: `next build`, browser checks at 1536/1366/1180/1024/820/390, live Owner sign-in after the
+  fixes, a live cancel to confirm stock return.
+- Decide: apply `0900` + `1000` on live; replace demo opening stock with real counts; commit and push
+  after review (no co-author trailers).
