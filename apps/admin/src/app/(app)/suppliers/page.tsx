@@ -114,7 +114,7 @@ export default function SuppliersPage() {
     <div className="space-y-6">
       <header className="product-page-header">
         <div>
-          <p className="product-page-kicker">Gunita · Admin</p>
+          <p className="product-page-kicker">Gunita · Suppliers Board</p>
           <h1>Suppliers</h1>
         </div>
         <Button variant="primary" onClick={() => open("new")} disabled={USE_MOCKS}>
