@@ -158,7 +158,7 @@ The Owner then creates barista accounts through `POST /api/admin/employees` (use
 
 ## Open items
 
-- Cancelling an order does not return its ingredients to stock. The SRS does not define a rule (stock may already be used); record a stock-in if needed until one is agreed.
+- Cancelling an order returns its ingredients (decided 2026-11-23, migration `20261120001200_cancel_returns_stock.sql`, statement trigger `orders_cancel_returns_stock`): one stock-in per ingredient equal to the order's `Order #N` stock-outs, remark `Cancelled order #N`, recorded by the cancelling user. Cancelled is final, so an order is returned once. Test: `supabase/tests/cancel_returns_stock.test.sql`.
 - `orders` has no column for who changed the status; the API writes it to `audit_logs` (`order.status`).
 - `ingredients` has no `status` column (SRS FR-21 lists one); the API exposes the derived stock status from `v_inventory_status`.
 - `packages/db-types` was updated by hand for `20261119000000` (two functions, four view columns). Run `pnpm db:types` against a linked project after the migration is applied to confirm.
