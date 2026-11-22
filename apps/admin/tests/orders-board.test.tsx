@@ -61,47 +61,39 @@ describe("Owner orders board", () => {
     ordersApi.getOrder.mockReset().mockResolvedValue(order);
   });
 
-  it("shows product and add-on lines with queue, cashier, and order details", async () => {
+  it("shows one row per item with its add-ons under Ingredient and the price including them", async () => {
     renderWithProviders(<OrdersPage />);
 
     const table = screen.getByRole("table");
-    await waitFor(() => {
-      expect(within(table).getAllByRole("row")).toHaveLength(3);
-    });
-    const rows = within(table).getAllByRole("row");
-    const headerRow = rows[0];
-    const productRow = rows[1];
-    const addonRow = rows[2];
-    if (!headerRow || !productRow || !addonRow)
-      throw new Error("Expected product and add-on rows.");
+    await within(table).findByText("Oreo Biscuits");
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    const [headerRow, productRow] = within(table).getAllByRole("row");
+    if (!headerRow || !productRow) throw new Error("Expected one item row.");
     expect(within(headerRow).getAllByRole("columnheader")).toHaveLength(13);
 
-    const productCells = within(productRow).getAllByRole("cell");
-    expect(productCells[1]).toHaveTextContent("012");
-    expect(productCells[2]).toHaveTextContent("Juan Dela Cruz");
-    expect(productCells[4]).toHaveTextContent("Nov 3, 2026");
-    expect(productCells[6]).toHaveTextContent("Iced Spanish Latte");
-    expect(productCells[7]).toHaveTextContent("—");
-    expect(productCells[8]).toHaveTextContent("No");
-
-    const addonCells = within(addonRow).getAllByRole("cell");
-    expect(addonCells[6]).toHaveTextContent("Iced Spanish Latte");
-    expect(addonCells[7]).toHaveTextContent("Oreo Biscuits");
-    expect(addonCells[8]).toHaveTextContent("Yes");
-    expect(addonCells[10]).toHaveTextContent("₱25.00");
+    const cells = within(productRow).getAllByRole("cell");
+    expect(cells[1]).toHaveTextContent("012");
+    expect(cells[2]).toHaveTextContent("Juan Dela Cruz");
+    expect(cells[4]).toHaveTextContent("Nov 3, 2026");
+    expect(cells[6]).toHaveTextContent("Iced Spanish Latte");
+    expect(cells[7]).toHaveTextContent("Oreo Biscuits");
+    expect(cells[8]).toHaveTextContent("Yes");
+    expect(cells[9]).toHaveTextContent("1");
+    // 160 + one Oreo add-on at 25, per drink.
+    expect(cells[10]).toHaveTextContent("₱185.00");
   });
 
   it("filters by queue, status, and Manila business date", async () => {
     renderWithProviders(<OrdersPage />);
     await waitFor(() => {
-      expect(screen.getAllByText("012")).toHaveLength(2);
+      expect(screen.getAllByText("012")).toHaveLength(1);
     });
 
     fireEvent.change(screen.getByPlaceholderText("Queue no. e.g. 012"), {
       target: { value: "A-12" },
     });
     expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(
-      3,
+      2,
     );
 
     fireEvent.change(screen.getByLabelText("Status"), {
@@ -135,7 +127,7 @@ describe("Owner orders board", () => {
     await waitFor(() => {
       expect(
         screen.getAllByRole("link", { name: "View details for order 012" }),
-      ).toHaveLength(2);
+      ).toHaveLength(1);
     });
     expect(
       screen.getAllByRole("link", { name: "View details for order 012" })[0],
