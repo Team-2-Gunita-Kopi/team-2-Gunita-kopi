@@ -76,6 +76,15 @@ function builder(table: string, token: string) {
 }
 
 vi.mock("../src/lib/supabase-user", () => ({
+  // Current-password check (users service): only "right-pass" is the account's password.
+  createAuthClient: () => ({
+    auth: {
+      signInWithPassword: async ({ password }: { password: string }) =>
+        password === "right-pass"
+          ? { data: { session: { access_token: "check-session" } }, error: null }
+          : { data: { session: null }, error: { status: 400, code: "invalid_credentials" } },
+    },
+  }),
   createScopedUserClient: (token: string) => ({
     auth: {
       getUser: async () =>
@@ -118,8 +127,11 @@ vi.mock("../src/lib/supabase-user", () => ({
     },
   }),
 }));
-// Service-role client: only the Owner-set password path (users service) uses it in these tests.
+// Service-role client: only the users service (password, username, Auth sync) uses it here.
 const passwordUpdates: { authId: string; attrs: unknown }[] = [];
+const adminRenames: { id: number; username: string }[] = [];
+const adminSignOuts: string[] = [];
+const USER_ROW = { user_id: 2, username: "testbarista", full_name: "Test Barista", role: "barista", status: "active", email: null, date_created: "2026-11-21T00:00:00Z" };
 vi.mock("../src/lib/supabase-admin", () => ({
   supabaseAdmin: {
     from: () => ({
@@ -128,12 +140,29 @@ vi.mock("../src/lib/supabase-admin", () => ({
           maybeSingle: async () => ({ data: id === 404 ? null : { auth_user_id: `auth-of-${id}` }, error: null }),
         }),
       }),
+      update: (v: { username: string }) => ({
+        eq: (_col: string, id: number) => ({
+          select: () => ({
+            maybeSingle: async () => {
+              if (v.username === "taken")
+                return { data: null, error: { code: "23505", message: "duplicate key value violates unique constraint" } };
+              adminRenames.push({ id, username: v.username });
+              return { data: { ...USER_ROW, user_id: id, username: v.username }, error: null };
+            },
+          }),
+        }),
+      }),
     }),
     auth: {
       admin: {
         updateUserById: async (authId: string, attrs: unknown) => {
           passwordUpdates.push({ authId, attrs });
           return { data: {}, error: null };
+        },
+        getUserById: async (authId: string) => ({ data: { user: { id: authId, email: "owner@example.com" } }, error: null }),
+        signOut: async (token: string) => {
+          adminSignOuts.push(token);
+          return { error: null };
         },
       },
     },
@@ -1506,6 +1535,60 @@ describe("users: Owner-set password (FR-49)", () => {
     );
     expect(res.status).toBe(400);
     expect(passwordUpdates).toHaveLength(0);
+  });
+
+  it("renames a barista and moves the Auth login to the new internal email", async () => {
+    passwordUpdates.length = 0;
+    adminRenames.length = 0;
+    audits.length = 0;
+    onQuery = () => ({ data: profile });
+    const res = await call(
+      users.PATCH(req("PATCH", "/api/users/2", OWNER, { username: " Juan " }), params({ id: "2" })),
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.data.username).toBe("juan");
+    expect(adminRenames).toEqual([{ id: 2, username: "juan" }]);
+    expect(passwordUpdates).toEqual([
+      {
+        authId: "auth-of-2",
+        attrs: {
+          user_metadata: { username: "juan", full_name: "Test Barista" },
+          email: "juan@staff.gunitakopi.local",
+          email_confirm: true,
+        },
+      },
+    ]);
+    expect(JSON.stringify(audits)).toContain('"username":"juan"');
+  });
+
+  it("refuses a username that is already taken", async () => {
+    onQuery = () => ({ data: profile });
+    const res = await call(
+      users.PATCH(req("PATCH", "/api/users/2", OWNER, { username: "taken" }), params({ id: "2" })),
+    );
+    expect(res.status).toBe(409);
+  });
+
+  it("needs the Owner's current password before changing their own password", async () => {
+    const own = { ...profile, user_id: 1, username: "owner", role: "owner_admin", email: "owner@example.com" };
+    onQuery = () => ({ data: own });
+    for (const body of [{ password: "newpass123" }, { password: "newpass123", currentPassword: "wrong-pass" }]) {
+      passwordUpdates.length = 0;
+      const res = await call(users.PATCH(req("PATCH", "/api/users/1", OWNER, body), params({ id: "1" })));
+      expect(res.status).toBe(400);
+      expect(passwordUpdates).toHaveLength(0);
+    }
+    adminSignOuts.length = 0;
+    const ok = await call(
+      users.PATCH(
+        req("PATCH", "/api/users/1", OWNER, { password: "newpass123", currentPassword: "right-pass" }),
+        params({ id: "1" }),
+      ),
+    );
+    expect(ok.status).toBe(200);
+    expect(passwordUpdates).toEqual([{ authId: "auth-of-1", attrs: { password: "newpass123" } }]);
+    // The session opened only to check the current password is revoked.
+    expect(adminSignOuts).toEqual(["check-session"]);
   });
 
   it("does not let a Barista set passwords", async () => {

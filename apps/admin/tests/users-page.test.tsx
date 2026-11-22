@@ -49,13 +49,16 @@ describe("Users page", () => {
     expect(await screen.findByRole("heading", { name: "Users" })).toBeInTheDocument();
   });
 
-  it("edits the name, status and password in one request but never the role", async () => {
+  it("edits the name, username, status and password in one request but never the role", async () => {
     renderWithProviders(<UsersPage />);
     const editButtons = await screen.findAllByRole("button", { name: "Edit" });
     await userEvent.click(editButtons[1]!);
     expect(screen.getByRole("heading", { name: "Edit — Test Barista" })).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: /role/i })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Username")).toHaveAttribute("readonly");
+    expect(screen.queryByLabelText("Current password")).not.toBeInTheDocument();
+    const username = screen.getByLabelText("Username");
+    await userEvent.clear(username);
+    await userEvent.type(username, "juan");
 
     const name = screen.getByLabelText("Full name");
     await userEvent.clear(name);
@@ -65,9 +68,30 @@ describe("Users page", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
-      expect(api.updateUser).toHaveBeenCalledWith(2, { fullName: "Barista Two", status: "inactive", password: "newpass123" }),
+      expect(api.updateUser).toHaveBeenCalledWith(2, {
+        fullName: "Barista Two",
+        username: "juan",
+        status: "inactive",
+        password: "newpass123",
+      }),
     );
     expect(client.apiClient).not.toHaveBeenCalled();
+  });
+
+  it("asks the Owner for the current password before changing their own", async () => {
+    renderWithProviders(<UsersPage />);
+    const editButtons = await screen.findAllByRole("button", { name: "Edit" });
+    await userEvent.click(editButtons[0]!);
+    await userEvent.type(screen.getByLabelText("New password (blank = keep)"), "newpass123");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Enter your current password");
+    expect(api.updateUser).not.toHaveBeenCalled();
+
+    await userEvent.type(screen.getByLabelText("Current password"), "oldpass123");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(api.updateUser).toHaveBeenCalledWith(1, { password: "newpass123", currentPassword: "oldpass123" }),
+    );
   });
 
   it("keeps the password when the field is left blank", async () => {
