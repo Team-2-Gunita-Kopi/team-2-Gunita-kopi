@@ -40,7 +40,7 @@ const ROLE_LABEL: Record<string, string> = { owner_admin: "Owner", barista: "Bar
 
 type View = { kind: "list" } | { kind: "add" } | { kind: "edit"; user: UserRow };
 
-const EMPTY_FORM = { fullName: "", username: "", password: "", status: "active" as Status };
+const EMPTY_FORM = { fullName: "", username: "", password: "", currentPassword: "", status: "active" as Status };
 
 export default function UsersPage() {
   const [view, setView] = useState<View>({ kind: "list" });
@@ -112,10 +112,16 @@ export default function UsersPage() {
     if (!res.success) throw new Error(res.error?.message ?? "Could not create the account");
   };
 
-  // Name, status and password only (UpdateUserRequestSchema); the role stays as it is.
+  // Name, username, status and password (UpdateUserRequestSchema); the role stays as it is. The
+  // Owner's own new password needs the current one (checked again by apps/api).
   const saveChanges = async (user: UserRow) => {
     const changes: UpdateUserRequest = {};
     if (form.fullName.trim() !== user.fullName) changes.fullName = form.fullName;
+    if (form.username.trim().toLowerCase() !== user.username) changes.username = form.username;
+    if (user.role === "owner_admin" && form.password !== "") {
+      if (form.currentPassword === "") throw new Error("Enter your current password to set a new one.");
+      changes.currentPassword = form.currentPassword;
+    }
     if (user.role === "barista" && form.status !== (user.isActive ? "active" : "inactive")) changes.status = form.status;
     if (form.password !== "") changes.password = form.password;
     if (Object.keys(changes).length > 0) await updateUser(Number(user.id), changes);
@@ -162,13 +168,22 @@ export default function UsersPage() {
             </label>
             <label className="field">
               Username
-              {editing ? (
-                <input value={form.username} readOnly aria-readonly="true" />
-              ) : (
-                <input required autoComplete="off" value={form.username} onChange={set("username")} placeholder="e.g. maria" />
-              )}
+              <input required autoComplete="off" value={form.username} onChange={set("username")} placeholder="e.g. maria" />
             </label>
-            <label className={editing?.role === "barista" ? "field" : "field user-form-wide"}>
+            {editing?.role === "owner_admin" ? (
+              <label className="field">
+                Current password
+                <input
+                  type="password"
+                  maxLength={72}
+                  autoComplete="current-password"
+                  value={form.currentPassword}
+                  onChange={set("currentPassword")}
+                  placeholder="needed for a new password"
+                />
+              </label>
+            ) : null}
+            <label className={editing ? "field" : "field user-form-wide"}>
               {editing ? "New password (blank = keep)" : "Password (min 8 chars)"}
               <input
                 type="password"
@@ -193,7 +208,7 @@ export default function UsersPage() {
           </div>
           <p className="user-form-note">
             {editing
-              ? `Role: ${ROLE_LABEL[editing.role] ?? editing.role}. Username and role cannot be changed.`
+              ? `Role: ${ROLE_LABEL[editing.role] ?? editing.role}. The role cannot be changed.`
               : "New accounts are Barista accounts and sign in on the POS."}
           </p>
           <div className="user-form-actions">
@@ -213,7 +228,7 @@ export default function UsersPage() {
     <div className="space-y-6">
       <header className="product-page-header">
         <div>
-          <p className="product-page-kicker">Gunita · Admin</p>
+          <p className="product-page-kicker">Gunita · Users Board</p>
           <h1>Users</h1>
         </div>
         <Button variant="primary" onClick={openAdd}>

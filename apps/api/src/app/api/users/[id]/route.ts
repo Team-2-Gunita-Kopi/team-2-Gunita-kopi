@@ -11,7 +11,8 @@ export const GET = route(async (req, ctx: Ctx) => {
   return jsonResponse(await getUser(user, await readId(ctx)));
 });
 
-// Full name, active status and a new password (role and identity are fixed).
+// Full name, username, active status and a new password (the role is fixed). The Owner's own
+// password change needs currentPassword.
 export const PATCH = route(async (req, ctx: Ctx) => {
   const user = await requireRole(req, "owner_admin");
   const id = await readId(ctx);

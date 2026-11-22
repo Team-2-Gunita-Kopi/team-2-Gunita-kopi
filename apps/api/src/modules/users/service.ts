@@ -12,6 +12,9 @@ import { AppError, dbError, NotFoundError } from "@/lib/errors";
 import { pageRange, toPage } from "@/lib/request";
 import { auditAction } from "@/lib/audit";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { createAuthClient } from "@/lib/supabase-user";
+import { logger } from "@/lib/logger";
+import { usernameToAuthEmail } from "@gunita/auth";
 
 const COLUMNS =
   "user_id, username, full_name, role, status, email, date_created";
@@ -69,8 +72,8 @@ export async function getUser(
 }
 
 /**
- * Name, active status and password; the database grants no update on role, username, email or the
- * Auth link. A deactivated user is refused on their next API call (requireUser checks status).
+ * Name, username, active status and password. Role, email and the Auth link never change here.
+ * A deactivated user is refused on their next API call (requireUser checks status).
  */
 export async function updateUser(
   user: AuthenticatedUser,
@@ -84,7 +87,10 @@ export async function updateUser(
       "VALIDATION",
     );
   }
-  const { password, ...fields } = body;
+  const { password, currentPassword, username, ...fields } = body;
+  // Own password: the current one first, so an open session alone cannot take the account over.
+  if (password !== undefined && id === user.userId)
+    await checkCurrentPassword(id, currentPassword);
   let profile: UserProfile;
   if (fields.fullName !== undefined || fields.status !== undefined) {
     const { data, error } = await user.supabaseClient
@@ -97,17 +103,34 @@ export async function updateUser(
     if (!data) throw new NotFoundError("User not found");
     profile = toProfile(data);
   } else {
-    // Password only: still confirm the Owner can see this account before touching Auth.
+    // No profile field: still confirm the Owner can see this account before touching Auth.
     profile = await getUser(user, id);
   }
+  const renamed = username !== undefined && username !== profile.username;
+  if (renamed) {
+    // Signed-in users have no UPDATE grant on username; the unique index refuses a taken name (409).
+    const { data, error } = await supabaseAdmin
+      .from("users")
+      .update({ username })
+      .eq("user_id", id)
+      .select(COLUMNS)
+      .maybeSingle();
+    if (error) throw dbError(error);
+    if (!data) throw new NotFoundError("User not found");
+    profile = toProfile(data);
+  }
   if (password !== undefined) await setPassword(id, password);
-  // Never write the password itself to the audit log.
-  await auditAction(user, "user.update", "users", id, password === undefined ? fields : { ...fields, passwordChanged: true });
+  if (renamed || fields.fullName !== undefined) await syncAuthProfile(id, profile, renamed);
+  // Never write a password to the audit log.
+  await auditAction(user, "user.update", "users", id, {
+    ...fields,
+    ...(renamed ? { username } : {}),
+    ...(password !== undefined ? { passwordChanged: true } : {}),
+  });
   return profile;
 }
 
-/** Owner-set password: Supabase Auth admin API (service role), keyed by the profile's Auth link. */
-async function setPassword(id: number, password: string): Promise<void> {
+async function authUserId(id: number): Promise<string> {
   const { data, error } = await supabaseAdmin
     .from("users")
     .select("auth_user_id")
@@ -115,6 +138,43 @@ async function setPassword(id: number, password: string): Promise<void> {
     .maybeSingle();
   if (error) throw dbError(error);
   if (!data?.auth_user_id) throw new NotFoundError("User not found");
-  const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(data.auth_user_id, { password });
+  return data.auth_user_id;
+}
+
+/** Owner-set password: Supabase Auth admin API (service role), keyed by the profile's Auth link. */
+async function setPassword(id: number, password: string): Promise<void> {
+  const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(await authUserId(id), { password });
   if (authError) throw new AppError(authError.message, 400, "VALIDATION");
+}
+
+/** Checks the account's current password with Supabase Auth, then revokes that check's session. */
+async function checkCurrentPassword(id: number, current: string | undefined): Promise<void> {
+  if (!current) throw new AppError("Enter your current password", 400, "VALIDATION");
+  const { data: linked, error } = await supabaseAdmin.auth.admin.getUserById(await authUserId(id));
+  if (error || !linked.user?.email) throw new AppError("Password check is unavailable", 503, "SERVICE_UNAVAILABLE");
+  const { data, error: signInError } = await createAuthClient().auth.signInWithPassword({
+    email: linked.user.email,
+    password: current,
+  });
+  if (signInError || !data.session) {
+    const status = signInError?.status ?? 0;
+    if (status === 429 || status >= 500)
+      throw new AppError("Password check is unavailable", 503, "SERVICE_UNAVAILABLE");
+    throw new AppError("Current password is incorrect", 400, "INVALID_CURRENT_PASSWORD");
+  }
+  await supabaseAdmin.auth.admin.signOut(data.session.access_token, "local");
+}
+
+/**
+ * Keeps the Auth account's display details (and a Barista's internal email) in step with the
+ * profile. Sign-in uses the linked Auth email, so a failure here is logged, not fatal.
+ */
+async function syncAuthProfile(id: number, profile: UserProfile, renamed: boolean): Promise<void> {
+  const { error } = await supabaseAdmin.auth.admin.updateUserById(await authUserId(id), {
+    user_metadata: { username: profile.username, full_name: profile.fullName },
+    ...(renamed && profile.role === "barista"
+      ? { email: usernameToAuthEmail(profile.username), email_confirm: true }
+      : {}),
+  });
+  if (error) logger.error("users.auth_profile_sync_failed", { status: error.status });
 }
