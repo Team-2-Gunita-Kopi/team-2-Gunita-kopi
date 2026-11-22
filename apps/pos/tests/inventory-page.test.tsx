@@ -74,12 +74,11 @@ describe("POS inventory", () => {
       screen.getByLabelText("Supplier"),
       "6",
     );
-    expect(screen.queryByLabelText("Unit Cost")).not.toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Choose an existing supplier only. New suppliers and unit costs are managed by the Owner.",
-      ),
-    ).toBeInTheDocument();
+    // Shown as in the Figma frame, but the Barista can never enter a cost.
+    const cost = screen.getByLabelText("Unit cost (₱)");
+    expect(cost).toBeDisabled();
+    expect(cost).toHaveValue("");
+    expect(cost).toHaveAttribute("placeholder", "Set by Owner");
     expect(
       screen.queryByRole("button", { name: /add supplier/i }),
     ).not.toBeInTheDocument();

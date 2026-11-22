@@ -563,6 +563,7 @@ export default function PosInventoryPage() {
         </>
       )}
 
+      {/* Figma "Staff Inventory ... (Add ingredient menu)" dialog 317:17034, approved by jhnjffryyy 2026-11-23. */}
       <Dialog
         isOpen={addingIngredient}
         onClose={() => {
@@ -651,6 +652,8 @@ export default function PosInventoryPage() {
                 }}
               />
             </div>
+            {/* Costs are Owner-only (the API refuses them from a Barista); shown as in the Figma frame. */}
+            <Input label="Unit cost (₱)" value="" placeholder="Set by Owner" readOnly disabled />
             <div className="pos-add-ingredient-opening-stock">
               <Input
                 label="Opening stock"
@@ -670,10 +673,6 @@ export default function PosInventoryPage() {
               />
             </div>
           </div>
-          <p className="pos-add-ingredient-note">
-            Choose an existing supplier only. New suppliers and unit costs are managed by the
-            Owner.
-          </p>
           {supplierOptions.error && (
             <div
               className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg"
