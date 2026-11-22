@@ -72,8 +72,8 @@ describe("Admin inventory: add-on configuration and costs", () => {
     expect(box).not.toBeChecked();
     expect(within(dialog).queryByLabelText(/Add-on selling price/)).not.toBeInTheDocument();
 
-    await userEvent.type(within(dialog).getByLabelText("Ingredient"), "Caramel Sauce");
-    await userEvent.type(within(dialog).getByLabelText("Unit"), "ml");
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Caramel Sauce");
+    await userEvent.selectOptions(within(dialog).getByLabelText("Unit"), "ml");
     await userEvent.click(box);
     const price = within(dialog).getByLabelText("Add-on selling price (₱)");
     expect(price).toHaveValue("25.00");
@@ -99,10 +99,35 @@ describe("Admin inventory: add-on configuration and costs", () => {
     renderWithProviders(<InventoryPage />);
     await userEvent.click(await screen.findByRole("button", { name: "Add ingredient" }));
     const dialog = screen.getByRole("dialog");
-    await userEvent.type(within(dialog).getByLabelText("Ingredient"), "Cups");
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Cups");
     await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.createIngredient).toHaveBeenCalledTimes(1));
     expect(api.createIngredient.mock.calls[0]![0]).toMatchObject({ isAddon: false, addonQuantity: null });
+  });
+
+  it("Add Ingredient records the opening stock as a stock-in, and none when it is 0", async () => {
+    renderWithProviders(<InventoryPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Add ingredient" }));
+    let dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByLabelText("Unit")).toHaveValue("g");
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Rice");
+    const opening = within(dialog).getByLabelText("Opening stock");
+    await userEvent.clear(opening);
+    await userEvent.type(opening, "500");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(api.recordStockMovement).toHaveBeenCalledWith({
+        ingredientId: 23, type: "in", quantity: 500, remarks: "Opening stock",
+      }),
+    );
+
+    api.recordStockMovement.mockClear();
+    await userEvent.click(screen.getByRole("button", { name: "Add ingredient" }));
+    dialog = screen.getByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Cups");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.createIngredient).toHaveBeenCalledTimes(2));
+    expect(api.recordStockMovement).not.toHaveBeenCalled();
   });
 
   it("Edit Ingredient loads an add-on configuration, and disabling it saves a regular ingredient", async () => {

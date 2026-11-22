@@ -69,7 +69,7 @@ describe("Owner dashboard", () => {
     expect(screen.getByText("Low stock alerts")).toBeInTheDocument();
     expect(screen.getByText("Hazelnut syrup")).toBeInTheDocument();
     expect(screen.getByText("012")).toBeInTheDocument();
-    expect(screen.getByText("2:22 PM")).toBeInTheDocument();
+    expect(screen.getByText("Nov 20, 2:22 PM")).toBeInTheDocument();
     expect(screen.getByText("Cash")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Restock" }));

@@ -225,7 +225,7 @@ export default function ReportsPage() {
     <div className="space-y-6">
       <header className="product-page-header">
         <div>
-          <p className="product-page-kicker">Gunita · Admin</p>
+          <p className="product-page-kicker">Gunita · Reports Board</p>
           <h1>{TITLES[activeTab]}</h1>
         </div>
         <div className="flex flex-wrap items-end justify-end gap-2">

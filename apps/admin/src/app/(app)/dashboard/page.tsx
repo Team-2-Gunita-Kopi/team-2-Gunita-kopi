@@ -137,8 +137,11 @@ const SAMPLE: Pick<
 };
 
 function orderTime(date: string): string {
-  return new Date(date).toLocaleTimeString("en-PH", {
+  // "Nov 22, 7:56 PM" (date added to Recent orders, approved by jhnjffryyy 2026-11-23).
+  return new Date(date).toLocaleString("en-US", {
     timeZone: "Asia/Manila",
+    month: "short",
+    day: "numeric",
     hour: "numeric",
     minute: "2-digit",
   });
@@ -223,20 +226,17 @@ export default function DashboardPage() {
         <section className="chart-card">
           <h2>Low stock alerts</h2>
           {stockAlerts.length > 0 ? (
-            <ul className="space-y-2">
+            <ul className="stock-alerts">
               {stockAlerts.map((item) => {
                 const outOfStock = item.stockStatus === "out-of-stock";
                 return (
-                  <li
-                    key={item.ingredientId}
-                    className="flex items-center gap-2 text-sm"
-                  >
+                  <li key={item.ingredientId}>
                     <StatusBadge
                       status={outOfStock ? "out_of_stock" : "low_stock"}
                       label={outOfStock ? "Out of Stock" : "Low Stock"}
                       withIcon
                     />
-                    <span className="min-w-0 flex-1 truncate">
+                    <span className="stock-alert-name">
                       {item.ingredientName}{" "}
                       <span className="muted num">
                         {item.currentStock} {item.unit ?? ""}
@@ -264,12 +264,12 @@ export default function DashboardPage() {
             {recentOrders.map((order) => (
               <div
                 key={order.orderId}
-                className="grid grid-cols-2 sm:grid-cols-[80px_120px_1fr_140px_100px_70px] items-center gap-2 border-b border-[var(--muted)] px-2 py-2 last:border-b-0 text-sm"
+                className="grid grid-cols-2 sm:grid-cols-[80px_150px_1fr_140px_100px_70px] items-center gap-2 border-b border-[var(--muted)] px-2 py-2 last:border-b-0 text-sm"
               >
                 <span className="num text-right">
                   {formatQueueNumber(order.orderId)}
                 </span>
-                <span className="muted">{orderTime(order.orderDate)}</span>
+                <span className="muted whitespace-nowrap">{orderTime(order.orderDate)}</span>
                 <span>{orderTypeLabel(order.orderType)}</span>
                 <span>
                   <StatusBadge status={order.status} />

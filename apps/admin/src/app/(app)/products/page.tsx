@@ -7,25 +7,17 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   Button,
   DataTable,
-  Dialog,
   Icon,
-  Input,
   Tabs,
   useToast,
 } from "@gunita/ui";
 import type { IconName } from "@gunita/ui";
-import {
-  PRODUCT_IMAGE_MAX_BYTES,
-  PRODUCT_IMAGE_TYPES,
-} from "@gunita/contracts";
 import { useLiveQuery } from "@/lib/data";
 import { USE_MOCKS } from "@/lib/use-mocks";
 import {
-  createProduct,
   listProductsWithCosting,
   toProductRow,
   updateProduct,
-  uploadProductImage,
   type ProductRow,
 } from "@/features/products/api";
 import { listUsers } from "@/features/users/api";
@@ -107,8 +99,6 @@ const sampleProducts: ProductListRow[] = [
   },
 ];
 
-const EMPTY = { name: "", description: "", category: "", price: "" };
-const IMAGE_TYPES: readonly string[] = PRODUCT_IMAGE_TYPES;
 const PRODUCT_TABS = [
   { id: "list", label: "Product List", href: "/products" },
   {
@@ -144,10 +134,6 @@ export default function ProductsPage() {
     enabled: !USE_MOCKS,
   });
   const users = useLiveQuery(["users"], listUsers, { enabled: !USE_MOCKS });
-  const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState(EMPTY);
-  const [file, setFile] = useState<File | null>(null);
-  const [errorMessage, setErrorMessage] = useState("");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
 
@@ -179,56 +165,7 @@ export default function ProductsPage() {
       (!categoryFilter || row.category === categoryFilter),
   );
 
-  const openAddProduct = () => {
-    setErrorMessage("");
-    setAdding(true);
-    setFile(null);
-    setForm(EMPTY);
-  };
-
-  // Quick check before upload; the API checks the file's real type and size again.
-  const pickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] ?? null;
-    setErrorMessage("");
-    if (f && !IMAGE_TYPES.includes(f.type)) {
-      setErrorMessage("Choose a PNG, JPEG or WebP image.");
-      e.target.value = "";
-      return setFile(null);
-    }
-    if (f && f.size > PRODUCT_IMAGE_MAX_BYTES) {
-      setErrorMessage("The image must be 2 MB or smaller.");
-      e.target.value = "";
-      return setFile(null);
-    }
-    setFile(f);
-  };
-
   const refresh = () => client.invalidateQueries({ queryKey: ["products"] });
-
-  // FR-50/FR-52: the API records the creating user and date.
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage("");
-    const body = {
-      name: form.name,
-      description: form.description || null,
-      category: form.category || null,
-      price: Number(form.price),
-    };
-    try {
-      const saved = adding
-        ? await createProduct({ ...body, isAvailable: true })
-        : null;
-      // The image needs the product id, so it is stored after the product is saved.
-      if (saved && file) await uploadProductImage(saved.id, file);
-      setAdding(false);
-      await refresh();
-    } catch (err) {
-      setErrorMessage(
-        err instanceof Error ? err.message : "Could not save the product.",
-      );
-    }
-  };
 
   // FR-51: unavailable products disappear from the POS catalog.
   const toggleAvailable = async (row: ProductRow) => {
@@ -243,18 +180,14 @@ export default function ProductsPage() {
     }
   };
 
-  const set =
-    (key: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
-      setForm({ ...form, [key]: e.target.value });
-
   return (
     <div className="space-y-5">
       <header className="product-page-header">
         <div>
-          <p className="product-page-kicker">Gunita · Admin</p>
+          <p className="product-page-kicker">Gunita · Products Board</p>
           <h1>Products</h1>
         </div>
-        <Button variant="primary" onClick={openAddProduct} disabled={USE_MOCKS}>
+        <Button variant="primary" onClick={() => router.push("/products/new")} disabled={USE_MOCKS}>
           <Icon name="plus" />
           Add product
         </Button>
@@ -420,71 +353,6 @@ export default function ProductsPage() {
         />
       </div>
 
-      <Dialog
-        isOpen={adding}
-        onClose={() => setAdding(false)}
-        title="Add Product"
-      >
-        <form onSubmit={save} className="space-y-4">
-          {errorMessage && (
-            <div className="p-3 bg-[var(--surface)] border border-[var(--danger)] text-[var(--danger)] text-xs rounded-lg">
-              {errorMessage}
-            </div>
-          )}
-          <Input
-            label="Product Name"
-            required
-            maxLength={100}
-            value={form.name}
-            onChange={set("name")}
-          />
-          <Input
-            label="Description"
-            value={form.description}
-            onChange={set("description")}
-          />
-          <Input
-            label="Category"
-            maxLength={50}
-            value={form.category}
-            onChange={set("category")}
-          />
-          <Input
-            label="Selling Price"
-            type="number"
-            min="0"
-            step="0.01"
-            required
-            value={form.price}
-            onChange={set("price")}
-          />
-          <div className="space-y-2">
-            <label
-              htmlFor="product-image"
-              className="block text-sm font-medium text-[var(--fg-muted)]"
-            >
-              Image (PNG, JPEG or WebP, up to 2 MB)
-            </label>
-            <input
-              id="product-image"
-              type="file"
-              accept={IMAGE_TYPES.join(",")}
-              onChange={pickFile}
-              className="block w-full text-sm"
-            />
-          </div>
-          <div className="flex justify-end space-x-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setAdding(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit">Save</Button>
-          </div>
-        </form>
-      </Dialog>
     </div>
   );
 }

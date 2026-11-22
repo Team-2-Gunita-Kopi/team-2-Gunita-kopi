@@ -573,10 +573,10 @@ table.tbl-pos-inventory{min-width:1000px;}
 .pos-stock-history-table .tbl th, .pos-stock-history-table .tbl td{padding:.58rem .7rem;white-space:nowrap;}
 .pos-stock-history-table .tbl td:first-child{font-family:var(--font-num);color:var(--fg-muted);}
 .pos-add-ingredient-form{display:flex;flex-direction:column;gap:.9rem;}
-.pos-add-ingredient-fields{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:.8rem;align-items:end;}
+.pos-add-ingredient-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem;align-items:end;}
 .pos-add-ingredient-fields .field{min-width:0;}
 .pos-add-ingredient-supplier{grid-column:1/-1;}
-.pos-add-ingredient-reorder-level{grid-column:1/-1;}
+.pos-add-ingredient-reorder-level{grid-column:auto;}
 .pos-add-ingredient-opening-stock{grid-column:1/-1;}
 .pos-add-ingredient-note{margin:0;color:var(--fg-muted);font-size:.8rem;}
 .pos-add-ingredient-actions{display:flex;justify-content:flex-end;gap:.55rem;padding-top:.2rem;}
@@ -818,6 +818,13 @@ to{background-position:-200% 0;}
 body.owner-mode h1{font-size:1.75rem;}
 .owner-mode .product-page-kicker{font-size:.72rem;letter-spacing:.22em;}
 .owner-mode .chart-card h2, .owner-mode .report-section-title{font-family:var(--font-head);font-size:1.1rem;font-weight:700;margin:0 0 .5rem;}
+/* Owner dashboard low-stock alerts (Figma Owner Dashboard 510:6830, approved by jhnjffryyy 2026-11-22) */
+.owner-mode .stock-alerts{margin:0;padding:0;list-style:none;}
+.owner-mode .stock-alerts li{display:flex;align-items:center;gap:.5rem;padding:.3rem 0;}
+.owner-mode .stock-alerts .chip svg{width:18px;height:18px;}
+.owner-mode .stock-alert-name{flex:1;min-width:0;padding-left:.4rem;font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.owner-mode .stock-alert-name .num{font-size:.78rem;}
+.owner-mode .stock-alerts .btn{text-decoration:underline;text-underline-offset:2px;}
 /* Wide screens: tables fit the width (no bottom scrollbar); smaller screens keep sideways scrolling */
 @media (min-width: 1200px) {
 .owner-mode table.tbl-products, .owner-mode table.tbl-inventory{min-width:0;}
@@ -829,6 +836,12 @@ body.owner-mode h1{font-size:1.75rem;}
 /* Owner Add / Edit User card (Figma "Owner User Frame (Add User)" and "Owner Edit User") */
 .user-form{max-width:460px;display:flex;flex-direction:column;gap:.9rem;padding:1rem 1.1rem 1.1rem;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);}
 .user-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem 1rem;}
+/* Owner Add/Edit ingredient dialog (Figma 510:4463, approved by jhnjffryyy 2026-11-23) */
+.ingredient-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem .9rem;}
+.ingredient-form-grid>*{min-width:0;}
+.ingredient-form-wide{grid-column:1/-1;}
+.ingredient-addon-toggle{display:flex;align-items:center;gap:.5rem;font-size:.85rem;color:var(--fg-muted);}
+@media (max-width:420px){.ingredient-form-grid{grid-template-columns:1fr;}}
 .user-form-grid .field input, .user-form-grid .field select{min-height:40px;}
 .user-form-grid input[readonly]{color:var(--fg-muted);cursor:not-allowed;}
 .user-form-wide{grid-column:1/-1;}

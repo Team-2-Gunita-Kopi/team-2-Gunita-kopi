@@ -92,13 +92,15 @@ const sampleIngredients: IngredientRow[] = [
 
 const EMPTY_INGREDIENT = {
   name: "",
-  unit: "",
+  unit: "g",
   reorderLevel: "0",
   unitCost: "",
   supplierId: "",
   isAddon: false,
   addonQuantity: "",
+  openingStock: "0",
 };
+const UNITS = ["g", "ml", "pcs"];
 const EMPTY_MOVE: {
   ingredientId: string;
   type: StockTransactionType;
@@ -196,6 +198,7 @@ export default function InventoryPage() {
             supplierId: i.supplierId === null ? "" : String(i.supplierId),
             isAddon: i.isAddon,
             addonQuantity: i.addonQuantity === null ? "" : String(i.addonQuantity),
+            openingStock: "0",
           },
     );
   };
@@ -214,13 +217,28 @@ export default function InventoryPage() {
       isAddon: form.isAddon,
       addonQuantity: form.isAddon ? Number(form.addonQuantity) : null,
     };
+    if (editing === "new" && !(Number(form.openingStock || 0) >= 0)) {
+      setErrorMessage("Opening stock cannot be negative.");
+      return;
+    }
     if (form.isAddon && !(Number(form.addonQuantity) > 0)) {
       setErrorMessage("Enter a quantity consumed per selection greater than zero.");
       return;
     }
     try {
-      if (editing === "new") await createIngredient(body);
-      else if (editing) await updateIngredient(editing.id, body);
+      if (editing === "new") {
+        const created = await createIngredient(body);
+        // Opening stock is recorded as a stock-in (FR-17), so it appears in Stock History.
+        const opening = Number(form.openingStock || 0);
+        if (opening > 0) {
+          try {
+            await recordStockMovement({ ingredientId: created.id, type: "in", quantity: opening, remarks: "Opening stock" });
+          } catch {
+            // The ingredient exists already: close instead of letting a retry create it twice.
+            toast(`${created.name} was added, but the opening stock was not recorded. Use Stock In / Out.`, true);
+          }
+        }
+      } else if (editing) await updateIngredient(editing.id, body);
       setEditing(null);
       await refresh();
     } catch (err) {
@@ -568,46 +586,65 @@ export default function InventoryPage() {
         </>
       )}
 
+      {/* Figma "Owner Inventory Frame (Dialogue - Add ingredient)", approved by jhnjffryyy 2026-11-23. */}
       <Dialog
         isOpen={editing !== null}
         onClose={() => setEditing(null)}
-        title={editing === "new" ? "Add Ingredient" : "Edit Ingredient"}
+        title={editing === "new" ? "Add ingredient" : "Edit ingredient"}
       >
-        <form onSubmit={saveIngredient} className="space-y-4">
+        <form onSubmit={saveIngredient}>
           {errorBox}
-          <Input label="Ingredient" required maxLength={100} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <Input label="Unit" maxLength={20} value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="g, ml, pcs" />
-          <Input
-            label="Reorder Level"
-            type="number"
-            min="0"
-            step="0.01"
-            required
-            value={form.reorderLevel}
-            onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })}
-          />
-          <Input
-            label="Unit Cost"
-            type="number"
-            min="0"
-            step="0.01"
-            value={form.unitCost}
-            onChange={(e) => setForm({ ...form, unitCost: e.target.value })}
-          />
-          <Select
-            label="Supplier"
-            value={form.supplierId}
-            onChange={(e) => setForm({ ...form, supplierId: e.target.value })}
-            options={[
-              { value: "", label: "No supplier" },
-              ...(suppliers.data ?? [])
-                .filter((s) => s.status === "active" || String(s.id) === form.supplierId)
-                .map((s) => ({ value: String(s.id), label: s.name })),
-            ]}
-          />
-          <div className="space-y-4 border-t border-[var(--border)] pt-4">
-            <h4 className="text-sm font-semibold">Add-on Configuration</h4>
-            <label className="flex items-center gap-2 text-sm text-[var(--fg-muted)]">
+          <div className="ingredient-form-grid">
+            <Input label="Name" required maxLength={100} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <Select
+              label="Unit"
+              value={form.unit}
+              onChange={(e) => setForm({ ...form, unit: e.target.value })}
+              options={[...new Set([...UNITS, form.unit].filter(Boolean))].map((u) => ({ value: u, label: u }))}
+            />
+            <div className="ingredient-form-wide">
+              <Select
+                label="Supplier"
+                value={form.supplierId}
+                onChange={(e) => setForm({ ...form, supplierId: e.target.value })}
+                options={[
+                  { value: "", label: "No supplier" },
+                  ...(suppliers.data ?? [])
+                    .filter((s) => s.status === "active" || String(s.id) === form.supplierId)
+                    .map((s) => ({ value: String(s.id), label: s.name })),
+                ]}
+              />
+            </div>
+            <Input
+              label="Reorder level"
+              type="number"
+              min="0"
+              step="0.01"
+              required
+              value={form.reorderLevel}
+              onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })}
+            />
+            <Input
+              label="Unit cost (₱)"
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.unitCost}
+              onChange={(e) => setForm({ ...form, unitCost: e.target.value })}
+            />
+            {editing === "new" ? (
+              <div className="ingredient-form-wide">
+                <Input
+                  label="Opening stock"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.openingStock}
+                  onChange={(e) => setForm({ ...form, openingStock: e.target.value })}
+                />
+              </div>
+            ) : null}
+            <label className="ingredient-form-wide ingredient-addon-toggle">
               <input
                 type="checkbox"
                 checked={form.isAddon}
@@ -630,11 +667,11 @@ export default function InventoryPage() {
               </>
             )}
           </div>
-          <div className="flex justify-end space-x-2 pt-2">
+          <div className="modal-actions">
             <Button type="button" variant="outline" onClick={() => setEditing(null)}>
               Cancel
             </Button>
-            <Button type="submit">Save</Button>
+            <Button type="submit" variant="primary">Save</Button>
           </div>
         </form>
       </Dialog>
