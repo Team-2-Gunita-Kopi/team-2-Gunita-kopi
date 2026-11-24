@@ -37,3 +37,15 @@ Thumbs.db
 !.vscode/extensions.json
 !.vscode/settings.json
 .idea/
+
+# Supabase CLI local state (created by `supabase link`)
+supabase/.temp/
+supabase/.branches/
+
+# Local Claude Code settings
+.claude/
+.mock-data/
+graphify-out/
+*.tsbuildinfo
+public/staff/sw.js
+public/staff/swe-worker-*.js

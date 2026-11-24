@@ -1,4 +1,0 @@
--- Gunita Kopi POS: Initial Placeholder Migration
--- Version: 20261116000000
--- Note: The database schema will be applied in a dedicated database migration task.
--- No tables or views created in this initial setup migration.
