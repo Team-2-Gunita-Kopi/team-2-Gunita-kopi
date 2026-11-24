@@ -84,6 +84,23 @@ export async function generateReport(
   }
 }
 
+/** Current unit cost per product (product_costing.total_cost), for the given ids. */
+async function costsFor(
+  user: AuthenticatedUser,
+  ids: number[],
+): Promise<Map<number, number>> {
+  const costs = new Map<number, number>();
+  if (ids.length === 0) return costs;
+  const costing = await user.supabaseClient
+    .from("product_costing")
+    .select("product_id, total_cost")
+    .in("product_id", ids);
+  if (costing.error) throw dbError(costing.error);
+  for (const c of costing.data)
+    if (c.total_cost !== null) costs.set(c.product_id, c.total_cost);
+  return costs;
+}
+
 /** FR-34: completed-sales ranking, optionally filtered to inclusive Manila dates. */
 export async function bestSellers(
   user: AuthenticatedUser,
@@ -141,46 +158,38 @@ export async function bestSellers(
       offset += pageSize;
     }
 
-    const productIds = [...totals.keys()];
-    if (productIds.length > 0) {
-      const { data, error } = await user.supabaseClient
+    // Speed: rank by units first (names are not needed for that), then load names and costs for
+    // the top rows only, in parallel.
+    const top = [...totals.entries()]
+      .sort(([idA, a], [idB, b]) => b.unitsSold - a.unitsSold || idA - idB)
+      .slice(0, limit);
+    const topIds = top.map(([productId]) => productId);
+    if (topIds.length === 0) return [];
+    const [products, costing] = await Promise.all([
+      user.supabaseClient
         .from("products")
         .select("product_id, product_name")
-        .in("product_id", productIds);
-      if (error) throw dbError(error);
-      const names = new Map(data.map((product) => [product.product_id, product.product_name]));
-
-      for (const [productId, total] of totals) {
-        const productName = names.get(productId);
-        if (productName === undefined) {
-          throw new Error(`Product ${productId} is missing from the best-sellers report.`);
-        }
-        ranked.push({
-          productId,
-          productName,
-          unitsSold: total.unitsSold,
-          revenue: Math.round(total.revenue * 100) / 100,
-        });
+        .in("product_id", topIds),
+      costsFor(user, topIds),
+    ]);
+    if (products.error) throw dbError(products.error);
+    const names = new Map(products.data.map((p) => [p.product_id, p.product_name]));
+    return top.map(([productId, total]) => {
+      const productName = names.get(productId);
+      if (productName === undefined) {
+        throw new Error(`Product ${productId} is missing from the best-sellers report.`);
       }
-    }
-
-    ranked.sort(
-      (a, b) => b.unitsSold - a.unitsSold || a.productId - b.productId,
-    );
-    ranked.length = Math.min(ranked.length, limit);
+      return {
+        productId,
+        productName,
+        unitsSold: total.unitsSold,
+        revenue: Math.round(total.revenue * 100) / 100,
+        currentUnitCost: costing.get(productId) ?? null,
+      };
+    });
   }
 
-  const ids = ranked.map((row) => row.productId);
-  const costs = new Map<number, number>();
-  if (ids.length > 0) {
-    const costing = await user.supabaseClient
-      .from("product_costing")
-      .select("product_id, total_cost")
-      .in("product_id", ids);
-    if (costing.error) throw dbError(costing.error);
-    for (const c of costing.data)
-      if (c.total_cost !== null) costs.set(c.product_id, c.total_cost);
-  }
+  const costs = await costsFor(user, ranked.map((row) => row.productId));
   return ranked.map((row) => ({
     ...row,
     currentUnitCost: costs.get(row.productId) ?? null,

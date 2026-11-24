@@ -17,35 +17,37 @@ async function bestSellersToday(
   user: AuthenticatedUser,
   today: string,
 ): Promise<BestSellerRow[]> {
-  const { data: lines, error: linesError } = await user.supabaseClient
-    .from("orders")
-    .select("product_id, quantity, subtotal")
-    .eq("status", "completed")
-    .eq("is_addon", false)
-    .gte("order_date", manilaDayStart(today))
-    .lt("order_date", manilaNextDayStart(today))
-    .not("product_id", "is", null);
-  if (linesError) throw dbError(linesError);
-
+  // Speed: product names come with the lines (one query). Pages of 1000 keep busy days complete
+  // under PostgREST's row cap; a normal day is a single page.
   const totals = new Map<number, { unitsSold: number; revenue: number }>();
-  for (const line of lines) {
-    if (line.product_id === null) continue;
-    const total = totals.get(line.product_id) ?? { unitsSold: 0, revenue: 0 };
-    total.unitsSold += line.quantity;
-    total.revenue += line.subtotal;
-    totals.set(line.product_id, total);
+  const names = new Map<number, string>();
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data: lines, error: linesError } = await user.supabaseClient
+      .from("orders")
+      .select("order_line_id, product_id, quantity, subtotal, products(product_name)")
+      .eq("status", "completed")
+      .eq("is_addon", false)
+      .gte("order_date", manilaDayStart(today))
+      .lt("order_date", manilaNextDayStart(today))
+      .not("product_id", "is", null)
+      .order("order_line_id")
+      .range(offset, offset + pageSize - 1);
+    if (linesError) throw dbError(linesError);
+    for (const line of lines) {
+      if (line.product_id === null) continue;
+      const total = totals.get(line.product_id) ?? { unitsSold: 0, revenue: 0 };
+      total.unitsSold += line.quantity;
+      total.revenue += line.subtotal;
+      totals.set(line.product_id, total);
+      const name = (line.products as { product_name: string } | null)?.product_name;
+      if (name) names.set(line.product_id, name);
+    }
+    if (lines.length < pageSize) break;
   }
 
   const productIds = [...totals.keys()];
   if (productIds.length === 0) return [];
-
-  const { data: products, error: productsError } = await user.supabaseClient
-    .from("products")
-    .select("product_id, product_name")
-    .in("product_id", productIds);
-  if (productsError) throw dbError(productsError);
-
-  const names = new Map(products.map((product) => [product.product_id, product.product_name]));
   return productIds
     .map((productId) => ({
       productId,
