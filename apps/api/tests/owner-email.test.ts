@@ -1012,3 +1012,13 @@ describe("Error responses", () => {
     ).toEqual(["username", "password"]);
   });
 });
+
+describe("POST /api/auth/otp route", () => {
+  // Why: the route must validate before any code is sent or checked; a bad body is a 400.
+  it("refuses a body without a valid action and challenge", async () => {
+    const { POST } = await import("../src/app/api/auth/otp/route");
+    const res = await POST(new Request("http://localhost:3002/api/auth/otp", { method: "POST", body: "{}" }) as never);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("VALIDATION_ERROR");
+  });
+});

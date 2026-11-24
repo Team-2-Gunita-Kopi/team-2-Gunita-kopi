@@ -191,6 +191,8 @@ const sync = await import("../src/app/api/sync/route");
 const reports = await import("../src/app/api/reports/[type]/route");
 const dashboard = await import("../src/app/api/dashboard/route");
 const users = await import("../src/app/api/users/[id]/route");
+const supplierById = await import("../src/app/api/suppliers/[id]/route");
+const usersList = await import("../src/app/api/users/route");
 const { computeCosting } = await import("../src/modules/products/service");
 const { dbError } = await import("../src/lib/errors");
 const { errorResponse } = await import("../src/lib/response");
@@ -1598,5 +1600,69 @@ describe("users: Owner-set password (FR-49)", () => {
     );
     expect(res.status).toBe(403);
     expect(passwordUpdates).toHaveLength(0);
+  });
+});
+
+describe("route coverage: one supplier and the users list", () => {
+  const SUPPLIER = { supplier_id: 6, supplier_name: "Bean Co", contact_person: "Ana", contact_number: "0917", address: "QC", status: "active" };
+
+  // Why: supplier details are Owner-only; a Barista must not read contact details.
+  it("GET /api/suppliers/:id returns the supplier to the Owner and refuses a Barista", async () => {
+    onQuery = () => ({ data: SUPPLIER });
+    const owner = await call(supplierById.GET(req("GET", "/api/suppliers/6", OWNER), params({ id: "6" })));
+    expect(owner.status).toBe(200);
+    expect(owner.body.data).toMatchObject({ id: 6, name: "Bean Co", status: "active" });
+    const barista = await call(supplierById.GET(req("GET", "/api/suppliers/6", "barista-token"), params({ id: "6" })));
+    expect(barista.status).toBe(403);
+  });
+
+  // Why: deactivating must change only the status, never reset the other details.
+  it("PATCH /api/suppliers/:id writes only the fields sent", async () => {
+    onQuery = () => ({ data: { ...SUPPLIER, status: "inactive" } });
+    const r = await call(supplierById.PATCH(req("PATCH", "/api/suppliers/6", OWNER, { status: "inactive" }), params({ id: "6" })));
+    expect(r.status).toBe(200);
+    const update = calls.find((c) => c.op === "update" && c.table === "suppliers");
+    expect(update?.payload).toEqual({ status: "inactive" });
+    const empty = await call(supplierById.PATCH(req("PATCH", "/api/suppliers/6", OWNER, {}), params({ id: "6" })));
+    expect(empty.status).toBe(400);
+  });
+
+  // Why: the account list is Owner-only (FR-47).
+  it("GET /api/users lists accounts for the Owner only", async () => {
+    onQuery = () => ({ data: [USER_ROW], count: 1 });
+    const owner = await call(usersList.GET(req("GET", "/api/users", OWNER), undefined));
+    expect(owner.status).toBe(200);
+    expect(owner.body.data.items[0]).toMatchObject({ username: "testbarista", role: "barista" });
+    const barista = await call(usersList.GET(req("GET", "/api/users", "barista-token"), undefined));
+    expect(barista.status).toBe(403);
+  });
+});
+
+describe("dashboard (Owner)", () => {
+  // Why: the dashboard is the Owner's first screen. Top products must be right and come from one
+  // query with names joined, not a second lookup (speed, and no N+1 as products grow).
+  it("ranks today's top products from one query, with today's sales", async () => {
+    onQuery = (c) => {
+      if (c.table === "orders")
+        return {
+          data: [
+            { order_line_id: 1, product_id: 3, quantity: 2, subtotal: 240, products: { product_name: "Spanish Latte" } },
+            { order_line_id: 2, product_id: 5, quantity: 1, subtotal: 60, products: { product_name: "Tapsilog" } },
+            { order_line_id: 3, product_id: 3, quantity: 1, subtotal: 120, products: { product_name: "Spanish Latte" } },
+          ],
+        };
+      if (c.table === "v_daily_sales") return { data: { total_sales: 420 } };
+      if (c.table === "v_order_totals") return { data: [], count: 2 };
+      return { data: [] };
+    };
+    const r = await call(dashboard.GET(req("GET", "/api/dashboard", OWNER), undefined));
+    expect(r.status).toBe(200);
+    expect(r.body.data.todaySales).toBe(420);
+    expect(r.body.data.bestSellers.map((b: { productName: string; unitsSold: number; revenue: number }) => [b.productName, b.unitsSold, b.revenue])).toEqual([
+      ["Spanish Latte", 3, 360],
+      ["Tapsilog", 1, 60],
+    ]);
+    expect(calls.filter((c) => c.table === "orders")).toHaveLength(1);
+    expect(calls.some((c) => c.table === "products")).toBe(false);
   });
 });
