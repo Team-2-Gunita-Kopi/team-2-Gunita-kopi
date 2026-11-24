@@ -22,7 +22,6 @@ export function fileStorage(dir: string): StateStorage {
 export type SharedMockDb = { owner: OwnerMockDb; pos: PosMockDb };
 
 declare global {
-  // eslint-disable-next-line no-var
   var __gkMockDb: SharedMockDb | undefined;
 }
 

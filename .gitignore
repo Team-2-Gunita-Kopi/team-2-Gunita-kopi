@@ -45,3 +45,6 @@ supabase/.branches/
 # Local Claude Code settings
 .claude/
 apps/api/.mock-data/
+graphify-out/
+*.tsbuildinfo
+apps/pos/public/sw.js
