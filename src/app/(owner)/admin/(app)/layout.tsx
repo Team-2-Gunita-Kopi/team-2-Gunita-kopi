@@ -20,7 +20,8 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   { label: "Users", short: "Users", href: "/admin/users", icon: "users" },
 ];
 
-const IDLE_MS = 5 * 60 * 1000;
+// Idle sign-out (decided 2026-11-24): the common 30-minute standard for an admin portal.
+const IDLE_MS = 30 * 60 * 1000;
 
 function OwnerShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

@@ -27,7 +27,8 @@ const POS_NAV_ITEMS: NavItem[] = [
   { label: "Inventory", short: "Stock", href: "/staff/inventory", icon: "box" },
 ];
 
-const IDLE_MS = 5 * 60 * 1000;
+// Idle sign-out (decided 2026-11-24): the shop tablet stays signed in for a whole shift.
+const IDLE_MS = 8 * 60 * 60 * 1000;
 
 function PosShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
