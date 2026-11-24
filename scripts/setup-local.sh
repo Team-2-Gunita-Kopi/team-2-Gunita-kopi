@@ -35,6 +35,9 @@ npx -y supabase@2.122.1 start >/dev/null
 npx -y supabase@2.122.1 migration up --local >/dev/null
 echo "local Supabase running, migrations up to date"
 
+step "Local env file"
+bash supabase/seed/write-local-env.sh
+
 step "Test data"
 if [ -e supabase/.env.seed-accounts.local ]; then
   echo "already seeded (kept)"
@@ -45,9 +48,8 @@ fi
 step "Done"
 cat <<EOF
 Start the apps:   npx -y pnpm@12.21.0 dev
-  Admin (Owner):  http://localhost:3000
-  POS (Barista):  http://localhost:3001/staff
-  API:            http://localhost:3002
+  Admin (Owner):  http://localhost:3000/admin
+  POS (Barista):  http://localhost:3000/staff
   Sign-in codes:  http://127.0.0.1:54326  (Owner: after the password, open the newest email)
 Test accounts (local only):
 $(grep -E '^(OWNER|BARISTA)_' supabase/.env.seed-accounts.local | sed 's/^/  /')

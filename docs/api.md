@@ -42,6 +42,7 @@ Route handlers in `apps/api` (Next.js on Vercel Functions). Request and response
 | `POST`  | `/api/products`              | owner                     | Create a product                           | FR-50, FR-52   |
 | `GET`   | `/api/products/[id]`         | owner, barista            | Product details                            | FR-05          |
 | `PATCH` | `/api/products/[id]`         | owner                     | Edit a product or its availability         | FR-50, FR-51   |
+| `DELETE` | `/api/products/[id]`        | owner                     | Soft delete a product                      | FR-50          |
 | `GET`   | `/api/products/[id]/recipe`  | owner                     | Recipe lines                               | FR-23          |
 | `PUT`   | `/api/products/[id]/recipe`  | owner                     | Replace the recipe                         | FR-23, FR-24   |
 | `GET`   | `/api/products/[id]/costing` | owner                     | Cost breakdown, total cost, margin         | FR-27 to FR-29 |
@@ -54,6 +55,8 @@ Route handlers in `apps/api` (Next.js on Vercel Functions). Request and response
 | `POST`  | `/api/ingredients`           | owner                     | Create an ingredient                       | FR-21, FR-22   |
 | `GET`   | `/api/ingredients/[id]`      | owner, barista            | Ingredient details and stock status        | FR-14          |
 | `PATCH` | `/api/ingredients/[id]`      | owner                     | Edit an ingredient or its supplier link    | FR-21, FR-22   |
+| `DELETE` | `/api/ingredients/[id]`     | owner                     | Soft delete an ingredient                  | FR-21, R11     |
+| `GET`   | `/api/ingredients/[id]/products` | owner                 | Products whose recipe uses it              | R11            |
 | `GET`   | `/api/stock-transactions`    | owner, barista            | Stock history                              | FR-17          |
 | `POST`  | `/api/stock-transactions`    | owner (in), barista (out) | Record stock-in or stock-out               | FR-15 to FR-18 |
 | `GET`   | `/api/orders`                | owner, barista            | Order board and queue, with items          | FR-10          |
@@ -76,7 +79,9 @@ Route handlers in `apps/api` (Next.js on Vercel Functions). Request and response
 
 **`POST /api/products`**: body `CreateProductRequestSchema`: `name` (1-100, required), `price` (money, required), `description?`, `category?` (max 50), `isAvailable?` (default true), `image?` (Storage path or URL, max 255). `createdBy` is always the caller. **201** with the product.
 
-**`PATCH /api/products/[id]`**: any subset of the create fields. `{ "isAvailable": false }` alone switches availability (FR-51). Price changes never affect saved orders, which keep their own `unit_price`.
+**`PATCH /api/products/[id]`**: any subset of the create fields. `{ "isAvailable": false }` alone switches availability (FR-51). Price changes never affect saved orders, which keep their own `unit_price`. A deleted product answers 404.
+
+**`DELETE /api/products/[id]`**: soft delete. Sets `deleted_at` and `is_available = false`, so the product leaves every list, read, recipe and costing endpoint and the POS menu, and an order queued offline with it is a conflict; orders and reports keep it. Returns `{ id }`, audited as `product.delete`. 404 when missing or already deleted. There is no restore.
 
 ### Recipe and costing
 
@@ -133,7 +138,11 @@ Reference records only; no purchase orders or automatic reordering (SRS section 
 
 **`POST /api/ingredients`**: Owner may send `name` (1-100, required), `unit?` (20), `supplierId?`, `reorderLevel?` (default 0), `unitCost?`, and add-on configuration. Barista requests use the strict shape `{ name, unit?, supplierId?, reorderLevel?, openingStock? }`. The supplier must be an existing active supplier; costs, add-on settings, and supplier creation are not accepted. The database records positive opening stock as a stock-in in the same transaction. **201**.
 
-**`PATCH /api/ingredients/[id]`**: any subset of the create fields. `currentStock` is not editable. A `unitCost` change recosts every product that uses the ingredient.
+**`PATCH /api/ingredients/[id]`**: any subset of the create fields. `currentStock` is not editable. A `unitCost` change recosts every product that uses the ingredient. A deleted ingredient answers 404.
+
+**`GET /api/ingredients/[id]/products`**: `[{ id, name }]`, the products whose recipe uses the ingredient, shown in the delete confirmation (R11).
+
+**`DELETE /api/ingredients/[id]`**: soft delete through `delete_ingredient` (one transaction). The ingredient disappears from every list, is taken out of the recipes that used it (they are recosted) and stops being an add-on; stock history and orders keep its name. Returns `{ id, removedFromProducts: [{ id, name }] }`, audited as `ingredient.delete`. 404 when it is missing or already deleted. There is no restore.
 
 ### Stock transactions
 

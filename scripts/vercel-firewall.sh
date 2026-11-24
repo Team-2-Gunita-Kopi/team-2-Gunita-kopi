@@ -12,7 +12,7 @@ has_rule() { $VERCEL firewall rules list 2>/dev/null | grep -qF "$1"; }
 
 # Hobby allows 3 custom rules, one of them a rate limit.
 has_rule "Sign-in rate limit" || $VERCEL firewall rules add "Sign-in rate limit" \
-  --condition '{"type":"path","op":"pre","value":"/auth/"}' \
+  --condition '{"type":"path","op":"pre","value":"/admin/auth/"}' \
   --condition '{"type":"method","op":"eq","value":"POST"}' \
   --or \
   --condition '{"type":"path","op":"pre","value":"/staff/auth/"}' \
@@ -31,9 +31,16 @@ has_rule "Probe block" || $VERCEL firewall rules add "Probe block" \
   --action log \
   --yes
 
+# Owner portal reachable only from the Philippines (the POS under /staff is not affected).
+has_rule "Owner portal: Philippines only" || $VERCEL firewall rules add "Owner portal: Philippines only" \
+  --condition '{"type":"path","op":"pre","value":"/admin"}' \
+  --condition '{"type":"geo_country","op":"eq","value":"PH","neg":true}' \
+  --action log \
+  --yes
+
 if [[ "${1:-}" == "pro" ]]; then
   has_rule "API rate limit" || $VERCEL firewall rules add "API rate limit" \
-    --condition '{"type":"path","op":"pre","value":"/api/"}' \
+    --condition '{"type":"path","op":"pre","value":"/admin/api/"}' \
     --or \
     --condition '{"type":"path","op":"pre","value":"/staff/api/"}' \
     --action rate_limit \

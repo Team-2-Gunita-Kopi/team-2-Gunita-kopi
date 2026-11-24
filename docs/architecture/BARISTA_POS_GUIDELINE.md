@@ -50,7 +50,7 @@ Next.js (App Router) · TypeScript strict · Tailwind (tokens in §5) · `@supab
 2. Server re-checks role on every Route Handler (`/api/orders`, `/api/sync`, stock endpoints). RLS enforces least privilege.
 3. **Barista can:** create orders, advance/cancel orders (Pending/Preparing only), view orders, view inventory, record **Stock In/Out**.
 4. **Barista cannot:** edit products/prices/recipes, manage suppliers/users, view reports/costing/margins, delete anything master-data.
-5. **Idle auto-logout** (default 5 min): "Still there?" modal with countdown → **Stay signed in** / **Sign out now**. ⚠️ Never sign out while there are **unsynced pending orders** without a clear warning — the queue stays on the device and resumes after next login.
+5. **Idle auto-logout** (8 hours, one shift; the Owner portal uses 30 min, decided 2026-11-24): "Still there?" modal with countdown → **Stay signed in** / **Sign out now**. ⚠️ Never sign out while there are **unsynced pending orders** without a clear warning — the queue stays on the device and resumes after next login.
 6. Local dev host: `pos.localhost:3000`.
 
 ---

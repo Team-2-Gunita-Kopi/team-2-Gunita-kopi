@@ -115,7 +115,7 @@ BLOCKED by missing accounts and data unless stated otherwise.
 | FR-45 | Grant access or deny | `requireRole`, middleware | `auth.test.ts`; L-API→LIVE: 401 on every protected route | PASS | PASS (unauthenticated only) |
 | FR-46 | Owner access per §2.3 | route roles | API inventory | PASS | BLOCKED |
 | FR-47 | Barista only §2.3 functions | route roles + RLS | `phase2-api.test.ts`, L-SQL | PASS | BLOCKED |
-| FR-48 | Auto logout after inactivity, with notice | `IdleLogout` (5 min, 30 s warning) | `packages/ui` tests | PASS (period OI-06 open; 5 min chosen) | browser NOT TESTED |
+| FR-48 | Auto logout after inactivity, with notice | `IdleLogout` (Owner 30 min, POS 8 h since 2026-11-24; 30 s warning) | `packages/ui` tests | PASS (period OI-06 open; 5 min chosen) | browser NOT TESTED |
 | FR-49 | User fields, unique username | `users` | LIVE-DB constraints | PASS | PASS (schema) |
 | FR-50 | Add/edit products incl. image | products API; image route + `20261120000100` | L-UT; LIVE-DB: no `product-images` bucket | **PARTIAL** (image not available live) | BLOCKED |
 | FR-51 | Set available/unavailable | `PATCH /api/products/{id}` | L-UT; `validation_calculations` (unavailable product refused at checkout with CONFLICT) | PASS | BLOCKED |
@@ -159,7 +159,7 @@ used here.
 |---|---|---|---|
 | NFR-01 | Orders, payments and stock movements carry user, date and time | `orders.user_id/order_date`, `payments.received_by/date_time`, `stock_transactions.user_id/date_time`; L-SQL checks | PASS (local) |
 | NFR-02 | Reports, costing and dashboard Owner-only | `requireRole`; `v_sales` role filter; `unit_cost` column privilege (LIVE-DB) | PASS (local + live schema) |
-| NFR-03 | Auto logout | `IdleLogout` 5 min in both apps | PASS (unit); browser NOT TESTED |
+| NFR-03 | Auto logout | `IdleLogout` Owner 30 min, POS 8 h (2026-11-24) | PASS (unit); browser NOT TESTED |
 | NFR-04 | Android and iOS browsers | — | NOT TESTED (no devices; OI-01) |
 | NFR-05 | Phone/tablet layouts, touch | Tailwind responsive layouts (code) | NOT TESTED in a browser |
 | NFR-06 | Opened from a web address, no install | PWA design | PASS (design); not deployed |

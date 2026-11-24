@@ -22,7 +22,8 @@ Goals:
 
 Non-goals (this design):
 
-- Merging the three Next.js apps into one app (option B, see section 3). This can come later.
+- Merging the three Next.js apps into one app (option B). Rejected on 2026-11-24: OWASP
+  recommends separate applications for administrator and user access, so Admin and POS stay separate.
 - Changing business rules, roles, the database schema or the sign-in flow.
 - The design refresh itself. It is Project 3 (section 9) and gets its own brainstorm and spec.
 
@@ -181,7 +182,7 @@ To verify on the first preview:
   call from the default US region crosses the Pacific, several times per click.
 - Turborepo remote cache on Vercel. Builds already filter per app.
 - Later (not in this scope): collapse the API's per-request `users` read and `app_role` call
-  into one RPC. Option B would also remove the second function hop.
+  into one RPC.
 
 ### 4.6 Trade-offs of A (stated, not hidden)
 
@@ -299,8 +300,8 @@ Decisions first (section 8), then:
 10. **Rollback plan**: `vercel rollback` (Instant Rollback) returns all three services at once.
     Database migrations are not rolled back by Vercel. Keep the rollback SQL with each
     migration.
-11. **After launch**: nonce-based CSP (S4), the zod 4 upgrade, the single-RPC auth read (4.5),
-    and option B if the second hop still matters.
+11. **After launch**: nonce-based CSP (S4), the single-RPC auth read (4.5), and Owner passkeys
+    (section 10).
 
 Scripts to add (my call):
 
@@ -370,3 +371,30 @@ Constraints recorded now:
   interruptible motion, secondary action, solid drawing, frequency of use, peak-end rule.
 - Respect `prefers-reduced-motion`.
 - Check every screen at 1536, 1366, 1180, 1024, 820 and 390 px, plus print.
+
+## 10. Separation of the Owner portal (decided 2026-11-24)
+
+Sources: OWASP Developer Guide (separate applications for administrator and user access; high-value
+admin systems on separate hosts), OWASP WSTG (admin paths are guessable, so hiding a URL is not a
+control), and Square's POS model (owner dashboard sign-in separate from staff passcodes on the device).
+
+- **Layout:** Admin and POS stay separate apps with separate sign-ins, in one deployment.
+  - `/admin/...` is the Owner portal (`/admin/login`, then the emailed code).
+  - `/staff/...` is the POS (`/staff/login`).
+  - `/` and `/pos` redirect to `/staff/pos`; any other path goes to the POS service.
+  - The API has no public route.
+- **Cookies:** each site's session cookie is scoped to its prefix (`/admin`, `/staff`), so a request to
+  one side never carries the other side's session. The Owner's emailed-code challenge cookie is
+  scoped to `/admin/auth`.
+- **Only the Owner:** one Owner row (`users_single_owner`); password plus emailed code (the session is
+  approved only after the code); role checked in the page guard, the API and RLS; a Barista session
+  on `/admin` sees `/admin/restricted`.
+- **Firewall (free, Hobby):** sign-in rate limit, probe block, and "Owner portal: Philippines only"
+  (path starts with `/admin` and country is not PH). It is staged in log mode first.
+- **Next feature (Owner passkeys):** password, then a passkey on an enrolled device (WebAuthn via
+  SimpleWebAuthn; Supabase passkeys are still experimental). The emailed code is kept for recovery
+  and for enrolling a new device. Design and plan come first.
+- **Not covered by the app:** anyone with the Owner's password *and* email inbox, and anyone with
+  Supabase, Vercel or GitHub admin access. Turn on 2-step verification for those accounts.
+- **A separate host for the Owner portal** needs a bought domain (`admin.<domain>` on the same
+  deployment). Nested `*.vercel.app` names fail HTTPS (the certificate is `*.vercel.app`, one level only).
