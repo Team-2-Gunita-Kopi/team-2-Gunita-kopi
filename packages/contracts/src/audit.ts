@@ -7,7 +7,7 @@ export const AuditEventSchema = z.object({
   userRole: z.string(),
   resource: z.string(),
   resourceId: z.string().optional(),
-  details: z.record(z.unknown()).optional(),
+  details: z.record(z.string(), z.unknown()).optional(),
   ipAddress: z.string().optional(),
   userAgent: z.string().optional(),
   createdAt: z.string(),
@@ -20,7 +20,7 @@ export const CreateAuditEventSchema = z.object({
   userRole: z.string(),
   resource: z.string(),
   resourceId: z.string().optional(),
-  details: z.record(z.unknown()).optional(),
+  details: z.record(z.string(), z.unknown()).optional(),
   ipAddress: z.string().optional(),
   userAgent: z.string().optional(),
 });

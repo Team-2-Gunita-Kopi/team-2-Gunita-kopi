@@ -1,63 +1,55 @@
 import React from "react";
+import { ORDER_STATUS_LABEL, STOCK_STATUS_LABEL } from "@gunita/contracts/ui";
+import type { OrderStatus, StockStatus } from "@gunita/contracts/ui";
+import { Chip, type ChipTone } from "./Chip";
+import { Icon } from "./Icon";
 
-export type BadgeVariant =
-  | "pending"
-  | "preparing"
-  | "completed"
-  | "cancelled"
-  | "low_stock"
-  | "synced"
-  | "syncing"
-  | "failed"
-  | "neutral";
+const TONE: Record<string, ChipTone> = {
+  // orders
+  pending: "low",
+  preparing: "coffee",
+  completed: "ok",
+  cancelled: "out",
+  // sync states
+  synced: "ok",
+  syncing: "coffee",
+  failed: "out",
+  // stock
+  ok: "ok",
+  low: "low",
+  low_stock: "low",
+  out_of_stock: "out",
+};
+
+const SYNC_LABEL: Record<string, string> = {
+  pending: "Pending sync",
+  synced: "Synced",
+  syncing: "Syncing",
+  failed: "Failed",
+};
 
 export interface StatusBadgeProps {
   status: string;
-  variant?: BadgeVariant;
   label?: string;
+  /** Legacy prop; the tone is derived from `status`. */
+  variant?: string;
+  /** Stock badges only: check or alert icon before the label (Staff POS design). */
+  withIcon?: boolean;
 }
 
-export const StatusBadge: React.FC<StatusBadgeProps> = ({
-  status,
-  variant,
-  label,
-}) => {
-  const displayLabel = label || status.replace(/_/g, " ");
-  const effectiveVariant: BadgeVariant =
-    variant ||
-    (status === "low_stock"
-      ? "low_stock"
-      : status === "completed" || status === "synced"
-        ? "completed"
-        : status === "preparing" || status === "syncing"
-          ? "preparing"
-          : status === "cancelled" || status === "failed"
-            ? "cancelled"
-            : status === "pending"
-              ? "pending"
-              : "neutral");
+function defaultLabel(status: string): string {
+  if (status in STOCK_STATUS_LABEL) return STOCK_STATUS_LABEL[status as StockStatus];
+  if (status in ORDER_STATUS_LABEL) return ORDER_STATUS_LABEL[status as OrderStatus];
+  if (status === "low_stock") return STOCK_STATUS_LABEL.low;
+  return SYNC_LABEL[status] ?? status.replace(/_/g, " ");
+}
 
-  const variantStyles: Record<BadgeVariant, string> = {
-    // Warm colored tags for low stock as required by design specification
-    low_stock:
-      "bg-amber-100 text-amber-900 border border-amber-300 font-medium",
-    pending: "bg-yellow-50 text-yellow-800 border border-yellow-200",
-    preparing: "bg-blue-50 text-blue-800 border border-blue-200",
-    completed:
-      "bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium",
-    cancelled: "bg-red-50 text-red-800 border border-red-200",
-    synced: "bg-emerald-50 text-emerald-800 border border-emerald-200",
-    syncing:
-      "bg-indigo-50 text-indigo-800 border border-indigo-200 animate-pulse",
-    failed: "bg-red-50 text-red-800 border border-red-200 font-medium",
-    neutral: "bg-gray-100 text-gray-700 border border-gray-200",
-  };
-
+export function StatusBadge({ status, label, withIcon }: StatusBadgeProps) {
+  const icon = withIcon && (status in STOCK_STATUS_LABEL || status === "low_stock") ? (status === "ok" ? "check" : "alert") : null;
   return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs capitalize ${variantStyles[effectiveVariant]}`}
-    >
-      {displayLabel}
-    </span>
+    <Chip tone={TONE[status] ?? "neutral"}>
+      {icon ? <Icon name={icon} aria-hidden="true" /> : null}
+      {label ?? defaultLabel(status)}
+    </Chip>
   );
-};
+}

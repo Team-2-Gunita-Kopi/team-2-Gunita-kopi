@@ -1,44 +1,23 @@
-import { NextRequest } from "next/server";
 import { requireRole } from "@/lib/auth";
-import { errorResponse, notImplementedResponse } from "@/lib/response";
-import { listProducts, createProduct } from "@/modules/products/service";
-import { CreateProductRequestSchema } from "@/modules/products/schema";
+import { jsonResponse, route } from "@/lib/response";
+import { readJson, readQuery } from "@/lib/request";
+import {
+  CreateProductRequestSchema,
+  ProductListQuerySchema,
+} from "@gunita/contracts";
+import { createProduct, listProducts } from "@/modules/products/service";
 
-export async function GET(req: NextRequest) {
-  try {
-    const user = await requireRole(req, "owner_admin");
-    await listProducts(user);
-    return notImplementedResponse("GET /api/products");
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "statusCode" in error &&
-      (error as { statusCode: number }).statusCode === 501
-    ) {
-      return notImplementedResponse("GET /api/products");
-    }
-    return errorResponse(error);
-  }
-}
+// FR-05: both roles read the catalog (POS order entry).
+export const GET = route(async (req) => {
+  const user = await requireRole(req, ["owner_admin", "barista"]);
+  return jsonResponse(
+    await listProducts(user, readQuery(req, ProductListQuerySchema)),
+  );
+});
 
-export async function POST(req: NextRequest) {
-  try {
-    const user = await requireRole(req, "owner_admin");
-    const body = await req.json();
-    const validated = CreateProductRequestSchema.parse(body);
-
-    await createProduct(user, validated);
-    return notImplementedResponse("POST /api/products");
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "statusCode" in error &&
-      (error as { statusCode: number }).statusCode === 501
-    ) {
-      return notImplementedResponse("POST /api/products");
-    }
-    return errorResponse(error);
-  }
-}
+// FR-50, FR-52
+export const POST = route(async (req) => {
+  const user = await requireRole(req, "owner_admin");
+  const body = await readJson(req, CreateProductRequestSchema);
+  return jsonResponse(await createProduct(user, body), { status: 201 });
+});

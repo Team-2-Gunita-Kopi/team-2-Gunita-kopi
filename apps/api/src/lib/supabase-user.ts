@@ -26,3 +26,13 @@ export function createScopedUserClient(
     },
   });
 }
+
+/**
+ * Unauthenticated client (publishable key) used by the login endpoint for password sign-in.
+ * Keeps no session between requests.
+ */
+export function createAuthClient(): SupabaseClient<Database> {
+  return createClient<Database>(supabaseUrl, supabaseAnonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}

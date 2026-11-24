@@ -1,3 +1,3 @@
 # Auth Feature
 
-This folder contains owner authentication forms, MFA challenge inputs, and session renewal state.
+This folder contains owner sign-in (password, then the emailed 6-digit code) and password recovery.

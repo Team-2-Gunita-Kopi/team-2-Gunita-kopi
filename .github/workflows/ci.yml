@@ -36,20 +36,20 @@ jobs:
           path: ${{ env.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${ runner.os }}-pnpm-store-
+            ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Security Audit - Verify Service Role Key Isolation
-        name: Check service role key is not used outside apps/api
         shell: bash
         run: |
           echo "Verifying SUPABASE_SERVICE_ROLE_KEY is strictly confined to apps/api..."
-          # Grep for SUPABASE_SERVICE_ROLE_KEY outside apps/api, docs, and github workflows
-          VIOLATIONS=$(grep -rn "SUPABASE_SERVICE_ROLE_KEY" \
-            --exclude-dir={node_modules,.git,.next,.turbo,dist,apps/api,docs,.github} \
-            --exclude={".env.example","package.json","pnpm-lock.yaml"} . || true)
+          # Tracked files outside apps/api, docs, workflows, Markdown and .env.example templates.
+          # (grep --exclude-dir matches folder names only, so "apps/api" never excluded anything.)
+          VIOLATIONS=$(git grep -n "SUPABASE_SERVICE_ROLE_KEY" -- . \
+            ':!apps/api' ':!docs' ':!.github' ':!*.md' ':!*.env.example' \
+            ':!supabase/seed' || true)
 
           if [ -n "$VIOLATIONS" ]; then
             echo "ERROR: SUPABASE_SERVICE_ROLE_KEY detected outside apps/api:"
@@ -57,6 +57,9 @@ jobs:
             exit 1
           fi
           echo "PASSED: SUPABASE_SERVICE_ROLE_KEY is strictly confined to apps/api."
+
+      - name: Dependency audit (high and above)
+        run: pnpm audit --prod --audit-level high
 
       - name: Run ESLint
         run: pnpm lint

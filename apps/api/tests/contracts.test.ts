@@ -23,17 +23,19 @@ describe("Contracts Schema Validation", () => {
     expect(OrderStatusSchema.safeParse("delivered").success).toBe(false);
   });
 
-  it("validates exact four order types", () => {
-    const validTypes = ["dine-in", "take-out", "online", "pre-order"];
+  it("validates exactly the order types the orders table accepts", () => {
+    // Online/Facebook orders are entered as pre-orders (FR-01); orders.order_type has no 'online'.
+    const validTypes = ["dine-in", "take-out", "pre-order"];
     validTypes.forEach((type) => {
       expect(OrderTypeSchema.safeParse(type).success).toBe(true);
     });
+    expect(OrderTypeSchema.safeParse("online").success).toBe(false);
     expect(OrderTypeSchema.safeParse("delivery").success).toBe(false);
   });
 
   it("requires clientTxId in CreateOrderRequest for idempotency", () => {
     const orderData = {
-      clientTxId: "tx_xyz_999",
+      clientTxId: "3f2b8c1e-5d4a-4b6f-8e9c-0a1b2c3d4e5f",
       type: "dine-in",
       items: [
         {
@@ -53,6 +55,42 @@ describe("Contracts Schema Validation", () => {
 
     const missingTx = { ...orderData, clientTxId: "" };
     expect(CreateOrderRequestSchema.safeParse(missingTx).success).toBe(false);
+
+    const notUuid = { ...orderData, clientTxId: "tx_xyz_999" };
+    expect(CreateOrderRequestSchema.safeParse(notUuid).success).toBe(false);
+  });
+
+  it("requires ingredientId on add-on rows and productId on product rows", () => {
+    const base = {
+      clientTxId: "3f2b8c1e-5d4a-4b6f-8e9c-0a1b2c3d4e5f",
+      type: "dine-in",
+      totalAmount: 20,
+      paidAmount: 20,
+      paymentMethod: "cash",
+    };
+    const addon = {
+      productName: "Extra shot",
+      quantity: 1,
+      unitPrice: 20,
+      subtotal: 20,
+    };
+
+    expect(
+      CreateOrderRequestSchema.safeParse({
+        ...base,
+        items: [{ ...addon, isAddon: true, ingredientId: "4" }],
+      }).success,
+    ).toBe(true);
+    expect(
+      CreateOrderRequestSchema.safeParse({
+        ...base,
+        items: [{ ...addon, isAddon: true }],
+      }).success,
+    ).toBe(false);
+    expect(
+      CreateOrderRequestSchema.safeParse({ ...base, items: [{ ...addon }] })
+        .success,
+    ).toBe(false);
   });
 
   it("validates offline sync payload with transactionId", () => {
@@ -60,9 +98,9 @@ describe("Contracts Schema Validation", () => {
       batchId: "batch_123",
       orders: [
         {
-          transactionId: "tx_001",
+          transactionId: "9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a",
           order: {
-            clientTxId: "tx_001",
+            clientTxId: "9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a",
             type: "take-out",
             items: [
               {
@@ -83,5 +121,18 @@ describe("Contracts Schema Validation", () => {
     };
 
     expect(SyncPayloadSchema.safeParse(syncPayload).success).toBe(true);
+  });
+});
+
+describe("Username sign-in", () => {
+  it("normalizes usernames and rejects ones that cannot form an email", async () => {
+    const { UsernameSchema } = await import("@gunita/contracts");
+    const { usernameToAuthEmail } = await import("@gunita/auth");
+    expect(UsernameSchema.parse(" Bea.Cruz ")).toBe("bea.cruz");
+    expect(UsernameSchema.safeParse("bea cruz").success).toBe(false);
+    expect(UsernameSchema.safeParse("ab").success).toBe(false);
+    expect(usernameToAuthEmail(" Bea.Cruz ")).toBe(
+      "bea.cruz@staff.gunitakopi.local",
+    );
   });
 });

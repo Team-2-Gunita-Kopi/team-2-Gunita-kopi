@@ -5,7 +5,6 @@ const requiredEnvs = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
-  "ALLOWED_ORIGINS",
 ];
 
 for (const envVar of requiredEnvs) {
@@ -27,6 +26,7 @@ const nextConfig: NextConfig = {
     "@gunita/auth",
     "@gunita/db-types",
     "@gunita/config",
+    "@gunita/mocks",
   ],
 };
 

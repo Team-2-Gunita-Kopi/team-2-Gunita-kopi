@@ -9,7 +9,8 @@ export const env = {
     "https://placeholder-project-ref.supabase.co",
   supabaseAnonKey:
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key",
-  apiUrl: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002",
+  /** Demo mode only: the browser calls apps/api /api/mock/rpc directly. */
+  mockApiUrl: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3002",
 };
 
 export function validateAdminEnv(): void {
@@ -25,12 +26,6 @@ export function validateAdminEnv(): void {
     process.env.NODE_ENV === "production"
   ) {
     missing.push("NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  }
-  if (
-    !process.env.NEXT_PUBLIC_API_URL &&
-    process.env.NODE_ENV === "production"
-  ) {
-    missing.push("NEXT_PUBLIC_API_URL");
   }
 
   if (missing.length > 0) {

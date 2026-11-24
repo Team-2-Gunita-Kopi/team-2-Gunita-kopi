@@ -1,31 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getCorsHeaders } from "./lib/cors";
+import { requestIdFrom } from "./lib/request-id";
 
+// Browsers never call the API: the Admin and POS servers proxy to it (a private Vercel service), so
+// no CORS here. Demo mode's /api/mock/rpc sets its own CORS headers (lib/cors.ts).
 export function middleware(request: NextRequest) {
-  const origin = request.headers.get("origin");
-  const requestId =
-    request.headers.get("x-request-id") ||
-    `req_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  const corsHeaders = getCorsHeaders(origin);
-
-  // Handle preflight OPTIONS request
-  if (request.method === "OPTIONS") {
-    return new NextResponse(null, {
-      status: 204,
-      headers: {
-        ...corsHeaders,
-        "X-Request-ID": requestId,
-      },
-    });
-  }
-
-  // Pass request along and append CORS & request ID to response
   const response = NextResponse.next();
-  Object.entries(corsHeaders).forEach(([key, val]) => {
-    response.headers.set(key, val);
-  });
-  response.headers.set("X-Request-ID", requestId);
-
+  response.headers.set(
+    "X-Request-ID",
+    requestIdFrom(request.headers.get("x-request-id")),
+  );
   return response;
 }
 
