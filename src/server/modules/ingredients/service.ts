@@ -2,8 +2,10 @@ import {
   ADDON_SELLING_PRICE,
   type CreateBaristaIngredientRequest,
   type CreateIngredientRequest,
+  type DeleteIngredientResponse,
   type Ingredient,
   type IngredientListQuery,
+  type IngredientProduct,
   type Page,
   type StockStatus,
   type UpdateIngredientRequest,
@@ -165,10 +167,43 @@ export async function updateIngredient(
     .from("ingredients")
     .update(toRow(body))
     .eq("ingredient_id", id)
+    .is("deleted_at", null)
     .select("ingredient_id")
     .maybeSingle();
   if (error) throw dbError(error);
   if (!data) throw new NotFoundError("Ingredient not found");
   await auditAction(user, "ingredient.update", "ingredients", id, body);
   return getIngredient(user, id);
+}
+
+/** Owner (R11): products whose recipe uses the ingredient, by name, for the delete confirmation. */
+export async function listIngredientProducts(
+  user: AuthenticatedUser,
+  id: number,
+): Promise<IngredientProduct[]> {
+  const { data, error } = await user.supabaseClient
+    .from("product_ingredients")
+    .select("products(product_id, product_name)")
+    .eq("ingredient_id", id);
+  if (error) throw dbError(error);
+  return data
+    .flatMap((r) => (r.products ? [{ id: r.products.product_id, name: r.products.product_name }] : []))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Owner soft delete, in one database step (delete_ingredient): hidden from every list, taken out of
+ * the recipes that used it (they are recosted) and no longer an add-on. History keeps its name.
+ */
+export async function deleteIngredient(
+  user: AuthenticatedUser,
+  id: number,
+): Promise<DeleteIngredientResponse> {
+  const { data, error } = await user.supabaseClient.rpc("delete_ingredient", {
+    p_ingredient_id: id,
+  });
+  if (error) throw dbError(error);
+  const removedFromProducts = data.map((p) => ({ id: p.product_id, name: p.product_name }));
+  await auditAction(user, "ingredient.delete", "ingredients", id, { removedFromProducts });
+  return { id, removedFromProducts };
 }

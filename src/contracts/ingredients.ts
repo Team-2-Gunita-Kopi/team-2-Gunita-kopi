@@ -48,6 +48,17 @@ export const IngredientSchema = z.object({
 });
 export type Ingredient = z.infer<typeof IngredientSchema>;
 
+/** A product whose recipe uses an ingredient (shown before an ingredient is deleted, R11). */
+export const IngredientProductSchema = z.object({ id: z.number().int(), name: z.string() });
+export type IngredientProduct = z.infer<typeof IngredientProductSchema>;
+
+/** DELETE /api/ingredients/[id]: soft delete; the products whose recipes lost the ingredient. */
+export const DeleteIngredientResponseSchema = z.object({
+  id: z.number().int(),
+  removedFromProducts: z.array(IngredientProductSchema),
+});
+export type DeleteIngredientResponse = z.infer<typeof DeleteIngredientResponseSchema>;
+
 /** An add-on needs a quantity per selection; a regular ingredient has none. */
 const addonRule = (
   v: { isAddon?: boolean; addonQuantity?: number | null },

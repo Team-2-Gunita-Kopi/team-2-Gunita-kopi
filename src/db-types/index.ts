@@ -55,6 +55,7 @@ export type Database = {
           addon_selling_price: number | null;
           current_stock: number;
           date_updated: string;
+          deleted_at: string | null;
           ingredient_id: number;
           ingredient_name: string;
           is_addon: boolean;
@@ -69,6 +70,7 @@ export type Database = {
           addon_selling_price?: number | null;
           current_stock?: number;
           date_updated?: string;
+          deleted_at?: string | null;
           ingredient_id?: never;
           ingredient_name: string;
           is_addon?: boolean;
@@ -82,6 +84,7 @@ export type Database = {
           addon_selling_price?: number | null;
           current_stock?: number;
           date_updated?: string;
+          deleted_at?: string | null;
           ingredient_id?: never;
           ingredient_name?: string;
           is_addon?: boolean;
@@ -699,6 +702,10 @@ export type Database = {
       barista_supplier_options: {
         Args: Record<PropertyKey, never>;
         Returns: { supplier_id: number; supplier_name: string }[];
+      };
+      delete_ingredient: {
+        Args: { p_ingredient_id: number };
+        Returns: { product_id: number; product_name: string }[];
       };
       ingredient_unit_costs: {
         Args: Record<PropertyKey, never>;

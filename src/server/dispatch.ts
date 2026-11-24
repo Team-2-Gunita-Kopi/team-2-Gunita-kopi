@@ -22,6 +22,7 @@ const ROUTES: [RegExp, string[], () => Promise<unknown>][] = [
   [/^ingredients$/, [], () => import("./routes/ingredients/route")],
   [/^ingredients\/suppliers$/, [], () => import("./routes/ingredients/suppliers/route")],
   [/^ingredients\/([^/]+)$/, ["id"], () => import("./routes/ingredients/[id]/route")],
+  [/^ingredients\/([^/]+)\/products$/, ["id"], () => import("./routes/ingredients/[id]/products/route")],
   [/^orders$/, [], () => import("./routes/orders/route")],
   [/^orders\/([^/]+)$/, ["id"], () => import("./routes/orders/[id]/route")],
   [/^products$/, [], () => import("./routes/products/route")],

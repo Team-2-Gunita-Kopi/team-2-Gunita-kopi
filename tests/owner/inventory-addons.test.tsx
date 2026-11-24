@@ -103,6 +103,8 @@ describe("Admin inventory: add-on configuration and costs", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.createIngredient).toHaveBeenCalledTimes(1));
     expect(api.createIngredient.mock.calls[0]![0]).toMatchObject({ isAddon: false, addonQuantity: null });
+    // Why: the dialog closes on success; without a toast the Owner cannot tell it was saved.
+    expect(await screen.findByText("Cups added.")).toBeInTheDocument();
   });
 
   it("Add Ingredient records the opening stock as a stock-in, and none when it is 0", async () => {
@@ -146,6 +148,7 @@ describe("Admin inventory: add-on configuration and costs", () => {
     expect(id).toBe(21);
     expect(body).toMatchObject({ isAddon: false, addonQuantity: null, unitCost: 1.2 });
     expect(body).not.toHaveProperty("currentStock");
+    expect(await screen.findByText("Espresso Beans updated.")).toBeInTheDocument();
   });
 
   it("Edit Ingredient of a regular ingredient hides the add-on fields", async () => {

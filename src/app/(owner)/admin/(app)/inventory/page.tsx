@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, DataTable, Dialog, Icon, Input, Select, StatusBadge, Tabs, formatPeso, useToast } from "@/ui";
+import { Button, DataTable, Dialog, Icon, Input, Select, StatusBadge, Tabs, formatPeso, useConfirm, useToast } from "@/ui";
 import {
   ADDON_SELLING_PRICE,
   type Ingredient,
@@ -12,6 +12,8 @@ import { USE_MOCKS } from "@/owner/lib/use-mocks";
 import {
   STOCK_BADGE,
   createIngredient,
+  deleteIngredient,
+  listIngredientProducts,
   listIngredients,
   listStockHistory,
   recordStockMovement,
@@ -121,6 +123,7 @@ export default function InventoryPage() {
   const [savingMove, setSavingMove] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const toast = useToast();
+  const confirm = useConfirm();
   const client = useQueryClient();
 
   const ingredients = useQuery({ queryKey: ["ingredients"], enabled: !USE_MOCKS, refetchInterval: 15000, queryFn: listIngredients });
@@ -131,15 +134,16 @@ export default function InventoryPage() {
     queryFn: () => listStockHistory(historyFilters),
   });
 
+  // Preselect the first ingredient, and move off one that is no longer listed (deleted).
   useEffect(() => {
-    const firstIngredient = ingredients.data?.[0];
-    if (!move.ingredientId && firstIngredient) {
-      setMove((current) =>
-        current.ingredientId
-          ? current
-          : { ...current, ingredientId: String(firstIngredient.id) },
-      );
-    }
+    const list = ingredients.data;
+    const firstIngredient = list?.[0];
+    if (!firstIngredient) return;
+    setMove((current) =>
+      current.ingredientId && list.some((i) => String(i.id) === current.ingredientId)
+        ? current
+        : { ...current, ingredientId: String(firstIngredient.id) },
+    );
   }, [ingredients.data, move.ingredientId]);
 
   const tabs = [
@@ -182,6 +186,38 @@ export default function InventoryPage() {
   const refresh = async () => {
     await client.invalidateQueries({ queryKey: ["ingredients"] });
     await client.invalidateQueries({ queryKey: ["stock-history"] });
+  };
+
+  // Soft delete (R11): the Owner sees which recipes lose the ingredient before confirming.
+  const removeIngredient = async (i: Ingredient) => {
+    const failed = (err: unknown) =>
+      toast(`Could not delete ${i.name}: ${err instanceof Error ? err.message : "please try again."}`, true);
+    let usedBy: string[];
+    try {
+      usedBy = (await listIngredientProducts(i.id)).map((p) => p.name);
+    } catch (err) {
+      failed(err);
+      return;
+    }
+    const ok = await confirm({
+      title: "Delete ingredient",
+      message:
+        `Delete ${i.name}? This cannot be undone.` +
+        (usedBy.length ? ` It will be removed from the recipes of: ${usedBy.join(", ")}.` : "") +
+        (i.isAddon ? " It will no longer be offered as an add-on." : ""),
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteIngredient(i.id);
+    } catch (err) {
+      failed(err);
+      return;
+    }
+    toast(`${i.name} deleted.`);
+    await refresh();
+    await client.invalidateQueries({ queryKey: ["products"] });
   };
 
   const openIngredient = (i: Ingredient | "new") => {
@@ -230,15 +266,21 @@ export default function InventoryPage() {
         const created = await createIngredient(body);
         // Opening stock is recorded as a stock-in (FR-17), so it appears in Stock History.
         const opening = Number(form.openingStock || 0);
+        let openingSaved = true;
         if (opening > 0) {
           try {
             await recordStockMovement({ ingredientId: created.id, type: "in", quantity: opening, remarks: "Opening stock" });
           } catch {
             // The ingredient exists already: close instead of letting a retry create it twice.
+            openingSaved = false;
             toast(`${created.name} was added, but the opening stock was not recorded. Use Stock In / Out.`, true);
           }
         }
-      } else if (editing) await updateIngredient(editing.id, body);
+        if (openingSaved) toast(`${body.name} added.`);
+      } else if (editing) {
+        await updateIngredient(editing.id, body);
+        toast(`${body.name} updated.`);
+      }
       setEditing(null);
       await refresh();
     } catch (err) {
@@ -397,6 +439,19 @@ export default function InventoryPage() {
                     }}
                   >
                     <Icon name="pencil" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    className="ingredient-edit-button"
+                    disabled={USE_MOCKS}
+                    aria-label={`Delete ${row.name}`}
+                    onClick={() => {
+                      const i = byId.get(row.id);
+                      if (i) void removeIngredient(i);
+                    }}
+                  >
+                    <Icon name="trash" />
                   </Button>
                 </div>
               ),

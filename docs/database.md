@@ -158,6 +158,7 @@ The Owner then creates barista accounts through `POST /api/admin/employees` (use
 
 ## Open items
 
+- Ingredient soft delete (decided 2026-11-24, migration `20261120001300_ingredient_soft_delete.sql`): `ingredients.deleted_at`; `v_inventory_status` hides deleted rows, so every list follows. `delete_ingredient(id)` (Owner, SECURITY INVOKER) deletes its recipe rows (recost trigger), clears its add-on settings (a queued offline order with it becomes a `CONFLICT`), sets `deleted_at` and returns the affected products. Trigger `product_ingredients_reject_deleted` refuses putting a deleted ingredient back into a recipe. Stock history and orders keep the row and name. Test: `supabase/tests/ingredient_soft_delete.test.sql`.
 - Cancelling an order returns its ingredients (decided 2026-11-23, migration `20261120001200_cancel_returns_stock.sql`, statement trigger `orders_cancel_returns_stock`): one stock-in per ingredient equal to the order's `Order #N` stock-outs, remark `Cancelled order #N`, recorded by the cancelling user. Cancelled is final, so an order is returned once. Test: `supabase/tests/cancel_returns_stock.test.sql`.
 - `orders` has no column for who changed the status; the API writes it to `audit_logs` (`order.status`).
 - `ingredients` has no `status` column (SRS FR-21 lists one); the API exposes the derived stock status from `v_inventory_status`.
