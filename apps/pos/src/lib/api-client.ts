@@ -1,4 +1,5 @@
 import { ApiResponse } from "@gunita/contracts";
+import { withBasePath } from "./base-path";
 
 export type ApiClientOptions = RequestInit;
 
@@ -14,7 +15,9 @@ export async function apiClient<T>(
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
 
-  const url = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const url = withBasePath(
+    endpoint.startsWith("/") ? endpoint : `/${endpoint}`,
+  );
 
   try {
     const response = await fetch(url, {

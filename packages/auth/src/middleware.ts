@@ -13,6 +13,8 @@ export interface AuthMiddlewareOptions {
   publicPaths: readonly string[];
   /** Signed in with the wrong role: show this page (rewrite) instead of redirecting to /login. */
   restrictedPath?: string;
+  /** Session cookie path; must match the site's session handlers (POS: "/staff"). */
+  cookiePath?: string;
 }
 
 /**
@@ -33,7 +35,7 @@ export function createAuthMiddleware(opts: AuthMiddlewareOptions) {
 
     let response = NextResponse.next({ request });
     const supabase = createServerClient(opts.supabaseUrl, opts.supabaseKey, {
-      cookieOptions: sessionCookieOptions(opts.cookieName),
+      cookieOptions: sessionCookieOptions(opts.cookieName, opts.cookiePath),
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (cookies, headers) => {
@@ -54,7 +56,10 @@ export function createAuthMiddleware(opts: AuthMiddlewareOptions) {
     const { data } = await supabase.auth.getClaims();
 
     const redirectToLogin = (param: string, value: string) => {
-      const url = new URL("/login", request.url);
+      // nextUrl keeps the site's basePath (POS: /staff/login, never the Owner's /login).
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      url.search = "";
       url.searchParams.set(param, value);
       const redirect = NextResponse.redirect(url);
       // Keep cookie updates (refresh or removal) made while checking the session.
@@ -67,9 +72,10 @@ export function createAuthMiddleware(opts: AuthMiddlewareOptions) {
       if (!opts.restrictedPath) {
         return redirectToLogin("error", "unauthorized_role");
       }
-      const restricted = NextResponse.rewrite(
-        new URL(opts.restrictedPath, request.url),
-      );
+      const target = request.nextUrl.clone();
+      target.pathname = opts.restrictedPath;
+      target.search = "";
+      const restricted = NextResponse.rewrite(target);
       response.cookies.getAll().forEach((c) => restricted.cookies.set(c));
       return restricted;
     }

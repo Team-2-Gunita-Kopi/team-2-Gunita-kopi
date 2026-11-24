@@ -187,7 +187,7 @@ describe("API catalog to POS view models (FR-05, FR-14, FR-19)", () => {
       isAvailable: true, createdBy: 1, createdAt: "2026-11-18T00:00:00Z",
     };
     const stored = toPosProduct({ ...base, image: "12/11111111-2222-4333-8444-555555555555.webp" });
-    expect(stored.imageUrl).toBe("/api/products/12/image?v=11111111-2222-4333-8444-555555555555.webp");
+    expect(stored.imageUrl).toBe("/staff/api/products/12/image?v=11111111-2222-4333-8444-555555555555.webp");
     expect(PosProductSchema.safeParse(stored).success).toBe(true);
     expect(toPosProduct({ ...base, image: "https://cdn.example.com/l.png" }).imageUrl).toBe(
       "https://cdn.example.com/l.png",
@@ -255,7 +255,7 @@ describe("Real POS data source", () => {
       { id: "u1", fullName: "Bea" },
     );
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.url).toBe("/api/sync");
+    expect(calls[0]!.url).toBe("/staff/api/sync");
     expect((calls[0]!.body as { orders: unknown[] }).orders).toHaveLength(1);
     expect(res.results).toEqual([
       expect.objectContaining({ transactionId: TX, status: "synced", orderNumber: "41" }),

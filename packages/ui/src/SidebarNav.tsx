@@ -14,6 +14,8 @@ export interface SidebarNavProps {
   items: NavItem[];
   currentPath?: string;
   onNavigate?: (href: string) => void;
+  /** Builds only the link's href (POS adds its /staff basePath); routing and active state use the plain path. */
+  hrefFor?: (href: string) => string;
   collapsed: boolean;
   onToggle: () => void;
 }
@@ -37,7 +39,7 @@ const Hamburger = () => (
   </svg>
 );
 
-export const SidebarNav: React.FC<SidebarNavProps> = ({ items, currentPath = "", onNavigate, collapsed, onToggle }) => (
+export const SidebarNav: React.FC<SidebarNavProps> = ({ items, currentPath = "", onNavigate, hrefFor, collapsed, onToggle }) => (
   <aside className="sidebar" id="sidebar">
     <button
       className="sb-toggle"
@@ -62,7 +64,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({ items, currentPath = "",
         return (
           <a
             key={n.href}
-            href={n.href}
+            href={hrefFor ? hrefFor(n.href) : n.href}
             className={"role-link" + (active ? " active" : "")}
             title={n.label}
             aria-current={active ? "page" : undefined}

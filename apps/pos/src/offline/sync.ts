@@ -35,7 +35,7 @@ async function runSync(): Promise<SyncExecutionResult> {
     })),
   };
 
-  // TODO: Implement batch chunking if pending count exceeds 50 orders
+  // features/pos/api.ts sends the queue to the API in chunks of MAX_SYNC_ORDERS.
   try {
     const session = getSession();
     const actor = { id: session?.userId ?? "", fullName: session?.fullName ?? "" };

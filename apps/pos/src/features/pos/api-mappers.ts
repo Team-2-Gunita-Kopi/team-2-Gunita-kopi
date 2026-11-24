@@ -1,4 +1,5 @@
 import { ADDON_SELLING_PRICE, productImageSrc } from "@gunita/contracts";
+import { withBasePath } from "@/lib/base-path";
 import type {
   CreateOrderRequest as ApiCreateOrderRequest,
   Ingredient as ApiIngredient,
@@ -30,7 +31,11 @@ export function toPosProduct(p: ApiProduct): PosProduct {
     sellingPrice: p.price,
     description: p.description ?? undefined,
     // Stored images load through this site's API proxy (private bucket); http(s) URLs as they are.
-    imageUrl: productImageSrc(p),
+    // Stored photos are served by this site's /api proxy, which lives under /staff.
+    imageUrl: (() => {
+      const src = productImageSrc(p);
+      return src ? withBasePath(src) : src;
+    })(),
     isActive: p.isAvailable,
     createdAt: p.createdAt,
   };

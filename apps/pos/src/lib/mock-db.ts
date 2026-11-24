@@ -14,7 +14,7 @@ export async function mockRpc<T>(op: string, ...args: unknown[]): Promise<T> {
   if (OFFLINE_OPS.has(op) && !isOnline()) throw new Error("Offline");
   let res: Response;
   try {
-    res = await fetch(`${env.apiUrl}/api/mock/rpc`, {
+    res = await fetch(`${env.mockApiUrl}/api/mock/rpc`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ app: "pos", op, args }),

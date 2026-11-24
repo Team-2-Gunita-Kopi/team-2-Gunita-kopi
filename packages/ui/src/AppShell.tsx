@@ -12,6 +12,10 @@ export interface AppShellProps {
   navItems: NavItem[];
   currentPath?: string;
   onNavigate?: (href: string) => void;
+  /** Builds only the link's href (POS adds its /staff basePath); routing and active state use the plain path. */
+  hrefFor?: (href: string) => string;
+  /** localStorage key for the collapsed sidebar; each site on a shared origin needs its own. */
+  sidebarStorageKey?: string;
   topBarProps: TopBarProps;
   /** Bottom-nav items shown before the "More" sheet (default 4). */
   mobileNavCount?: number;
@@ -19,6 +23,8 @@ export interface AppShellProps {
 }
 
 export const AppShell: React.FC<AppShellProps> = ({
+  hrefFor,
+  sidebarStorageKey = SIDEBAR_LS_KEY,
   navItems,
   currentPath = "",
   onNavigate,
@@ -31,7 +37,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
   useEffect(() => {
     try {
-      setCollapsed(localStorage.getItem(SIDEBAR_LS_KEY) === "1");
+      setCollapsed(localStorage.getItem(sidebarStorageKey) === "1");
     } catch {
       /* storage unavailable */
     }
@@ -46,7 +52,7 @@ export const AppShell: React.FC<AppShellProps> = ({
     const next = !collapsed;
     setCollapsed(next);
     try {
-      localStorage.setItem(SIDEBAR_LS_KEY, next ? "1" : "0");
+      localStorage.setItem(sidebarStorageKey, next ? "1" : "0");
     } catch {
       /* storage unavailable */
     }
@@ -65,7 +71,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
   return (
     <div className="app">
-      <SidebarNav items={navItems} currentPath={currentPath} onNavigate={onNavigate} collapsed={collapsed} onToggle={toggle} />
+      <SidebarNav items={navItems} currentPath={currentPath} onNavigate={onNavigate} hrefFor={hrefFor} collapsed={collapsed} onToggle={toggle} />
       <main className="main" id="main" tabIndex={-1}>
         <TopBar {...topBarProps} />
         <div id="screen">{children}</div>
@@ -76,7 +82,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           return (
             <a
               key={n.href}
-              href={n.href}
+              href={hrefFor ? hrefFor(n.href) : n.href}
               className={"role-link" + (active ? " active" : "")}
               aria-current={active ? "page" : undefined}
               onClick={(e) => go(e, n.href)}
@@ -102,7 +108,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           {rest.map((n) => (
             <a
               key={n.href}
-              href={n.href}
+              href={hrefFor ? hrefFor(n.href) : n.href}
               className={"role-link" + (isActivePath(currentPath, n.href) ? " active" : "")}
               aria-current={isActivePath(currentPath, n.href) ? "page" : undefined}
               onClick={(e) => {
