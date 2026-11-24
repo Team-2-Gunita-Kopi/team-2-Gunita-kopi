@@ -21,31 +21,8 @@ esac
 DB_CONTAINER=$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -1)
 [ -n "$DB_CONTAINER" ] || { echo "REFUSED: local database container not found." >&2; exit 1; }
 
-# `next dev` reads .env.development.local before .env.local, so these point the three apps at the
-# local stack without touching the live .env.local files. Every Supabase variable is overridden.
-# The three files share one INTERNAL_PROXY_SECRET (sign-in answers 503 without it), so they are
-# written together or not at all.
-ENV_FILES="apps/api/.env.development.local apps/admin/.env.development.local apps/pos/.env.development.local"
-write_env() { # file, then lines
-  local f=$1; shift
-  git check-ignore -q "$f" || { echo "REFUSED: $f would not be gitignored." >&2; exit 1; }
-  umask 077
-  printf '%s\n' "# Local Supabase stack only (written by supabase/seed/seed-localhost.sh)." "$@" > "$f"
-}
-if [ -n "$(ls $ENV_FILES 2>/dev/null)" ]; then
-  echo "kept existing local env files: $(ls $ENV_FILES 2>/dev/null | tr '\n' ' ')"
-else
-  PROXY_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))")
-  write_env apps/api/.env.development.local \
-    "NEXT_PUBLIC_SUPABASE_URL=$API_URL" "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY" \
-    "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_KEY" "INTERNAL_PROXY_SECRET=$PROXY_SECRET" "MOCK_MODE=false"
-  for app in admin pos; do
-    write_env "apps/$app/.env.development.local" \
-      "NEXT_PUBLIC_SUPABASE_URL=$API_URL" "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY" \
-      "NEXT_PUBLIC_API_URL=http://localhost:3002" "API_URL=http://localhost:3002" \
-      "INTERNAL_PROXY_SECRET=$PROXY_SECRET" "NEXT_PUBLIC_USE_MOCKS=false"
-  done
-fi
+# Points the app at the local stack (.env.development.local); keeps an existing file.
+bash supabase/seed/write-local-env.sh
 
 ACCOUNTS=supabase/.env.seed-accounts.local
 [ ! -e "$ACCOUNTS" ] || { echo "REFUSED: $ACCOUNTS exists, so the seed already ran." >&2; exit 1; }
@@ -55,7 +32,7 @@ pw() { node -e "console.log(require('crypto').randomBytes(12).toString('base64ur
 OWNER_PW=$(pw)
 BARISTA_PW=$(pw)
 
-# Same shape as the API's own provisioning (apps/api/src/modules/employees/service.ts).
+# Same shape as the API's own provisioning (src/server/modules/employees/service.ts).
 create_user() { # email password role
   curl -sf -X POST "$API_URL/auth/v1/admin/users" \
     -H "apikey: $SERVICE_KEY" -H "Authorization: Bearer $SERVICE_KEY" -H "Content-Type: application/json" \

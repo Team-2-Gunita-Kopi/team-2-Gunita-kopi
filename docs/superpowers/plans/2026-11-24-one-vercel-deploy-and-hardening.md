@@ -322,4 +322,4 @@ Run, don't code. The commands are in `docs/deployment.md` after Task C5. Mark ea
 - **The design refresh** (spec section 9). It gets its own brainstorm, spec and plan next.
 - **Nonce-based CSP (spec S4) moves to after launch.** This deviates from spec step 7.2: report-only adds no protection before launch, and a nonce CSP needs request-header plumbing in `createAuthMiddleware`.
 - **The shared env-check helper (spec U6) is dropped.** `next.config.ts` cannot reliably import TypeScript from a workspace package, so each config keeps its own short list, updated in Task C1.
-- **Later items:** the zod 4 upgrade, the single-RPC auth read, and option B.
+- **Later items:** the single-RPC auth read and Owner passkeys (spec section 10). Option B (one app) was rejected per OWASP; the zod 4 upgrade is done.
