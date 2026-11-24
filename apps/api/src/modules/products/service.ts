@@ -20,7 +20,7 @@ import { randomUUID } from "node:crypto";
 import { AuthenticatedUser } from "@/lib/auth";
 import { AppError, dbError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
-import { pageRange, toPage } from "@/lib/request";
+import { escapeLike, pageRange, toPage } from "@/lib/request";
 import { auditAction } from "@/lib/audit";
 import { ownerUnitCosts } from "@/modules/ingredients/service";
 
@@ -58,7 +58,7 @@ export async function listProducts(
     .range(...pageRange(q));
   if (q.category) query = query.eq("category", q.category);
   if (q.available) query = query.eq("is_available", q.available === "true");
-  if (q.search) query = query.ilike("product_name", `%${q.search}%`);
+  if (q.search) query = query.ilike("product_name", `%${escapeLike(q.search)}%`);
   const { data, error, count } = await query;
   if (error) throw dbError(error);
   return toPage(data.map(toProduct), count, q);

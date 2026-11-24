@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CreateOrderRequestSchema } from "./orders";
+import { MAX_SYNC_ORDERS } from "./common";
 
 export const OutboxStatusSchema = z.enum([
   "pending",
@@ -26,7 +27,8 @@ export const SyncPayloadSchema = z.object({
   batchId: z.string().optional(),
   orders: z
     .array(SyncOrderItemSchema)
-    .min(1, "At least one order must be provided in sync"),
+    .min(1, "At least one order must be provided in sync")
+    .max(MAX_SYNC_ORDERS),
 });
 export type SyncPayload = z.infer<typeof SyncPayloadSchema>;
 

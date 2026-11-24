@@ -31,6 +31,10 @@ export async function readId(ctx: {
   return IdSchema.parse((await ctx.params).id);
 }
 
+/** Makes \, % and _ match literally in a LIKE/ILIKE pattern (search is plain text). */
+export const escapeLike = (s: string): string =>
+  s.replace(/[\\%_]/g, (c) => `\\${c}`);
+
 /** PostgREST .range() bounds for a page (inclusive). */
 export function pageRange(q: PaginationQuery): [number, number] {
   const from = (q.page - 1) * q.pageSize;

@@ -6,6 +6,8 @@ import {
   PaginationQuerySchema,
   QuantitySchema,
   optionalText,
+  MAX_STATUS_FILTERS,
+  patchOf,
 } from "./common";
 
 /** FR-19. Derived from current_stock and reorder_level by the v_inventory_status view. */
@@ -103,7 +105,7 @@ export type CreateBaristaIngredientRequest = z.infer<
 >;
 
 /** Partial update. current_stock is not here: it changes only through stock transactions. */
-export const UpdateIngredientRequestSchema = IngredientFieldsSchema.partial()
+export const UpdateIngredientRequestSchema = patchOf(IngredientFieldsSchema)
   .extend({ reorderLevel: NonNegativeQuantitySchema.optional() })
   .refine((v) => Object.keys(v).length > 0, "Nothing to update")
   .superRefine(addonRule);
@@ -116,7 +118,7 @@ export const IngredientListQuerySchema = PaginationQuerySchema.extend({
   stockStatus: z
     .string()
     .transform((v) => v.split(","))
-    .pipe(z.array(StockStatusSchema).min(1))
+    .pipe(z.array(StockStatusSchema).min(1).max(MAX_STATUS_FILTERS))
     .optional(),
   supplierId: IdSchema.optional(),
   search: z.string().trim().min(1).max(100).optional(),

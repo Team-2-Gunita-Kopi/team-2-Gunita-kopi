@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { DateSchema, PaginationQuerySchema } from "./common";
+import {
+  DateSchema,
+  MAX_NOTES_LENGTH,
+  MAX_ORDER_ITEMS,
+  MAX_STATUS_FILTERS,
+  PaginationQuerySchema,
+} from "./common";
 
 export const OrderStatusSchema = z.enum([
   "pending",
@@ -45,13 +51,14 @@ export const CreateOrderRequestSchema = z.object({
   type: OrderTypeSchema,
   items: z
     .array(OrderItemSchema)
-    .min(1, "Order must contain at least one item"),
+    .min(1, "Order must contain at least one item")
+    .max(MAX_ORDER_ITEMS),
   totalAmount: z.number().nonnegative(),
   taxAmount: z.number().nonnegative().default(0),
   discountAmount: z.number().nonnegative().default(0),
   paidAmount: z.number().nonnegative(),
   paymentMethod: z.enum(["cash", "card", "qr_code", "other"]),
-  notes: z.string().optional(),
+  notes: z.string().max(MAX_NOTES_LENGTH).optional(),
 });
 export type CreateOrderRequest = z.infer<typeof CreateOrderRequestSchema>;
 
@@ -110,7 +117,7 @@ export const OrderListQuerySchema = PaginationQuerySchema.extend({
   status: z
     .string()
     .transform((v) => v.split(","))
-    .pipe(z.array(OrderStatusSchema).min(1))
+    .pipe(z.array(OrderStatusSchema).min(1).max(MAX_STATUS_FILTERS))
     .optional(),
   from: DateSchema.optional(),
   to: DateSchema.optional(),

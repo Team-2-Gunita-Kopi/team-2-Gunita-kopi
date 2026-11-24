@@ -11,7 +11,7 @@ import {
 import type { Tables } from "@gunita/db-types";
 import { AuthenticatedUser } from "@/lib/auth";
 import { dbError, NotFoundError } from "@/lib/errors";
-import { pageRange, toPage } from "@/lib/request";
+import { escapeLike, pageRange, toPage } from "@/lib/request";
 import { auditAction } from "@/lib/audit";
 
 type UnitCosts = Map<number, number | null>;
@@ -81,7 +81,7 @@ export async function listIngredients(
     .range(...pageRange(q));
   if (q.stockStatus) query = query.in("stock_status", q.stockStatus);
   if (q.supplierId) query = query.eq("supplier_id", q.supplierId);
-  if (q.search) query = query.ilike("ingredient_name", `%${q.search}%`);
+  if (q.search) query = query.ilike("ingredient_name", `%${escapeLike(q.search)}%`);
   const [{ data, error, count }, costs] = await Promise.all([
     query,
     ownerUnitCosts(user),
@@ -98,18 +98,17 @@ export async function getIngredient(
   user: AuthenticatedUser,
   id: number,
 ): Promise<Ingredient> {
-  const { data, error } = await user.supabaseClient
-    .from("v_inventory_status")
-    .select("*")
-    .eq("ingredient_id", id)
-    .maybeSingle();
+  const [{ data, error }, costs] = await Promise.all([
+    user.supabaseClient
+      .from("v_inventory_status")
+      .select("*")
+      .eq("ingredient_id", id)
+      .maybeSingle(),
+    ownerUnitCosts(user),
+  ]);
   if (error) throw dbError(error);
   if (!data) throw new NotFoundError("Ingredient not found");
-  return toIngredient(
-    data,
-    await ownerUnitCosts(user),
-    user.role === "owner_admin",
-  );
+  return toIngredient(data, costs, user.role === "owner_admin");
 }
 
 /** Baristas can link an existing active supplier, but cannot set its details or other Owner fields. */

@@ -19,12 +19,13 @@ export const ProductSchema = z.object({
   costPrice: z.number().nonnegative().default(0),
   profitMarginPercent: z.number().optional(),
   description: z.string().optional(),
-  // An http(s) URL, or a same-origin API path for images stored privately (productImageSrc).
+  // An http(s) URL, or a same-origin API path for images stored privately (productImageSrc),
+  // optionally under the site's basePath (POS: /staff).
   imageUrl: z
     .string()
     .refine(
       (v) =>
-        /^\/api\/products\/\d+\/image(\?|$)/.test(v) ||
+        /^(\/[a-z-]+)?\/api\/products\/\d+\/image(\?|$)/.test(v) ||
         z.string().url().safeParse(v).success,
     )
     .optional(),

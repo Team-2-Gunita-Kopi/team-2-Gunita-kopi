@@ -101,6 +101,14 @@ describe("API Server Authorization Guard", () => {
     ).rejects.toThrow(ForbiddenError);
   });
 
+  // Why: a 403 must not tell a caller which roles exist or which one would work.
+  it("does not name roles in a 403 message", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const err = await requireRole(req("barista-token"), "owner_admin").catch((e) => e);
+    expect(err.statusCode).toBe(403);
+    expect(err.message).not.toMatch(/owner_admin|barista/);
+  });
+
   it("allows owner_admin and takes the role from the profile", async () => {
     const user = await requireRole(req(OWNER), "owner_admin");
     expect(user.id).toBe("auth-owner");
