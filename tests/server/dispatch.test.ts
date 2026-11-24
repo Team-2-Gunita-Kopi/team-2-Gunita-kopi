@@ -35,4 +35,20 @@ describe("dispatchApi", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("x-request-id")).toMatch(/^req_/);
   });
+
+  // Why: a backend route missing from the table would be unreachable from both areas.
+  it("has an entry for every backend route file", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const root = path.resolve(__dirname, "../../src/server/routes");
+    const files: string[] = [];
+    const walk = (d: string) => fs.readdirSync(d, { withFileTypes: true }).forEach((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : e.name === "route.ts" && files.push(path.join(d, e.name))));
+    walk(root);
+    const table = fs.readFileSync(path.resolve(__dirname, "../../src/server/dispatch.ts"), "utf8");
+    const missing = files
+      .map((f) => "./routes/" + path.relative(root, path.dirname(f)).split(path.sep).join("/") + "/route")
+      .filter((imp) => !table.includes(`import("${imp}")`) && !imp.startsWith("./routes/mock/"));
+    expect(files.length).toBeGreaterThan(20);
+    expect(missing).toEqual([]);
+  });
 });

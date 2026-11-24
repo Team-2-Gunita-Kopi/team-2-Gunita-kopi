@@ -35,6 +35,9 @@ npx -y supabase@2.122.1 start >/dev/null
 npx -y supabase@2.122.1 migration up --local >/dev/null
 echo "local Supabase running, migrations up to date"
 
+step "Local env file"
+bash supabase/seed/write-local-env.sh
+
 step "Test data"
 if [ -e supabase/.env.seed-accounts.local ]; then
   echo "already seeded (kept)"

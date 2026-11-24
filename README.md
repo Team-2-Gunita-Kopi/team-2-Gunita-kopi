@@ -63,9 +63,9 @@ gunita-kopi-pos/
 | Command          | Description                                                    |
 | ---------------- | -------------------------------------------------------------- |
 | `pnpm dev`       | Starts all applications in watch mode                          |
-| `pnpm build`     | Builds all packages and applications via Turborepo             |
-| `pnpm lint`      | Runs ESLint across all workspaces                              |
-| `pnpm typecheck` | Runs TypeScript type checking across all workspaces            |
+| `pnpm build`     | Production build of the one app (Owner, POS and backend)      |
+| `pnpm lint`      | Runs ESLint on src/                                            |
+| `pnpm typecheck` | Runs TypeScript type checking                                  |
 | `pnpm test`      | Runs unit tests using Vitest                                   |
 | `pnpm format`    | Checks code formatting with Prettier                           |
 | `pnpm db:types`  | Generates TypeScript database types from local Supabase schema |

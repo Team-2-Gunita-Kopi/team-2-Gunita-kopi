@@ -407,7 +407,11 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
       apiUrlMissing();
       return fail(502, "BAD_GATEWAY", "The API is unreachable");
     }
-    const path = (await ctx.params).path.map(encodeURIComponent).join("/");
+    const segments = (await ctx.params).path;
+    // "." and ".." would be normalised by URL parsing and could slip past the prefix checks below.
+    if (segments.some((s) => s === "." || s === ".."))
+      return fail(404, "NOT_FOUND", "Not found");
+    const path = segments.map(encodeURIComponent).join("/");
     // Tokens must never reach the browser: sign-in goes through /auth/* only. Owner setup is a
     // developer script against the backend (src/server), never through a site.
     if (path.startsWith("auth/") || path.startsWith("setup/"))

@@ -87,7 +87,7 @@ describe("mockRpc", () => {
 
   it("rpc network error shows service message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
-    await expect(mockRpc("listOrders", {})).rejects.toThrow("Can't reach the demo data service on :3002. Is `pnpm dev` running?");
+    await expect(mockRpc("listOrders", {})).rejects.toThrow("Can't reach the demo data service.");
   });
 
   it("throws the server error message for {ok:false}", async () => {

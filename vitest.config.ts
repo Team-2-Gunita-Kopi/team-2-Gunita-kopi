@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 
@@ -5,7 +6,9 @@ const frontend = { environment: "jsdom", env: { NEXT_PUBLIC_USE_MOCKS: "true" } 
 
 export default defineConfig({
   esbuild: { jsx: "automatic" },
-  resolve: { alias: { "@": path.resolve(__dirname, "src") } },
+  // realpathSync.native returns the true casing on Windows, so a lowercase drive letter in the
+  // working directory cannot load a second copy of React through the alias.
+  resolve: { alias: { "@": fs.realpathSync.native(path.resolve(__dirname, "src")) } },
   test: {
     globals: true,
     projects: [

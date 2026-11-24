@@ -2,7 +2,7 @@
 export function getAllowedOrigins(): string[] {
   const envOrigins =
     process.env.ALLOWED_ORIGINS ||
-    "http://localhost:3000,http://localhost:3001";
+    "http://localhost:3000";
   return envOrigins
     .split(",")
     .map((o) => o.trim())

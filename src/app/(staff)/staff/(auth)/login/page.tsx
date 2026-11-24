@@ -14,7 +14,6 @@ function safeRedirect(value: string | null): string {
     const u = new URL(value, window.location.origin);
     if (u.origin !== window.location.origin) return HOME;
     const path = u.pathname + u.search + u.hash;
-    // "//host" would be protocol-relative; "/staff/login" would loop back here.
     // Only pages of the POS area (one app hosts both areas); "/staff/login" would loop back.
     return path.startsWith("/staff/") && !path.startsWith("/staff/login") ? path : HOME;
   } catch {

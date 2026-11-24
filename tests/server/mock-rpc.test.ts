@@ -13,7 +13,7 @@ function call(app: string, op: string, args: unknown[] = []) {
     new NextRequest("http://localhost:3002/api/mock/rpc", {
       method: "POST",
       body: JSON.stringify({ app, op, args }),
-      headers: { origin: "http://localhost:3001", "content-type": "application/json" },
+      headers: { origin: "http://localhost:3000", "content-type": "application/json" },
     }),
   );
 }
@@ -55,13 +55,13 @@ describe("mock rpc", () => {
     const res = await call("owner", "listProducts");
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ ok: false, error: { code: "NOT_FOUND", message: "Mock mode is off" } });
-    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:3001");
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:3000");
   });
 
   it("answers preflight with CORS headers", () => {
-    const res = OPTIONS(new NextRequest("http://localhost:3002/api/mock/rpc", { method: "OPTIONS", headers: { origin: "http://localhost:3001" } }));
+    const res = OPTIONS(new NextRequest("http://localhost:3002/api/mock/rpc", { method: "OPTIONS", headers: { origin: "http://localhost:3000" } }));
     expect(res.status).toBe(204);
-    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:3001");
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost:3000");
   });
 
   it("pos cannot call owner ops", async () => {
