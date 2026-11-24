@@ -54,5 +54,17 @@ describe("Suppliers page", () => {
     const row = (await screen.findByText("Bean Co")).closest("tr")!;
     await userEvent.click(within(row).getByRole("button", { name: /Deactivate/ }));
     await waitFor(() => expect(suppliersApi.updateSupplier).toHaveBeenCalledWith(1, { status: "inactive" }));
+    expect(await screen.findByText("Bean Co deactivated.")).toBeInTheDocument();
+  });
+
+  // Why: the dialog closes on success; the toast is the only sign the supplier was saved.
+  it("reports a saved supplier", async () => {
+    suppliersApi.createSupplier.mockResolvedValue({ ...BEAN_CO, id: 3, name: "Cup Co" });
+    renderWithProviders(<SuppliersPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Add supplier" }));
+    await userEvent.type(screen.getByLabelText("Supplier Name"), "Cup Co");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(suppliersApi.createSupplier).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Supplier added.")).toBeInTheDocument();
   });
 });

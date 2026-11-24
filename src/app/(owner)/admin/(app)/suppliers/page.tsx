@@ -90,6 +90,7 @@ export default function SuppliersPage() {
     try {
       if (editing === "new") await createSupplier(form);
       else if (editing) await updateSupplier(editing.id, form);
+      toast(editing === "new" ? "Supplier added." : "Supplier updated.");
       setEditing(null);
       await refresh();
     } catch (err) {
@@ -101,6 +102,7 @@ export default function SuppliersPage() {
   const toggleStatus = async (row: SupplierRow) => {
     try {
       await updateSupplier(Number(row.id), { status: row.status === "active" ? "inactive" : "active" });
+      toast(`${row.name} ${row.status === "active" ? "deactivated" : "activated"}.`);
       await refresh();
     } catch (err) {
       toast(err instanceof Error ? err.message : "Could not update the supplier.", true);

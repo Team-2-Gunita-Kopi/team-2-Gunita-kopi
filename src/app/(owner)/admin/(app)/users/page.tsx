@@ -96,6 +96,7 @@ export default function UsersPage() {
     }
     try {
       await setUserStatus(Number(row.id), row.isActive ? "inactive" : "active");
+      toast(`${row.fullName} ${row.isActive ? "deactivated" : "activated"}.`);
       await client.invalidateQueries({ queryKey: ["users"] });
     } catch (err) {
       toast(err instanceof Error ? err.message : "Could not update the account.", true);
@@ -135,6 +136,7 @@ export default function UsersPage() {
     try {
       if (view.kind === "add") await createUser();
       else if (view.kind === "edit") await saveChanges(view.user);
+      toast(view.kind === "add" ? "Account created." : "Account updated.");
       await client.invalidateQueries({ queryKey: ["users"] });
       backToList();
     } catch (err) {

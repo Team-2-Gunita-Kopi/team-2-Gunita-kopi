@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Order, OrderStatus } from "@/contracts";
-import { ORDER_TYPE_LABEL } from "@/contracts/ui";
+import { ORDER_STATUS_LABEL, ORDER_TYPE_LABEL } from "@/contracts/ui";
 import type { Order as ReceiptOrder } from "@/contracts/ui";
 import {
   Button,
@@ -148,6 +148,7 @@ export default function PosOrderDetailsPage() {
     if (!order) return;
     try {
       const updated = await updateOrderStatus(order.orderId, status);
+      toast(`Order marked ${ORDER_STATUS_LABEL[status]}.`);
       client.setQueryData(["pos-order", orderId], updated);
       await client.invalidateQueries({ queryKey: ["pos-orders"] });
     } catch (error) {

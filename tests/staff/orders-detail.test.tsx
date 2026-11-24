@@ -105,6 +105,7 @@ describe("Barista order details page", () => {
     await waitFor(() => {
       expect(ordersApi.updateOrderStatus).toHaveBeenCalledWith(11, "preparing");
     });
+    expect(await screen.findByText("Order marked Preparing.")).toBeInTheDocument();
     expect(
       await screen.findByRole("button", { name: "Preparing → Completed" }),
     ).toBeInTheDocument();
