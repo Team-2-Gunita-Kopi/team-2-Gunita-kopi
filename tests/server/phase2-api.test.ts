@@ -1666,3 +1666,66 @@ describe("dashboard (Owner)", () => {
     expect(calls.some((c) => c.table === "products")).toBe(false);
   });
 });
+
+describe("ingredient soft delete (Owner)", () => {
+  // Why: one database step hides the ingredient and takes it out of recipes; the Owner must learn
+  // which products changed, and the audit log must record who deleted what.
+  it("deletes through delete_ingredient, audits it and returns the products it left", async () => {
+    onRpc = (name) =>
+      name === "delete_ingredient" ? { data: [{ product_id: 7, product_name: "Latte" }] } : { data: [] };
+    const r = await call(
+      ingredientById.DELETE(req("DELETE", "/api/ingredients/21", OWNER), params({ id: "21" })),
+    );
+    expect(r.status).toBe(200);
+    expect(r.body.data).toEqual({ id: 21, removedFromProducts: [{ id: 7, name: "Latte" }] });
+    expect(rpcCalls).toContainEqual({ name: "delete_ingredient", args: { p_ingredient_id: 21 } });
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toEqual(expect.arrayContaining(["ingredient.delete", "ingredients", 21]));
+  });
+
+  it("refuses a barista (403) before touching the database", async () => {
+    const r = await call(
+      ingredientById.DELETE(req("DELETE", "/api/ingredients/21", "barista-token"), params({ id: "21" })),
+    );
+    expect(r.status).toBe(403);
+    expect(rpcCalls.some((c) => c.name === "delete_ingredient")).toBe(false);
+  });
+
+  // Why: a second delete (two tabs, a stale list) must be a clear 404, not a second audit entry.
+  it("answers 404 for a missing or already deleted ingredient and audits nothing", async () => {
+    onRpc = (name) =>
+      name === "delete_ingredient"
+        ? { error: { code: "P0002", message: "NOT_FOUND: ingredient not found" } }
+        : { data: [] };
+    const r = await call(
+      ingredientById.DELETE(req("DELETE", "/api/ingredients/21", OWNER), params({ id: "21" })),
+    );
+    expect(r.status).toBe(404);
+    expect(audits).toHaveLength(0);
+  });
+
+  // Why: the confirm dialog lists the products whose recipes will lose the ingredient (R11).
+  it("lists the products whose recipe uses the ingredient, Owner only", async () => {
+    const usage = await import("@/server/routes/ingredients/[id]/products/route");
+    onQuery = (c) =>
+      c.table === "product_ingredients"
+        ? { data: [{ products: { product_id: 9, product_name: "Mocha" } }, { products: { product_id: 7, product_name: "Latte" } }] }
+        : { data: [] };
+    const r = await call(usage.GET(req("GET", "/api/ingredients/21/products", OWNER), params({ id: "21" })));
+    expect(r.status).toBe(200);
+    expect(r.body.data).toEqual([{ id: 7, name: "Latte" }, { id: 9, name: "Mocha" }]);
+    expect(calls.find((c) => c.table === "product_ingredients")!.filters).toContainEqual(["eq", ["ingredient_id", 21]]);
+    const barista = await call(usage.GET(req("GET", "/api/ingredients/21/products", "barista-token"), params({ id: "21" })));
+    expect(barista.status).toBe(403);
+  });
+
+  // Why: a stale edit screen must not change a deleted ingredient.
+  it("does not update a deleted ingredient (404)", async () => {
+    onQuery = (c) => (c.op === "update" ? { data: null } : { data: [] });
+    const r = await call(
+      ingredientById.PATCH(req("PATCH", "/api/ingredients/21", OWNER, { reorderLevel: 5 }), params({ id: "21" })),
+    );
+    expect(r.status).toBe(404);
+    expect(calls.find((c) => c.op === "update")!.filters).toContainEqual(["is", ["deleted_at", null]]);
+  });
+});

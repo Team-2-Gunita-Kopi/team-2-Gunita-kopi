@@ -1,9 +1,14 @@
+import { z } from "zod";
 import {
+  DeleteIngredientResponseSchema,
+  IngredientProductSchema,
   IngredientSchema,
   StockTransactionSchema,
   pageOf,
   type CreateIngredientRequest,
+  type DeleteIngredientResponse,
   type Ingredient,
+  type IngredientProduct,
   type StockTransaction,
   type StockTransactionType,
   type UpdateIngredientRequest,
@@ -19,6 +24,14 @@ export const createIngredient = (body: CreateIngredientRequest): Promise<Ingredi
 
 export const updateIngredient = (id: number, body: UpdateIngredientRequest): Promise<Ingredient> =>
   apiData(`/api/ingredients/${id}`, IngredientSchema, { method: "PATCH", body: JSON.stringify(body) });
+
+/** R11: products whose recipe uses the ingredient, shown before deleting it. */
+export const listIngredientProducts = (id: number): Promise<IngredientProduct[]> =>
+  apiData(`/api/ingredients/${id}/products`, z.array(IngredientProductSchema));
+
+/** Soft delete: hidden everywhere and taken out of recipes; history keeps its name. */
+export const deleteIngredient = (id: number): Promise<DeleteIngredientResponse> =>
+  apiData(`/api/ingredients/${id}`, DeleteIngredientResponseSchema, { method: "DELETE" });
 
 export async function listStockHistory(filters: {
   ingredientId?: string;
