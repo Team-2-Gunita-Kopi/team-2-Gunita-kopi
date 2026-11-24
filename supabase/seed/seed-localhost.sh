@@ -21,24 +21,8 @@ esac
 DB_CONTAINER=$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -1)
 [ -n "$DB_CONTAINER" ] || { echo "REFUSED: local database container not found." >&2; exit 1; }
 
-# `next dev` reads .env.development.local before .env.local, so this points the app at the local
-# stack without touching a live .env.local. Every Supabase variable is overridden.
-ENV_FILE=".env.development.local"
-write_env() { # file, then lines
-  local f=$1; shift
-  git check-ignore -q "$f" || { echo "REFUSED: $f would not be gitignored." >&2; exit 1; }
-  umask 077
-  printf '%s\n' "# Local Supabase stack only (written by supabase/seed/seed-localhost.sh)." "$@" > "$f"
-}
-if [ -e "$ENV_FILE" ]; then
-  echo "kept existing local env file: $ENV_FILE"
-else
-  PROXY_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))")
-  write_env "$ENV_FILE" \
-    "NEXT_PUBLIC_SUPABASE_URL=$API_URL" "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY" \
-    "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_KEY" "INTERNAL_PROXY_SECRET=$PROXY_SECRET" \
-    "MOCK_MODE=false" "NEXT_PUBLIC_USE_MOCKS=false"
-fi
+# Points the app at the local stack (.env.development.local); keeps an existing file.
+bash supabase/seed/write-local-env.sh
 
 ACCOUNTS=supabase/.env.seed-accounts.local
 [ ! -e "$ACCOUNTS" ] || { echo "REFUSED: $ACCOUNTS exists, so the seed already ran." >&2; exit 1; }

@@ -1,9 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ADMIN_SESSION_COOKIE, POS_SESSION_COOKIE, type Role } from "@/auth";
+import {
+  ADMIN_SESSION_COOKIE,
+  MOCK_SESSION_COOKIE,
+  POS_SESSION_COOKIE,
+  decodeMockSession,
+  type Role,
+} from "@/auth";
 import { createAuthMiddleware } from "@/auth/middleware";
-import { env } from "@/owner/lib/env";
-import { USE_MOCKS } from "@/owner/lib/use-mocks";
-import { resolveRole } from "@/owner/lib/session";
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder-project-ref.supabase.co";
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key";
+const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
 
 // One app, two separate areas. Each area has its own sign-in page, its own session cookie (scoped to
 // its prefix) and its own allowed role. The API (src/server) re-checks role and status on every call.
@@ -40,8 +47,8 @@ const guards = new Map(
   [OWNER, STAFF].map((a) => [
     a.prefix,
     createAuthMiddleware({
-      supabaseUrl: env.supabaseUrl,
-      supabaseKey: env.supabaseAnonKey,
+      supabaseUrl: SUPABASE_URL,
+      supabaseKey: SUPABASE_KEY,
       cookieName: a.cookieName,
       allowedRoles: [a.role],
       publicPaths: a.publicPaths,
@@ -60,7 +67,7 @@ const isPublic = (path: string, publicPaths: readonly string[]) =>
 function demoGuard(request: NextRequest, area: Area) {
   const { pathname } = request.nextUrl;
   if (isPublic(pathname, area.publicPaths)) return NextResponse.next();
-  const role = resolveRole(request, USE_MOCKS);
+  const role = decodeMockSession(request.cookies.get(MOCK_SESSION_COOKIE)?.value)?.role ?? null;
   if (!role) {
     const login = request.nextUrl.clone();
     login.pathname = `${area.prefix}/login`;

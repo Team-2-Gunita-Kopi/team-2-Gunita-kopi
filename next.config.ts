@@ -21,6 +21,16 @@ const withSerwist = withSerwistInit({
   swUrl: "/staff/sw.js",
   scope: "/staff/",
   register: false,
+  // Serwist's entry script is in the shared bundle: a reload on reconnect would also wipe unsaved
+  // Owner forms. The POS outbox already syncs on the online event (src/staff/offline/triggers.ts).
+  reloadOnOnline: false,
+  // Barista tablets never need Owner portal code offline.
+  manifestTransforms: [
+    async (entries) => ({
+      manifest: entries.filter((e) => !e.url.includes("/app/(owner)/")),
+      warnings: [],
+    }),
+  ],
   disable: process.env.NODE_ENV === "development",
 });
 

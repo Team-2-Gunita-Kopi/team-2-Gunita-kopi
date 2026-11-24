@@ -70,11 +70,9 @@ jobs:
       - name: Run Tests
         run: pnpm test
 
-      - name: Run Turborepo Build
+      - name: Run Build
         run: pnpm build
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder-project-ref.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
-          NEXT_PUBLIC_API_URL: http://localhost:3002
           SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key
-          ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001

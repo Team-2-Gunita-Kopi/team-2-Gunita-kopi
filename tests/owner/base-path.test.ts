@@ -30,3 +30,15 @@ describe("Owner portal under /admin", () => {
     expect(res.headers.get("location")).toBe("http://shop.local/admin/login?redirect=%2Fadmin%2Fusers");
   });
 });
+
+describe("Owner product photos", () => {
+  // Why: stored photos are served by the private backend through /admin/api; a bare /api/... path
+  // is not a public route, so thumbnails and the edit preview would be broken.
+  it("load through the Owner area's proxy", async () => {
+    const { ownerImageSrc } = await import("@/owner/features/products/image");
+    const p = { id: 12, image: "12/11111111-2222-4333-8444-555555555555.webp" } as never;
+    expect(ownerImageSrc(p)).toBe("/admin/api/products/12/image?v=11111111-2222-4333-8444-555555555555.webp");
+    expect(ownerImageSrc({ id: 12, image: "https://cdn.example/x.png" } as never)).toBe("https://cdn.example/x.png");
+    expect(ownerImageSrc({ id: 12, image: null } as never)).toBeUndefined();
+  });
+});

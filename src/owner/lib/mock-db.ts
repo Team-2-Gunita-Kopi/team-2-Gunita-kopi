@@ -2,7 +2,7 @@ import { env } from "./env";
 
 type RpcResponse<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };
 
-/** Calls the shared demo data service (apps/api, `POST /api/mock/rpc`). */
+/** Calls the shared demo data service (`POST /api/mock/rpc` in this app). */
 export async function mockRpc<T>(op: string, ...args: unknown[]): Promise<T> {
   if (typeof location !== "undefined" && new URLSearchParams(location.search).get("mockFail") === op) {
     throw new Error(`Mock failure (${op})`);
@@ -15,7 +15,7 @@ export async function mockRpc<T>(op: string, ...args: unknown[]): Promise<T> {
       body: JSON.stringify({ app: "owner", op, args }),
     });
   } catch {
-    throw new Error("Can't reach the demo data service on :3002. Is `pnpm dev` running?");
+    throw new Error("Can't reach the demo data service. Is `pnpm dev` running with MOCK_MODE=true?");
   }
   let body: RpcResponse<T>;
   try {

@@ -194,12 +194,12 @@ merge to main (only when CI is green) --> Vercel Production (uses the production
 2. Smoke test on the production URL: Phase 5 step 3, with real accounts.
 3. Install the POS PWA on the shop tablet from `https://<project>.vercel.app/staff`.
 4. **Security policy:** once previews show no reports, merge the report-only policy into the
-   enforced `Content-Security-Policy` header in both `next.config.ts` files (one header).
+   enforced `Content-Security-Policy` header in `next.config.ts` (one header).
 
 ## Phase 8: running it
 
 - **Rollback:** `npx -y vercel@66.6.0 rollback` (or Instant Rollback in the dashboard) returns
-  all three services at once. Database migrations are never rolled back by Vercel; keep a rollback
+  the whole app at once. Database migrations are never rolled back by Vercel; keep a rollback
   SQL file with each migration.
 - **New migrations:**
   - PR with the migration and its SQL test. CI runs them on PostgreSQL.

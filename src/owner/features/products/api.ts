@@ -2,8 +2,7 @@ import {
   ProductCostingSchema,
   ProductSchema,
   RecipeSchema,
-  pageOf,
-  productImageSrc,
+  pageOf,
   type CreateProductRequest,
   type Product,
   type ProductCosting,
@@ -11,6 +10,7 @@ import {
 } from "@/contracts";
 import { formatPeso } from "@/ui";
 import { apiAllPages, apiData } from "@/owner/lib/api-client";
+import { ownerImageSrc } from "./image";
 
 // FR-05, FR-50 to FR-52: menu management.
 export const listProducts = (): Promise<Product[]> =>
@@ -100,7 +100,7 @@ export interface ProductRow extends Record<string, unknown> {
 export function toProductRow(p: Product, c: ProductCosting | null): ProductRow {
   return {
     id: String(p.id),
-    imageSrc: productImageSrc(p),
+    imageSrc: ownerImageSrc(p),
     name: p.name,
     description: p.description ?? "",
     category: p.category ?? "",

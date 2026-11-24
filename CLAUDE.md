@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Gunita Kopi POS: coffee-shop POS and inventory system. pnpm + Turborepo monorepo, Next.js 15 apps, Supabase (Postgres + Auth). Requirements come from the team's SRS/SDS; code comments cite them as `FR-xx` / `SDS x.y`.
+Gunita Kopi POS: coffee-shop POS and inventory system. one Next.js 15 app (pnpm), Supabase (Postgres + Auth). Requirements come from the team's SRS/SDS; code comments cite them as `FR-xx` / `SDS x.y`.
 
 ## Setting up a new developer machine
 

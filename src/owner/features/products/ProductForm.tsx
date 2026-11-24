@@ -3,13 +3,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  PRODUCT_IMAGE_MAX_BYTES,
-  PRODUCT_IMAGE_TYPES,
-  productImageSrc,
-} from "@/contracts";
+import { PRODUCT_IMAGE_MAX_BYTES, PRODUCT_IMAGE_TYPES } from "@/contracts";
 import type { Product } from "@/contracts";
 import { Button, Input, Select, useToast } from "@/ui";
+import { ownerImageSrc } from "./image";
 import {
   createProduct,
   removeProductImage,
@@ -51,7 +48,7 @@ export function ProductForm({
   const [removeImage, setRemoveImage] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [saving, setSaving] = useState(false);
-  const storedImage = product ? productImageSrc(product) : undefined;
+  const storedImage = product ? ownerImageSrc(product) : undefined;
   const previewImage = fileUrl ?? (removeImage ? undefined : storedImage);
   const categoryOptions = [...new Set([...categories, product?.category ?? ""])]
     .filter(Boolean)

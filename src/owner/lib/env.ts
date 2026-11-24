@@ -9,7 +9,7 @@ export const env = {
     "https://placeholder-project-ref.supabase.co",
   supabaseAnonKey:
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key",
-  /** Demo mode only: the browser calls apps/api /api/mock/rpc directly. */
+  /** Demo mode only: base URL for /api/mock/rpc (empty = this app). */
   mockApiUrl: process.env.NEXT_PUBLIC_API_URL || "",
 };
 
