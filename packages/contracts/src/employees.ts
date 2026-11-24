@@ -27,7 +27,7 @@ export const CreateEmployeeRequestSchema = z.object({
   password: PasswordSchema,
   fullName: FullNameSchema,
   role: z.literal("barista", {
-    errorMap: () => ({ message: "Only barista accounts can be created here" }),
+    error: "Only barista accounts can be created here",
   }),
 });
 export type CreateEmployeeRequest = z.infer<typeof CreateEmployeeRequestSchema>;

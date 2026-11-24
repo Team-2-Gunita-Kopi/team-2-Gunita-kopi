@@ -4,6 +4,7 @@ import {
   PaginationQuerySchema,
   StatusSchema,
   optionalText,
+  patchOf,
 } from "./common";
 
 // SUPPLIERS (FR-22). Reference records only: no purchase orders or automatic reordering.
@@ -37,7 +38,7 @@ export const CreateSupplierRequestSchema = z.object({
 export type CreateSupplierRequest = z.infer<typeof CreateSupplierRequestSchema>;
 
 /** Partial update; { status } alone activates or deactivates the supplier. */
-export const UpdateSupplierRequestSchema = CreateSupplierRequestSchema.partial()
+export const UpdateSupplierRequestSchema = patchOf(CreateSupplierRequestSchema)
   .extend({ status: StatusSchema.optional() })
   .refine((v) => Object.keys(v).length > 0, "Nothing to update");
 export type UpdateSupplierRequest = z.infer<typeof UpdateSupplierRequestSchema>;

@@ -9,7 +9,7 @@ import type {
 import type { Tables } from "@gunita/db-types";
 import { AuthenticatedUser } from "@/lib/auth";
 import { dbError, NotFoundError } from "@/lib/errors";
-import { pageRange, toPage } from "@/lib/request";
+import { escapeLike, pageRange, toPage } from "@/lib/request";
 import { auditAction } from "@/lib/audit";
 
 const toSupplier = (r: Tables<"suppliers">): Supplier => ({
@@ -41,7 +41,7 @@ export async function listSuppliers(
     .order("supplier_name")
     .range(...pageRange(q));
   if (q.status) query = query.eq("status", q.status);
-  if (q.search) query = query.ilike("supplier_name", `%${q.search}%`);
+  if (q.search) query = query.ilike("supplier_name", `%${escapeLike(q.search)}%`);
   const { data, error, count } = await query;
   if (error) throw dbError(error);
   return toPage(data.map(toSupplier), count, q);

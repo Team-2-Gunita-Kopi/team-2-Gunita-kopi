@@ -1,3 +1,4 @@
+// Demo mode only (/api/mock/rpc, refused in production builds). Real traffic never needs CORS.
 export function getAllowedOrigins(): string[] {
   const envOrigins =
     process.env.ALLOWED_ORIGINS ||

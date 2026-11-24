@@ -5,6 +5,7 @@ import {
   PaginationQuerySchema,
   QuantitySchema,
   optionalText,
+  patchOf,
 } from "./common";
 
 export const ProductSchema = z.object({
@@ -77,7 +78,7 @@ export const CreateProductRequestSchema = z.object({
 export type CreateProductRequest = z.infer<typeof CreateProductRequestSchema>;
 
 /** Partial update; send only the fields to change. { isAvailable } alone sets availability (FR-51). */
-export const UpdateProductRequestSchema = CreateProductRequestSchema.partial()
+export const UpdateProductRequestSchema = patchOf(CreateProductRequestSchema)
   .extend({ isAvailable: z.boolean().optional() })
   .refine((v) => Object.keys(v).length > 0, "Nothing to update");
 export type UpdateProductRequest = z.infer<typeof UpdateProductRequestSchema>;

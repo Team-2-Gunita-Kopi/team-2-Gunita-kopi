@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+// Request size caps (zod 3 advisory: oversized collections exhaust memory). Far above real use.
+/** Order rows: one per product plus one per add-on, so a big group order can pass 100. */
+export const MAX_ORDER_ITEMS = 500;
+export const MAX_SYNC_ORDERS = 100;
+export const MAX_NOTES_LENGTH = 500;
+export const MAX_STATUS_FILTERS = 10;
+
 /** Database id (integer identity column), also accepted as a numeric string in paths and queries. */
 export const IdSchema = z.coerce.number().int().positive();
 
@@ -64,3 +71,20 @@ export const pageOf = <T extends z.ZodTypeAny>(item: T) =>
 
 export const StatusSchema = z.enum(["active", "inactive"]);
 export type Status = z.infer<typeof StatusSchema>;
+
+type PatchShape<S extends z.ZodRawShape> = {
+  [K in keyof S]: z.ZodOptional<S[K] extends z.ZodDefault<infer I> ? I : S[K]>;
+};
+
+/**
+ * PATCH body: every field optional and never defaulted. zod 4's .partial() still fills defaults,
+ * so a body like { name } would also reset fields such as isAddon or reorderLevel.
+ */
+export function patchOf<S extends z.ZodRawShape>(schema: z.ZodObject<S>): z.ZodObject<PatchShape<S>> {
+  const shape: Record<string, z.ZodType> = {};
+  for (const [key, field] of Object.entries(schema.shape)) {
+    const inner = field instanceof z.ZodDefault ? field.unwrap() : field;
+    shape[key] = (inner as z.ZodType).optional();
+  }
+  return z.object(shape) as unknown as z.ZodObject<PatchShape<S>>;
+}
