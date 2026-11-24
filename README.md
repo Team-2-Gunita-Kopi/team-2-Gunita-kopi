@@ -4,7 +4,7 @@ Gunita Kopi is a modern Point of Sale (POS) and inventory management system desi
 
 ## Key Architecture Rule
 
-> **Important**: The frontend websites (`apps/admin` and `apps/pos`) **never connect directly to the database**. All business data requests flow through the backend API (`apps/api`) over HTTPS using Bearer tokens. The frontend uses Supabase Auth strictly for user authentication. The database is protected behind Row Level Security (RLS) and server-side authorization.
+> **Important**: The frontend websites (`apps/admin` and `apps/pos`) **never connect directly to the database**. All business data requests go to the site's own `/api` route, which reads the HttpOnly session cookie on the server and forwards the call to the backend API (`apps/api`, a private Vercel service) with the user's token. The browser never holds a token. The frontend uses Supabase Auth strictly for user authentication. The database is protected behind Row Level Security (RLS) and server-side authorization.
 
 ## System Roles
 
@@ -80,7 +80,7 @@ gunita-kopi-pos/
    ```
    This starts all three applications concurrently:
    - Admin website: `http://localhost:3000`
-   - POS website: `http://localhost:3001`
+   - POS website: `http://localhost:3001/staff`
    - Backend API: `http://localhost:3002`
 
 ## Available Commands
@@ -100,4 +100,4 @@ gunita-kopi-pos/
 1. **Zero Browser Service Role Key**: `SUPABASE_SERVICE_ROLE_KEY` is strictly confined to `apps/api/src/lib/supabase-admin.ts` and validated by CI.
 2. **Offline-First POS**: Orders are saved to Dexie IndexedDB locally with client-generated transaction IDs before being synced to `POST /api/sync`.
 3. **Double Verification**: Both UI route protection and API endpoint authorization (`requireUser` + `requireRole`) verify caller credentials.
-4. **Origin Isolation**: CORS is locked to approved domains configured via `ALLOWED_ORIGINS`.
+4. **Origin Isolation**: browsers never call the API. It is a private Vercel service reached only by the Admin and POS servers, so it sends no CORS headers (`ALLOWED_ORIGINS` is used only by local demo mode).

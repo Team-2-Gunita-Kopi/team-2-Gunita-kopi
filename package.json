@@ -5,7 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@12.21.0",
   "engines": {
-    "node": ">=20.0.0",
+    "node": "22.x",
     "pnpm": ">=9.0.0"
   },
   "scripts": {
@@ -16,7 +16,7 @@
     "test": "turbo run test",
     "format": "prettier --check \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
     "format:fix": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
-    "db:types": "supabase gen types typescript --local > packages/db-types/src/index.ts || echo \"Supabase CLI not connected or schema pending; keeping placeholder types\""
+    "db:types": "supabase gen types typescript --linked --schema public > packages/db-types/src/index.ts && prettier --write packages/db-types/src/index.ts"
   },
   "devDependencies": {
     "@types/node": "^20.17.19",

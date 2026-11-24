@@ -1,69 +1,109 @@
 name: Database Migrations
 
+# Validation runs on every pull request that touches the database. Applying migrations never runs
+# on push: it is started by hand, names the exact migrations it expects to apply, and runs inside a
+# GitHub environment ("staging" or "production") whose required reviewers approve it.
+# Secrets are read only from environment secrets and are never echoed.
+
 on:
-  workflow_dispatch:
-  push:
+  pull_request:
     branches: [main]
     paths:
       - "supabase/migrations/**"
+      - "supabase/tests/**"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Environment to migrate"
+        type: choice
+        options: [staging, production]
+        required: true
+      expected_migrations:
+        description: "Exact pending versions to apply, space separated (e.g. 20261120000000 20261120000500)"
+        type: string
+        required: true
+
+env:
+  SUPABASE_CLI_VERSION: 2.122.1
 
 jobs:
-  migrate-staging:
-    name: Apply Migrations to Staging
+  validate:
+    name: Migrations and SQL tests on PostgreSQL 15
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    environment: staging
-
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Link Staging Supabase Project
-        run: |
-          supabase link --project-ref "$SUPABASE_STAGING_PROJECT_REF"
+      - uses: actions/checkout@v4
+      - name: Apply every migration in order, then the SQL tests
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STAGING_DB_PASSWORD }}
-          SUPABASE_STAGING_PROJECT_REF: ${{ secrets.SUPABASE_STAGING_PROJECT_REF }}
-
-      - name: Push Migrations to Staging
+          PGHOST: localhost
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        working-directory: supabase
         run: |
-          supabase db push
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STAGING_DB_PASSWORD }}
+          set -euo pipefail
+          for f in tests/supabase-stub.sql migrations/*.sql tests/phase2_core.test.sql \
+                   tests/roles_mfa_storage.test.sql tests/addons_catalog_costs.test.sql \
+                   tests/validation_calculations.test.sql; do
+            echo "::group::$f"
+            psql -q -v ON_ERROR_STOP=1 -f "$f"
+            echo "::endgroup::"
+          done
 
-  migrate-production:
-    name: Apply Migrations to Production
-    needs: [migrate-staging]
+  apply:
+    name: Apply approved migrations to ${{ inputs.target }}
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    # Requires manual approval configured in GitHub Environment settings for 'production'
-    environment: production
-
+    # Required reviewers on this environment are the approval step (GitHub > Settings > Environments).
+    environment: ${{ inputs.target }}
+    concurrency:
+      group: db-migrations-${{ inputs.target }}
+      cancel-in-progress: false
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: ${{ env.SUPABASE_CLI_VERSION }}
 
-      - name: Link Production Supabase Project
-        run: |
-          supabase link --project-ref "$SUPABASE_PROD_PROJECT_REF"
+      - name: Compare pending migrations with the approved list
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
-          SUPABASE_PROD_PROJECT_REF: ${{ secrets.SUPABASE_PROD_PROJECT_REF }}
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          EXPECTED: ${{ inputs.expected_migrations }}
+        run: |
+          set -euo pipefail
+          [ -n "$DB_URL" ] || { echo "SUPABASE_DB_URL is not set for this environment"; exit 1; }
+          applied=$(psql "$DB_URL" -At -c "select version from supabase_migrations.schema_migrations order by 1")
+          files=$(ls supabase/migrations/*.sql | xargs -n1 basename | cut -d_ -f1 | sort)
+          pending=$(comm -23 <(echo "$files") <(echo "$applied" | sort) | tr '\n' ' ' | xargs)
+          expected=$(echo "$EXPECTED" | tr ' ' '\n' | sed '/^$/d' | sort | tr '\n' ' ' | xargs)
+          {
+            echo "### Migration plan for ${{ inputs.target }}"
+            echo "- Requested by: ${{ github.actor }}, commit ${{ github.sha }}"
+            echo "- Pending: ${pending:-none}"
+            echo "- Approved: ${expected:-none}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$pending" != "$expected" ]; then
+            echo "Pending migrations ($pending) differ from the approved list ($expected). Nothing applied."
+            exit 1
+          fi
+          [ -n "$pending" ] || { echo "Nothing to apply."; exit 0; }
 
-      - name: Push Migrations to Production
-        run: |
-          supabase db push
+      - name: Dry run
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PROD_DB_PASSWORD }}
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: supabase db push --dry-run --include-all --db-url "$DB_URL"
+
+      - name: Apply
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          supabase db push --include-all --db-url "$DB_URL"
+          echo "- Applied at $(date -u +%FT%TZ)" >> "$GITHUB_STEP_SUMMARY"

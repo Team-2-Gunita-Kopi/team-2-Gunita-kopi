@@ -1,3 +1,4 @@
+// Demo mode only (/api/mock/rpc, refused in production builds). Real traffic never needs CORS.
 export function getAllowedOrigins(): string[] {
   const envOrigins =
     process.env.ALLOWED_ORIGINS ||
@@ -25,7 +26,7 @@ export function getCorsHeaders(origin: string | null): Record<string, string> {
     "Access-Control-Allow-Origin": allowOriginValue,
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers":
-      "Content-Type, Authorization, X-Requested-With, X-Request-ID",
+      "Content-Type, Authorization, X-Requested-With, X-Request-ID, X-Setup-Token",
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Max-Age": "86400",
   };

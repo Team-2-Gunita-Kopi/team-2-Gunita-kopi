@@ -2,6 +2,36 @@ import { Role, ROLES, RoleSchema } from "@gunita/contracts";
 
 export type { Role };
 export { ROLES, RoleSchema };
+export { isLoopbackHost, isLoopbackUrl } from "./local-url";
+
+/**
+ * Staff sign in with a username, but Supabase Auth needs an email.
+ * Barista accounts get this internal address; no mail is ever sent to it.
+ * The Owner/Admin uses a real email instead (users.email).
+ * Used only by the API: account creation and POST /api/auth/login.
+ */
+export const STAFF_EMAIL_DOMAIN = "staff.gunitakopi.local";
+
+/**
+ * Session cookie names (@supabase/ssr, HttpOnly, set by each site's server). Different per site so
+ * Admin and POS on one host (localhost:3000 and :3001 share cookies) never overwrite each other.
+ */
+export const ADMIN_SESSION_COOKIE = "sb-gunita-admin-auth";
+export const POS_SESSION_COOKIE = "sb-gunita-pos-auth";
+/**
+ * Short-lived recovery session (HttpOnly, set by the Admin server between "verify code" and
+ * "save new password"). Never read by the page guard or the /api proxy, so it grants no access.
+ */
+export const ADMIN_RECOVERY_COOKIE = "sb-gunita-admin-recovery";
+/**
+ * Owner sign-in challenge between the password and the emailed code (HttpOnly, path /auth,
+ * 10 minutes). Grants no access: apps/api exchanges it for a session only with a valid code.
+ */
+export const ADMIN_OTP_COOKIE = "gunita-admin-otp";
+
+export function usernameToAuthEmail(username: string): string {
+  return `${username.trim().toLowerCase()}@${STAFF_EMAIL_DOMAIN}`;
+}
 
 export interface SupabaseJwtPayload {
   sub: string;
@@ -18,6 +48,8 @@ export interface SupabaseJwtPayload {
     [key: string]: unknown;
   };
   role?: string;
+  /** Supabase Auth session; an Owner session counts only once apps/api approved this id. */
+  session_id?: string;
   exp?: number;
   iat?: number;
 }
@@ -95,3 +127,10 @@ export function extractEmailFromToken(token: string): string | null {
   const payload = decodeJwtPayload(token);
   return payload?.email ?? null;
 }
+
+export {
+  MOCK_SESSION_COOKIE,
+  encodeMockSession,
+  decodeMockSession,
+  type MockSession,
+} from "./mock-session";

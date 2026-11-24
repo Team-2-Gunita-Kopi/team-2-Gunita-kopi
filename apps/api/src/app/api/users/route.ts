@@ -1,22 +1,13 @@
-import { NextRequest } from "next/server";
 import { requireRole } from "@/lib/auth";
-import { errorResponse, notImplementedResponse } from "@/lib/response";
+import { jsonResponse, route } from "@/lib/response";
+import { readQuery } from "@/lib/request";
+import { UserListQuerySchema } from "@gunita/contracts";
 import { listUsers } from "@/modules/users/service";
 
-export async function GET(req: NextRequest) {
-  try {
-    const user = await requireRole(req, "owner_admin");
-    await listUsers(user);
-    return notImplementedResponse("GET /api/users");
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "statusCode" in error &&
-      (error as { statusCode: number }).statusCode === 501
-    ) {
-      return notImplementedResponse("GET /api/users");
-    }
-    return errorResponse(error);
-  }
-}
+// Staff accounts, Owner only. New accounts: POST /api/admin/employees.
+export const GET = route(async (req) => {
+  const user = await requireRole(req, "owner_admin");
+  return jsonResponse(
+    await listUsers(user, readQuery(req, UserListQuerySchema)),
+  );
+});

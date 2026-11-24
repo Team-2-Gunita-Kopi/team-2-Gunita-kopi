@@ -1,6 +1,6 @@
 import { defaultCache } from "@serwist/next/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { Serwist } from "serwist";
+import { ExpirationPlugin, NetworkFirst, Serwist } from "serwist";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -30,7 +30,22 @@ const serwist = new Serwist({
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,
-  runtimeCaching: defaultCache,
+  // defaultCache's /api/ rule does not match the /staff basePath; same rule for /staff/api/.
+  runtimeCaching: [
+    {
+      matcher: ({ sameOrigin, url }) =>
+        sameOrigin && url.pathname.startsWith("/staff/api/"),
+      method: "GET",
+      handler: new NetworkFirst({
+        cacheName: "apis",
+        networkTimeoutSeconds: 10,
+        plugins: [
+          new ExpirationPlugin({ maxEntries: 16, maxAgeSeconds: 24 * 60 * 60, maxAgeFrom: "last-used" }),
+        ],
+      }),
+    },
+    ...defaultCache,
+  ],
 });
 
 serwist.addEventListeners();
