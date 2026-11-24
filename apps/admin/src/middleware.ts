@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ADMIN_SESSION_COOKIE } from "@gunita/auth";
 import { createAuthMiddleware } from "@gunita/auth/middleware";
 import { env } from "./lib/env";
+import { BASE_PATH } from "./lib/base-path";
 import { resolveRole } from "@/lib/session";
 import { USE_MOCKS } from "@/lib/use-mocks";
 
@@ -24,6 +25,7 @@ const guard = createAuthMiddleware({
     "/robots.txt",
   ],
   restrictedPath: "/restricted",
+  cookiePath: BASE_PATH,
 });
 
 // Demo mode (NEXT_PUBLIC_USE_MOCKS=true): the role comes from the unsigned mock cookie.
@@ -47,13 +49,19 @@ function mockMiddleware(request: NextRequest) {
 
   const role = resolveRole(request, USE_MOCKS);
   if (!role) {
-    const loginUrl = new URL("/login", request.url);
+    // nextUrl keeps the /admin basePath.
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
   if (role !== REQUIRED_ROLE) {
-    return NextResponse.rewrite(new URL("/restricted", request.url));
+    const restricted = request.nextUrl.clone();
+    restricted.pathname = "/restricted";
+    restricted.search = "";
+    return NextResponse.rewrite(restricted);
   }
 
   return NextResponse.next();
@@ -64,5 +72,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|icon.svg).*)"],
 };

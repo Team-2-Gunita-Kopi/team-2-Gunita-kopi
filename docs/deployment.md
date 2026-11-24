@@ -5,7 +5,8 @@ serves everything through Vercel Services (beta):
 
 | URL | Service | Notes |
 |---|---|---|
-| `/` | `apps/admin` (Owner portal) | |
+| `/` | redirect | Goes to `/staff/pos`. The bare address opens the staff POS, never the Owner sign-in. |
+| `/admin` | `apps/admin` (Owner portal) | Next `basePath: "/admin"`. Sign-in at `/admin/login`, then the emailed code. |
 | `/staff` | `apps/pos` (Barista PWA) | Next `basePath: "/staff"`. Main screen `/staff/pos`; `/pos` redirects there. |
 | none | `apps/api` | Private. Only Admin and POS reach it, through the binding `API_URL`. |
 
@@ -60,7 +61,7 @@ merge to main (only when CI is green) --> Vercel Production (uses the production
    - seeds the test accounts,
    - prints the passwords.
 2. Run `npx -y pnpm@12.21.0 dev`:
-   - Admin: http://localhost:3000
+   - Admin: http://localhost:3000/admin
    - POS: http://localhost:3001/staff
    - API: http://localhost:3002
    - Sign-in codes: http://127.0.0.1:54326
@@ -158,7 +159,7 @@ merge to main (only when CI is green) --> Vercel Production (uses the production
 2. **Confirm the Services behaviour** (beta):
    - The build log shows the install at the repo root.
    - Functions run in `sin1`.
-   - `/staff/...` serves the POS, and everything else serves Admin.
+   - `/admin/...` serves the Owner portal, `/staff/...` the POS, and `/` redirects to `/staff/pos`.
    - `/api/setup/owner` returns 404.
 3. **Test pass on the preview** (dev database):
    - Owner sign-in with the emailed code.
@@ -169,13 +170,25 @@ merge to main (only when CI is green) --> Vercel Production (uses the production
    - Reports export.
    - The PWA installs from `/staff`.
    - The browser console shows no `Content-Security-Policy-Report-Only` reports.
-4. If a Services check fails, stop. The fallback is three projects: Root Directory per app,
+4. **Only the Owner gets into `/admin`** (live security checks; record the results in the PR):
+   - A wrong password is refused, and so is a wrong emailed code.
+   - A used code cannot be reused.
+   - A Barista account on `/admin/login` is refused, and a Barista session sees `/admin/restricted`.
+   - A second Owner setup is refused.
+   - A database check shows exactly one `owner_admin` row:
+     `select count(*) from public.users where role = 'owner_admin';` must return 1.
+   - POS logout clears cached data, but queued offline orders stay.
+5. If a Services check fails, stop. The fallback is three projects: Root Directory per app,
    `API_URL` set by hand, and the API's URL public.
 
 ## Phase 6: firewall (approval)
 
-1. Run `bash scripts/vercel-firewall.sh` (or `bash scripts/vercel-firewall.sh pro`). It stages the
-   sign-in rate limit and the probe block in **log** mode and never publishes.
+1. Run `bash scripts/vercel-firewall.sh` (or `bash scripts/vercel-firewall.sh pro`). It stages three
+   rules in **log** mode and never publishes:
+   - the sign-in rate limit;
+   - the probe block;
+   - **Owner portal: Philippines only** (`/admin` from outside PH is blocked once enforced; the POS is
+     unaffected). If the Owner travels abroad, disable that rule in the Vercel dashboard.
 2. Review hits in Vercel → Firewall for about a day.
 3. Switch the rules to enforce (`--rate-limit-action rate_limit`, or `--action deny`).
 4. A person runs `npx -y vercel@66.6.0 firewall publish --yes`.
@@ -237,6 +250,14 @@ Still to do (each optional):
 - **Faster local dev:** try `next dev --turbopack` in each app's `dev` script. On-demand compiling
   is the main reason the first click on each page is slow locally. Production builds do not have
   this delay.
-- **Later:**
-  - Merge the profile read and the approval check into one SQL function (one query instead of two).
-  - Merge the three apps into one Next.js app to remove the second hop (spec option B).
+- **Later:** merge the profile read and the approval check into one SQL function (one query
+  instead of two). The apps stay separate (OWASP: separate admin and user applications).
+
+## Next feature: Owner passkeys
+
+The Owner signs in with the password, then a passkey on an enrolled phone or laptop (Face ID,
+fingerprint or PIN). The emailed code stays for recovery and for enrolling a new device. It is built
+with SimpleWebAuthn; Supabase's passkeys are still experimental. See spec section 10. Design first.
+
+Until then, turn on 2-step verification for the Owner's email and for every Supabase, Vercel and
+GitHub admin account. Anyone with those can bypass the app.

@@ -6,7 +6,7 @@ Gunita Kopi POS: coffee-shop POS and inventory system. pnpm + Turborepo monorepo
 
 ## Setting up a new developer machine
 
-When someone asks to set up, install, or run this project on their computer, run `bash scripts/setup-local.sh` from the repo root (Git Bash on Windows). It checks Git, Node 22 and Docker, installs packages, copies `supabase/.env.example` to `supabase/.env` if missing, starts the LOCAL Supabase stack, applies migrations, seeds synthetic test accounts once, and prints the links and test passwords. Then start the apps with `npx -y pnpm@12.21.0 dev` (run it in the background) and give the user the links: Admin http://localhost:3000, POS http://localhost:3001/staff, sign-in codes http://127.0.0.1:54326.
+When someone asks to set up, install, or run this project on their computer, run `bash scripts/setup-local.sh` from the repo root (Git Bash on Windows). It checks Git, Node 22 and Docker, installs packages, copies `supabase/.env.example` to `supabase/.env` if missing, starts the LOCAL Supabase stack, applies migrations, seeds synthetic test accounts once, and prints the links and test passwords. Then start the apps with `npx -y pnpm@12.21.0 dev` (run it in the background) and give the user the links: Admin http://localhost:3000/admin, POS http://localhost:3001/staff, sign-in codes http://127.0.0.1:54326.
 
 - If the script stops on a missing tool, tell the user exactly what to install (Git https://git-scm.com, Node.js 22 https://nodejs.org, Docker Desktop https://www.docker.com/products/docker-desktop) or to open Docker Desktop and wait until it runs, then run the script again. It is safe to rerun.
 - Local setup never needs the live project, keys or `supabase/.env.local`. Never point a new machine at live, and never run `supabase link`, `db push` or `migration repair` for setup.
@@ -123,7 +123,7 @@ From `CONTRIBUTING.md`: `main` is protected (no direct pushes); work on `feature
 ## Current state (2026-11-24)
 
 - Dated handoff and session notes: `docs/history/2026-11-session-notes.md` (history, not rules).
-- Deployment: one Vercel project with Services (Admin `/`, POS `/staff`, private API). See `docs/deployment.md` and `docs/superpowers/specs/2026-11-24-one-vercel-deploy-and-hardening-design.md`.
+- Deployment: one Vercel project with Services (Owner portal `/admin`, POS `/staff`, `/` redirects to the POS, private API; Admin and POS stay separate apps per OWASP). See `docs/deployment.md` and `docs/superpowers/specs/2026-11-24-one-vercel-deploy-and-hardening-design.md`.
 - Live dev project `gunita-kopi-pos-dev`: latest applied migration `20261120001200`; `0900` and `1000` (Barista add-ingredient, approved 2026-11-24) are still to be applied there with approval. Production will be a new, clean Supabase project.
 - Owner sign-in second step is a 6-digit emailed code (not TOTP). Baristas may record stock-in and stock-out and add a basic ingredient.
 - Do not commit, push, deploy, or change a live database without explicit approval. Never touch `my-skills/`. FR-40 (staff on duty) is out of scope.

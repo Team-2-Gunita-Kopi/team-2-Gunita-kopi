@@ -45,7 +45,7 @@ fi
 step "Done"
 cat <<EOF
 Start the apps:   npx -y pnpm@12.21.0 dev
-  Admin (Owner):  http://localhost:3000
+  Admin (Owner):  http://localhost:3000/admin
   POS (Barista):  http://localhost:3001/staff
   API:            http://localhost:3002
   Sign-in codes:  http://127.0.0.1:54326  (Owner: after the password, open the newest email)

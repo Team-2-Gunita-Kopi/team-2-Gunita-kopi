@@ -29,8 +29,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={fontVars}>
-      <body className="owner-mode">
+    <html lang="en" className={fontVars} suppressHydrationWarning>
+      <body className="owner-mode" suppressHydrationWarning>
         {children}
       </body>
     </html>

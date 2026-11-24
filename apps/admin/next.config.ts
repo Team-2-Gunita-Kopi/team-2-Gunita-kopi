@@ -17,6 +17,8 @@ for (const envVar of requiredEnvs) {
 }
 
 const nextConfig: NextConfig = {
+  // Keep in sync with src/lib/base-path.ts (BASE_PATH) and the /admin rewrites in vercel.json.
+  basePath: "/admin",
   reactStrictMode: true,
   transpilePackages: [
     "@gunita/contracts",

@@ -8,6 +8,7 @@ import { getSession, signOut } from "@/features/auth";
 import { mockRpc } from "@/lib/mock-db";
 import { QueryProvider } from "@/lib/query";
 import { USE_MOCKS } from "@/lib/use-mocks";
+import { withBasePath } from "@/lib/base-path";
 
 const ADMIN_NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", short: "Home", href: "/dashboard", icon: "home" },
@@ -67,6 +68,7 @@ function OwnerShell({ children }: { children: React.ReactNode }) {
   return (
     <>
       <AppShell
+        hrefFor={withBasePath}
         navItems={ADMIN_NAV_ITEMS}
         currentPath={pathname}
         onNavigate={(href) => router.push(href)}
