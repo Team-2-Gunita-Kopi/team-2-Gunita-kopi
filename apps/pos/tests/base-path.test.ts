@@ -32,12 +32,14 @@ describe("POS under /staff", () => {
     expect(m.icons?.every((i) => i.src.startsWith("/staff/icons/"))).toBe(true);
   });
 
-  // Why: the one Vercel project routes /staff to the POS and everything else to Admin; /pos (the
-  // old start URL) must not end on an Owner page.
+  // Why: /staff is the POS and /admin the Owner portal; the bare address and /pos open the POS,
+  // never an Owner page, and the API has no public route.
   it("is routed by vercel.json", () => {
     const v = JSON.parse(readFileSync(resolve(__dirname, "../../../vercel.json"), "utf8"));
-    expect(v.rewrites[0]).toEqual({ source: "/staff", destination: { service: "pos" } });
-    expect(v.rewrites.at(-1).destination).toEqual({ service: "admin" });
+    expect(v.rewrites).toContainEqual({ source: "/admin/(.*)", destination: { service: "admin" } });
+    expect(v.rewrites).toContainEqual({ source: "/staff/(.*)", destination: { service: "pos" } });
+    expect(v.rewrites.at(-1).destination).toEqual({ service: "pos" });
+    expect(v.redirects).toContainEqual({ source: "/", destination: "/staff/pos", permanent: false });
     expect(v.redirects).toContainEqual({ source: "/pos", destination: "/staff/pos", permanent: false });
     expect(JSON.stringify(v.rewrites)).not.toContain('"api"');
   });

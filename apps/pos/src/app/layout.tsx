@@ -38,8 +38,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={fontVars}>
-      <body className="staff-mode">
+    <html lang="en" className={fontVars} suppressHydrationWarning>
+      <body className="staff-mode" suppressHydrationWarning>
         {children}
       </body>
     </html>

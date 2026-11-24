@@ -229,7 +229,7 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
 
   const otpCookie = (res: NextResponse, value: string) => {
     res.cookies.set(opts.otpCookieName!, value, {
-      path: "/auth",
+      path: `${opts.cookiePath && opts.cookiePath !== "/" ? opts.cookiePath : ""}/auth`,
       httpOnly: true,
       sameSite: "strict",
       secure: process.env.NODE_ENV === "production",

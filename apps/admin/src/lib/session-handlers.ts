@@ -7,6 +7,7 @@ import {
   createSessionHandlers,
   resolveApiUrl,
 } from "@gunita/auth/session-server";
+import { BASE_PATH } from "./base-path";
 import { env } from "./env";
 
 // Server-side session handlers: the HttpOnly cookie never reaches page scripts.
@@ -19,4 +20,6 @@ export const session = createSessionHandlers({
   allowedRoles: ["owner_admin"],
   recoveryCookieName: ADMIN_RECOVERY_COOKIE,
   otpCookieName: ADMIN_OTP_COOKIE,
+  // Owner cookies stay under /admin: POS pages and requests never carry them.
+  cookiePath: BASE_PATH,
 });

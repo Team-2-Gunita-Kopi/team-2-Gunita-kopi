@@ -79,7 +79,7 @@ gunita-kopi-pos/
    pnpm dev
    ```
    This starts all three applications concurrently:
-   - Admin website: `http://localhost:3000`
+   - Admin website: `http://localhost:3000/admin`
    - POS website: `http://localhost:3001/staff`
    - Backend API: `http://localhost:3002`
 

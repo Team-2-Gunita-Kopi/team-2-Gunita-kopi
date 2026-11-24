@@ -1,13 +1,20 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["sin1"],
+  "regions": [
+    "sin1"
+  ],
   "services": {
     "admin": {
       "root": "apps/admin",
       "installCommand": "cd ../.. && npx -y pnpm@12.21.0 install --frozen-lockfile",
       "buildCommand": "cd ../.. && npx -y pnpm@12.21.0 turbo run build --filter=@gunita/admin",
       "bindings": [
-        { "type": "service", "service": "api", "format": "url", "env": "API_URL" }
+        {
+          "type": "service",
+          "service": "api",
+          "format": "url",
+          "env": "API_URL"
+        }
       ]
     },
     "pos": {
@@ -15,7 +22,12 @@
       "installCommand": "cd ../.. && npx -y pnpm@12.21.0 install --frozen-lockfile",
       "buildCommand": "cd ../.. && npx -y pnpm@12.21.0 turbo run build --filter=@gunita/pos",
       "bindings": [
-        { "type": "service", "service": "api", "format": "url", "env": "API_URL" }
+        {
+          "type": "service",
+          "service": "api",
+          "format": "url",
+          "env": "API_URL"
+        }
       ]
     },
     "api": {
@@ -25,12 +37,48 @@
     }
   },
   "redirects": [
-    { "source": "/pos", "destination": "/staff/pos", "permanent": false }
+    {
+      "source": "/",
+      "destination": "/staff/pos",
+      "permanent": false
+    },
+    {
+      "source": "/pos",
+      "destination": "/staff/pos",
+      "permanent": false
+    }
   ],
   "rewrites": [
-    { "source": "/staff", "destination": { "service": "pos" } },
-    { "source": "/staff/(.*)", "destination": { "service": "pos" } },
-    { "source": "/(.*)", "destination": { "service": "admin" } }
+    {
+      "source": "/admin",
+      "destination": {
+        "service": "admin"
+      }
+    },
+    {
+      "source": "/admin/(.*)",
+      "destination": {
+        "service": "admin"
+      }
+    },
+    {
+      "source": "/staff",
+      "destination": {
+        "service": "pos"
+      }
+    },
+    {
+      "source": "/staff/(.*)",
+      "destination": {
+        "service": "pos"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "pos"
+      }
+    }
   ],
   "headers": [
     {

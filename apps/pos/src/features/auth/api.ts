@@ -43,6 +43,9 @@ export async function signOut(): Promise<void> {
     await apiClient<null>("/auth/logout", { method: "POST" });
   } finally {
     window.sessionStorage.removeItem(CASHIER_SESSION_KEY);
+    // Shared tablet: drop cached API responses (orders, inventory) so the next barista starts
+    // clean. Queued offline orders live in IndexedDB and are kept.
+    if (typeof caches !== "undefined") await caches.delete("apis").catch(() => false);
   }
 }
 

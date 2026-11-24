@@ -1,4 +1,5 @@
 import { ApiResponse } from "@gunita/contracts";
+import { withBasePath } from "./base-path";
 
 export type ApiClientOptions = RequestInit;
 
@@ -16,7 +17,9 @@ export async function apiClient<T>(
   if (!headers.has("Content-Type"))
     headers.set("Content-Type", "application/json");
 
-  const url = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const url = withBasePath(
+    endpoint.startsWith("/") ? endpoint : `/${endpoint}`,
+  );
 
   try {
     const response = await fetch(url, {
@@ -66,20 +69,16 @@ export async function apiData<T>(
   return parsed.data;
 }
 
-/** Reads every page of a list endpoint (the API caps pageSize at 100). */
+/** Reads every page of a list endpoint (the API caps pageSize at 100, this reads at most 50 pages). */
 export async function apiAllPages<T>(
   endpoint: string,
   schema: ResponseSchema<{ items: T[]; total: number }>,
 ): Promise<T[]> {
   const sep = endpoint.includes("?") ? "&" : "?";
-  const items: T[] = [];
-  for (let page = 1; page <= 50; page++) {
-    const res = await apiData(
-      `${endpoint}${sep}page=${page}&pageSize=100`,
-      schema,
-    );
-    items.push(...res.items);
-    if (items.length >= res.total || res.items.length === 0) break;
-  }
-  return items;
+  const page = (n: number) => apiData(`${endpoint}${sep}page=${n}&pageSize=100`, schema);
+  // Speed: page 1 gives the total; the remaining pages load in parallel, not one after another.
+  const first = await page(1);
+  const pages = Math.min(50, Math.ceil(first.total / 100));
+  const rest = await Promise.all(Array.from({ length: Math.max(0, pages - 1) }, (_, i) => page(i + 2)));
+  return [first, ...rest].flatMap((r) => r.items);
 }

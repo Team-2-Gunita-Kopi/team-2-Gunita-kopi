@@ -1,0 +1,5 @@
+<!-- Placeholder app icon (browser tab). Replace with the final Gunita Kopi mark. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <rect width="192" height="192" fill="#0F2F24"/>
+  <text x="50%" y="55%" text-anchor="middle" fill="#FFFFFF" font-size="48" font-family="sans-serif" font-weight="bold">GK</text>
+</svg>

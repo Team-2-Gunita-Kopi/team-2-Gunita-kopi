@@ -94,3 +94,42 @@ describe("POS guard under /staff", () => {
     expect(res.headers.get("x-middleware-rewrite")).toBe("http://shop.local/staff/restricted");
   });
 });
+
+describe("Owner portal under /admin", () => {
+  const owner = { ...pos, cookieName: "sb-gunita-admin-auth", allowedRoles: ["owner_admin"] as const, cookiePath: "/admin", otpCookieName: "gk-admin-otp" };
+
+  // Why: the emailed-code step must work under /admin. A challenge cookie scoped to /auth would
+  // never reach /admin/auth/otp, and the Owner could not finish signing in.
+  it("keeps the emailed-code challenge under /admin/auth", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.endsWith("/api/auth/login")) return Response.json({ success: true, data: { otpRequired: true, challenge: "challenge-1" } });
+      if (url.endsWith("/api/auth/otp")) return Response.json({ success: true });
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    const h = createSessionHandlers({ ...owner, allowedRoles: ["owner_admin"] });
+    const res = await h.login(
+      new NextRequest("http://shop.local/admin/auth/login", { method: "POST", headers: { origin: "http://shop.local" }, body: "{}" }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.getSetCookie()).toContainEqual(expect.stringMatching(/^gk-admin-otp=challenge-1;.*Path=\/admin\/auth/i));
+  });
+
+  // Why: no one but the Owner gets into the Owner portal. A Barista session is shown
+  // /admin/restricted, and Owner cookies are scoped to /admin so POS requests never carry them.
+  it("rewrites a Barista session to /admin/restricted", async () => {
+    stubNetwork("barista");
+    const session = { access_token: jwt("barista"), refresh_token: "r", token_type: "bearer", expires_in: 3600, expires_at: exp, user: user("barista") };
+    const guard = createAuthMiddleware({
+      supabaseUrl: SUPABASE, supabaseKey: "publishable-key", cookieName: "sb-gunita-admin-auth",
+      allowedRoles: ["owner_admin"], publicPaths: ["/login"], restrictedPath: "/restricted", cookiePath: "/admin",
+    });
+    const res = await guard(
+      new NextRequest("http://shop.local/admin/users", {
+        nextConfig: { basePath: "/admin" },
+        headers: { cookie: `sb-gunita-admin-auth=base64-${b64url(session)}` },
+      }),
+    );
+    expect(res.headers.get("x-middleware-rewrite")).toBe("http://shop.local/admin/restricted");
+  });
+});
