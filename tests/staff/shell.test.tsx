@@ -27,6 +27,18 @@ vi.mock("@/staff/lib/use-mocks", () => ({
   },
 }));
 
+
+// Records the idle sign-out the layout configures (the real IdleLogout still renders).
+const idle = vi.hoisted(() => ({ timeoutMs: 0 }));
+vi.mock("@/ui", async (orig) => {
+  const ui = await orig<typeof import("@/ui")>();
+  const IdleLogout = (p: React.ComponentProps<typeof ui.IdleLogout>) => {
+    idle.timeoutMs = p.timeoutMs;
+    return React.createElement(ui.IdleLogout, p);
+  };
+  return { ...ui, IdleLogout };
+});
+
 import PosAppLayout from "@/app/(staff)/staff/(pos)/layout";
 
 const LABELS = ["POS", "Orders", "Inventory"];
@@ -44,6 +56,12 @@ afterEach(() => {
 });
 
 describe("pos shell", () => {
+  // Why (decided 2026-11-24): the shop tablet stays signed in for a whole shift (8 hours).
+  it("signs the Barista out after 8 idle hours", async () => {
+    render(<PosAppLayout>content</PosAppLayout>);
+    await waitFor(() => expect(idle.timeoutMs).toBe(8 * 60 * 60 * 1000));
+  });
+
   it("renders 3 nav links with POS current", () => {
     render(<PosAppLayout>content</PosAppLayout>);
     const side = screen.getAllByRole("navigation").find((n) => within(n).queryByText("Inventory"))!;

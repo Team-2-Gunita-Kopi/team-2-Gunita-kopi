@@ -18,6 +18,18 @@ vi.mock("@/owner/lib/use-mocks", () => ({
   },
 }));
 
+
+// Records the idle sign-out the layout configures (the real IdleLogout still renders).
+const idle = vi.hoisted(() => ({ timeoutMs: 0 }));
+vi.mock("@/ui", async (orig) => {
+  const ui = await orig<typeof import("@/ui")>();
+  const IdleLogout = (p: React.ComponentProps<typeof ui.IdleLogout>) => {
+    idle.timeoutMs = p.timeoutMs;
+    return React.createElement(ui.IdleLogout, p);
+  };
+  return { ...ui, IdleLogout };
+});
+
 import AdminAppLayout from "@/app/(owner)/admin/(app)/layout";
 
 const LABELS = ["Dashboard", "Orders", "Products", "Inventory", "Suppliers", "Reports", "Users"];
@@ -38,6 +50,13 @@ afterEach(() => {
 });
 
 describe("owner shell", () => {
+  // Why (decided 2026-11-24): the Owner portal handles money and staff accounts, so it signs out
+  // after the common 30-minute idle standard, not every 5 minutes.
+  it("signs the Owner out after 30 idle minutes", async () => {
+    render(<AdminAppLayout>content</AdminAppLayout>);
+    await waitFor(() => expect(idle.timeoutMs).toBe(30 * 60 * 1000));
+  });
+
   it("renders 7 nav links in order with Dashboard current", () => {
     render(<AdminAppLayout>content</AdminAppLayout>);
     const side = screen.getAllByRole("navigation").find((n) => within(n).queryByText("Dashboard"))!;
