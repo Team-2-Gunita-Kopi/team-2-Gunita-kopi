@@ -166,7 +166,10 @@ merge to main (only when CI is green) --> Vercel Production (uses the production
    - Stock-in, stock-out, and a Barista adding an ingredient.
    - Reports export.
    - The PWA installs from `/staff`.
-   - The browser console shows no `Content-Security-Policy-Report-Only` reports.
+   - The browser console shows no Content Security Policy errors (the policy in `next.config.ts`
+     is enforced, so a blocked script, style, image or request shows as an error). One error is
+     expected on previews only: Vercel's preview toolbar script (`vercel.live`) is blocked. Turn
+     the toolbar off in the project settings, or ignore that one line.
 4. **Only the Owner gets into `/admin`** (live security checks; record the results in the PR):
    - A wrong password is refused, and so is a wrong emailed code.
    - A used code cannot be reused.
@@ -193,8 +196,6 @@ merge to main (only when CI is green) --> Vercel Production (uses the production
 1. Merge the PR into `main`. CI must be green. Vercel builds Production.
 2. Smoke test on the production URL: Phase 5 step 3, with real accounts.
 3. Install the POS PWA on the shop tablet from `https://<project>.vercel.app/staff`.
-4. **Security policy:** once previews show no reports, merge the report-only policy into the
-   enforced `Content-Security-Policy` header in `next.config.ts` (one header).
 
 ## Phase 8: running it
 
