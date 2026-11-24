@@ -38,16 +38,12 @@ const securityHeaders = [
   { key: "X-Robots-Tag", value: "noindex, nofollow" },
   { key: "X-Frame-Options", value: "DENY" },
   {
-    // Baseline CSP that cannot break Next.js inline scripts; session tokens are HttpOnly.
+    // Interim static policy, enforced; the nonce-based CSP of spec S4 follows after launch. It blocks
+    // external scripts, eval and cross-origin requests, but 'unsafe-inline' (needed by Next.js inline
+    // scripts until nonces) still lets an injected inline script run; session tokens are HttpOnly.
+    // Only `next dev` adds 'unsafe-eval' (Fast Refresh); production builds never allow eval.
     key: "Content-Security-Policy",
-    value: "base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'",
-  },
-  {
-    // Report-only until a preview shows no reports (spec S4). To enforce, merge these directives
-    // into the Content-Security-Policy entry above: two entries with the same key overwrite each other.
-    key: "Content-Security-Policy-Report-Only",
-    value:
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co; font-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
+    value: `default-src 'self'; script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co; font-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'`,
   },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

@@ -10,7 +10,8 @@ import { createAuthMiddleware } from "@/auth/middleware";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder-project-ref.supabase.co";
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key";
-const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true";
+// The demo guard trusts an unsigned cookie: never in a production build (like /api/mock/rpc).
+const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === "true" && process.env.NODE_ENV !== "production";
 
 // One app, two separate areas. Each area has its own sign-in page, its own session cookie (scoped to
 // its prefix) and its own allowed role. The API (src/server) re-checks role and status on every call.

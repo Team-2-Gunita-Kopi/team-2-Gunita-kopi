@@ -37,6 +37,18 @@ describe("admin middleware", () => {
     expect(res.headers.get("location")).toBeNull();
   });
 
+  // Why: the mock cookie is unsigned, so anyone can write one. A production build must never trust
+  // it, even if NEXT_PUBLIC_USE_MOCKS is set there by mistake (the demo API is refused there too).
+  it("ignores the mock cookie in a production build even when mocks are on", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      const res = await run("/admin/dashboard", cookieFor("owner_admin"), true);
+      expect(new URL(res.headers.get("location")!).pathname).toBe("/admin/login");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("keeps /login and /restricted public", async () => {
     for (const p of ["/admin/login", "/admin/restricted"]) {
       const res = await run(p, undefined, true);

@@ -424,6 +424,44 @@ describe("HttpOnly session: Admin", () => {
     expect(apiSeen.some((c) => c.path.startsWith("/api/setup/"))).toBe(false);
   });
 
+  // Why: every write needs a signed-in user, so the backend would refuse it anyway; an honest
+  // signed-out client is refused without the body being read. (Not a DoS control: getSession()
+  // does not verify the cookie, so the size cap below is what bounds the body.)
+  it("refuses state-changing calls without a session before reading the body", async () => {
+    for (const s of [admin(), pos()]) {
+      const request = req(s, "/api/products/1/image", { method: "PUT", body: "x".repeat(1024) });
+      const res = await s.handlers.proxy(request, {
+        params: Promise.resolve({ path: ["products", "1", "image"] }),
+      });
+      expect(res.status).toBe(401);
+      expect((await res.json()).error.code).toBe("UNAUTHORIZED");
+      expect(request.bodyUsed).toBe(false);
+    }
+    expect(apiSeen.some((c) => c.path === "/api/products/1/image")).toBe(false);
+  });
+
+  // Why: the session check trusts an unverified cookie, so a forged one gets past it. Only a size
+  // cap stops a client from making the server buffer a huge body; real requests (a 2 MB product
+  // image, a 100-order sync chunk) stay far below it and must still go through.
+  it("refuses bodies over the size cap without forwarding them, even with a session", async () => {
+    const s = admin(),
+      jar = new Jar();
+    await login(s, jar, "eric");
+    const send = (body: string, headers?: Record<string, string>) => {
+      const request = req(s, "/api/products/1/image", { method: "PUT", body, cookie: jar.header });
+      for (const [k, v] of Object.entries(headers ?? {})) request.headers.set(k, v);
+      return s.handlers.proxy(request, { params: Promise.resolve({ path: ["products", "1", "image"] }) });
+    };
+    const tooLarge = await send("x".repeat(11 * 1024 * 1024));
+    expect(tooLarge.status).toBe(413);
+    expect((await tooLarge.json()).error.code).toBe("PAYLOAD_TOO_LARGE");
+    expect((await send("{}", { "content-length": String(50 * 1024 * 1024) })).status).toBe(413);
+    expect(apiSeen.some((c) => c.path === "/api/products/1/image")).toBe(false);
+
+    expect((await send("x".repeat(3 * 1024 * 1024))).status).toBe(200);
+    expect(apiSeen.some((c) => c.path === "/api/products/1/image")).toBe(true);
+  });
+
   it("refuses cross-site requests (CSRF) to login, logout and state-changing proxy calls", async () => {
     const s = admin(),
       jar = new Jar();

@@ -52,6 +52,36 @@ const unavailable = () =>
 
 const apiUrlMissing = () => logError("auth.api_url_missing");
 
+// Far above any real request (a 2 MB product image, a 100-order sync chunk).
+const MAX_PROXY_BODY_BYTES = 10 * 1024 * 1024;
+
+/** Reads the body, or returns null as soon as it passes `max` bytes, so it is never buffered whole. */
+async function readCappedBody(req: NextRequest, max: number): Promise<ArrayBuffer | null> {
+  if (Number(req.headers.get("content-length") ?? 0) > max) return null;
+  if (!req.body) return new ArrayBuffer(0);
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      const body = new Uint8Array(size);
+      let offset = 0;
+      for (const chunk of chunks) {
+        body.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return body.buffer;
+    }
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+}
+
 // Cookie-authenticated state changes are accepted only from this site's own pages (CSRF).
 const sameOrigin = (req: NextRequest) =>
   req.headers.get("origin") === req.nextUrl.origin;
@@ -423,6 +453,13 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
     const { client, apply } = session(req);
     // Reads the cookie and refreshes an expiring token; the backend (src/server) verifies the token itself.
     const { data } = await client.auth.getSession();
+    // Every write needs a signed-in user, so a signed-out write is refused without reading the body.
+    // getSession() does not verify the cookie: the size cap below is what bounds the body.
+    if (hasBody && !data.session)
+      return apply(fail(401, "UNAUTHORIZED", "Missing Bearer authentication token"));
+    const body = hasBody ? await readCappedBody(req, MAX_PROXY_BODY_BYTES) : undefined;
+    if (body === null)
+      return apply(fail(413, "PAYLOAD_TOO_LARGE", "Request body is too large"));
     const headers = new Headers();
     for (const h of ["content-type", "x-request-id"]) {
       const v = req.headers.get(h);
@@ -437,7 +474,7 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
       {
         method: req.method,
         headers,
-        body: hasBody ? await req.arrayBuffer() : undefined,
+        body,
         cache: "no-store",
       },
     ).catch(() => null);
