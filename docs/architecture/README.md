@@ -5,13 +5,13 @@ The system architecture diagrams and visual models will be placed in this folder
 ## Core Architectural Rules (Section 3 Summary)
 
 1. **Zero Browser Service Role Key**:
-   The browser never receives or reads the Supabase service role key. Only server code inside `apps/api` (`apps/api/src/lib/supabase-admin.ts`) may read `SUPABASE_SERVICE_ROLE_KEY`.
+   The browser never receives or reads the Supabase service role key. Only server code inside the backend (`src/server`) (`src/server/lib/supabase-admin.ts`) may read `SUPABASE_SERVICE_ROLE_KEY`.
 
 2. **No Direct Database Access from Frontend**:
-   The Admin website (`apps/admin`) and POS website (`apps/pos`) utilize Supabase Auth strictly for user authentication. For all business data operations, the browser calls the site's own same-origin `/api` route; the site server reads the HttpOnly session cookie and forwards the call to the backend API (`apps/api`) with `Authorization: Bearer <token>`. The browser never holds a token. Neither website connects to PostgreSQL directly.
+   The Admin website (the Owner area (`/admin`)) and POS website (the POS area (`/staff`)) utilize Supabase Auth strictly for user authentication. For all business data operations, the browser calls the site's own same-origin `/api` route; the site server reads the HttpOnly session cookie and forwards the call to the backend API (the backend (`src/server`)) with `Authorization: Bearer <token>`. The browser never holds a token. Neither website connects to PostgreSQL directly.
 
 3. **Dual-Lock Server-Side Authorization**:
-   `apps/api` checks the authentication token, user active status, and role on every protected route. Row Level Security (RLS) acts as the second lock. By default, the API instantiates a Supabase client using the caller's JWT token, ensuring database-level RLS policies apply. The service role key is reserved strictly for employee provisioning and audit logs.
+   the backend (`src/server`) checks the authentication token, user active status, and role on every protected route. Row Level Security (RLS) acts as the second lock. By default, the API instantiates a Supabase client using the caller's JWT token, ensuring database-level RLS policies apply. The service role key is reserved strictly for employee provisioning and audit logs.
 
 4. **No Public Registration**:
    There is no public sign-up or registration form. Store owners provision all employee accounts through `POST /api/admin/employees`.

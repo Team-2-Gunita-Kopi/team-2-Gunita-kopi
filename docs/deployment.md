@@ -1,14 +1,14 @@
 # Setup and deployment, start to finish
 
-This guide takes Gunita Kopi POS from a fresh clone to production on Vercel. One Vercel project
-serves everything through Vercel Services (beta):
+This guide takes Gunita Kopi POS from a fresh clone to production on Vercel. It is one Next.js app
+(one `package.json`), deployed as a standard Vercel Next.js project: one build, one deployment.
 
-| URL | Service | Notes |
+| URL | Area | Notes |
 |---|---|---|
 | `/` | redirect | Goes to `/staff/pos`. The bare address opens the staff POS, never the Owner sign-in. |
-| `/admin` | `apps/admin` (Owner portal) | Next `basePath: "/admin"`. Sign-in at `/admin/login`, then the emailed code. |
-| `/staff` | `apps/pos` (Barista PWA) | Next `basePath: "/staff"`. Main screen `/staff/pos`; `/pos` redirects there. |
-| none | `apps/api` | Private. Only Admin and POS reach it, through the binding `API_URL`. |
+| `/admin` | Owner portal (`src/app/(owner)`) | Sign-in at `/admin/login`, then the emailed code. |
+| `/staff` | Barista POS (`src/app/(staff)`) | Main screen `/staff/pos`; `/pos` redirects there. Offline PWA scoped to `/staff/`. |
+| none | backend (`src/server`) | Private: called in process by the `/admin/api` and `/staff/api` proxies. Public only: `/api/health`, `/api/setup/owner` (setup token), `/api/mock/rpc` (demo, refused in production). |
 
 The design and its reasons are in `docs/superpowers/specs/2026-11-24-one-vercel-deploy-and-hardening-design.md`.
 
@@ -62,11 +62,10 @@ merge to main (only when CI is green) --> Vercel Production (uses the production
    - prints the passwords.
 2. Run `npx -y pnpm@12.21.0 dev`:
    - Admin: http://localhost:3000/admin
-   - POS: http://localhost:3001/staff
-   - API: http://localhost:3002
+   - POS: http://localhost:3000/staff
    - Sign-in codes: http://127.0.0.1:54326
-3. **Demo mode, no database:** start the API with `MOCK_MODE=true` and the POS or Admin with
-   `NEXT_PUBLIC_USE_MOCKS=true`. Demo accounts: `owner` / `owner123` and `barista` / `barista123`.
+3. **Demo mode, no database:** `MOCK_MODE=true NEXT_PUBLIC_USE_MOCKS=true npx -y pnpm@12.21.0 dev`.
+   Demo accounts: `owner` / `owner123` and `barista` / `barista123`.
 4. Before every push, run `bash scripts/predeploy-check.sh`. It runs install, lint, typecheck,
    tests, build and audit, and must end with "All pre-deploy checks passed".
 
@@ -115,26 +114,26 @@ merge to main (only when CI is green) --> Vercel Production (uses the production
 5. **Create the one Owner account:**
 
    ```bash
-   # Shell 1: run the API against production. Exported values override .env.local.
+   # Shell 1: run the app against production. Exported values override .env.local.
    export NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
    export NEXT_PUBLIC_SUPABASE_ANON_KEY=<publishable key>
    export SUPABASE_SERVICE_ROLE_KEY=<service role key>
    export OWNER_SETUP_TOKEN=$(openssl rand -hex 32)
-   npx -y pnpm@12.21.0 --filter @gunita/api dev
+   npx -y pnpm@12.21.0 dev
 
    # Shell 2: same OWNER_SETUP_TOKEN.
-   OWNER_SETUP_TOKEN=<same> API_URL=http://localhost:3002 node scripts/provision-owner.mjs
+   OWNER_SETUP_TOKEN=<same> node scripts/provision-owner.mjs   # calls http://localhost:3000/api/setup/owner
    ```
 
-   Then stop the API and close both shells. The API refuses a second Owner.
+   Then stop the app and close both shells. The setup route refuses a second Owner.
 6. **Data:** the Owner enters the real menu, recipes, add-ons, suppliers and opening stock (as
    stock-ins) in Admin. Never run the demo seeds on production.
 
 ## Phase 4: Vercel project (once, approval)
 
-1. Go to Vercel → Add New → Project → import the GitHub repo. Leave **Root Directory empty**:
-   `vercel.json` at the repo root defines the three services, the `/staff` routing, the `sin1`
-   region and HSTS.
+1. Go to Vercel → Add New → Project → import the GitHub repo. Framework preset: **Next.js**. Leave
+   **Root Directory empty**. `vercel.json` only pins functions to `sin1` (Singapore); routing,
+   redirects and security headers live in `next.config.ts`.
 2. In Settings → Git, set Production Branch to `main`.
 3. In Settings → General, set Node.js Version to 22.x (it also comes from `engines`).
 4. **Environment variables** (Settings → Environment Variables, or `npx -y vercel@66.6.0 env add <NAME> <env>`).
@@ -143,24 +142,22 @@ merge to main (only when CI is green) --> Vercel Production (uses the production
 | Variable | Production | Preview | Notes |
 |---|---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | prod URL | dev URL | public |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | prod publishable key | dev publishable key | must match what the API uses |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | prod publishable key | dev publishable key | public |
 | `SUPABASE_SERVICE_ROLE_KEY` (Sensitive) | prod | dev | server only |
 | `INTERNAL_PROXY_SECRET` (Sensitive) | 32+ random chars | a different value | `openssl rand -hex 32` |
 | `OWNER_SETUP_TOKEN` | unset | unset | only while provisioning |
 
-   - Never set `API_URL`: the binding injects it. If it is missing, sign-in answers 503 and logs
-     `auth.api_url_missing`.
    - Never set `MOCK_MODE` or `NEXT_PUBLIC_USE_MOCKS` on Vercel.
 5. In Settings → Deployment Protection, turn on Vercel Authentication for Preview deployments.
 
 ## Phase 5: first preview (verification)
 
 1. Push a branch and open a PR. CI runs, and Vercel posts a preview URL on the PR.
-2. **Confirm the Services behaviour** (beta):
-   - The build log shows the install at the repo root.
-   - Functions run in `sin1`.
+2. **Confirm the routing:**
+   - Functions run in `sin1` (deployment details in the Vercel dashboard).
    - `/admin/...` serves the Owner portal, `/staff/...` the POS, and `/` redirects to `/staff/pos`.
-   - `/api/setup/owner` returns 404.
+   - `/api/products` returns 404 (the backend is private), and `/api/setup/owner` refuses a request
+     without the setup token.
 3. **Test pass on the preview** (dev database):
    - Owner sign-in with the emailed code.
    - Barista sign-in at `/staff/login`.
@@ -178,8 +175,6 @@ merge to main (only when CI is green) --> Vercel Production (uses the production
    - A database check shows exactly one `owner_admin` row:
      `select count(*) from public.users where role = 'owner_admin';` must return 1.
    - POS logout clears cached data, but queued offline orders stay.
-5. If a Services check fails, stop. The fallback is three projects: Root Directory per app,
-   `API_URL` set by hand, and the API's URL public.
 
 ## Phase 6: firewall (approval)
 
@@ -226,7 +221,8 @@ Measured from a developer machine in the Philippines on 2026-11-24:
 
 Where the time went for one screen action:
 
-1. Browser to the site's `/api` proxy, then to the API: two server hops.
+1. Browser to the area's `/api` proxy, which calls the backend in process (one server hop; before
+   2026-11-24 there were two, through a separate API app).
 2. **The identity check in the API:** verify the token with Supabase Auth, then read the user's
    profile, then (Owner) confirm the emailed-code approval. These were three round trips in a row.
 3. The actual data query (one round trip; list endpoints already run their queries in parallel).
@@ -235,9 +231,9 @@ Where the time went for one screen action:
 
 Done:
 
-- **Identity check runs in parallel** (`apps/api/src/lib/auth.ts`). Three round trips become one
+- **Identity check runs in parallel** (`src/server/lib/auth.ts`). Three round trips become one
   for the Owner, two become one for a Barista: about 100–200 ms saved per request from the
-  Philippines. Tests in `apps/api/tests/auth-parallel.test.ts`.
+  Philippines. Tests in `tests/server/auth-parallel.test.ts`.
 - **Ingredient detail** reads the row and the Owner's costs in parallel.
 - **Functions pinned to `sin1` (Singapore)** in `vercel.json`, next to Supabase. The default US
   region would add about 200 ms to every Supabase call.
@@ -247,11 +243,11 @@ Still to do (each optional):
 - **Asymmetric JWT keys:** Supabase → Authentication → JWT signing keys, for dev (approval) and
   production (Phase 3). The page guard's `getClaims()` then verifies locally instead of calling
   Supabase Auth on every navigation.
-- **Faster local dev:** try `next dev --turbopack` in each app's `dev` script. On-demand compiling
+- **Faster local dev:** try `next dev --turbopack` in the `dev` script. On-demand compiling
   is the main reason the first click on each page is slow locally. Production builds do not have
   this delay.
 - **Later:** merge the profile read and the approval check into one SQL function (one query
-  instead of two). The apps stay separate (OWASP: separate admin and user applications).
+  instead of two). The Owner and POS areas stay separate (OWASP: separate admin and user access).
 
 ## Next feature: Owner passkeys
 

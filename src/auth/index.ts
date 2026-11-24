@@ -25,7 +25,7 @@ export const POS_SESSION_COOKIE = "sb-gunita-pos-auth";
 export const ADMIN_RECOVERY_COOKIE = "sb-gunita-admin-recovery";
 /**
  * Owner sign-in challenge between the password and the emailed code (HttpOnly, path /auth,
- * 10 minutes). Grants no access: apps/api exchanges it for a session only with a valid code.
+ * 10 minutes). Grants no access: the backend (src/server) exchanges it for a session only with a valid code.
  */
 export const ADMIN_OTP_COOKIE = "gunita-admin-otp";
 
@@ -48,7 +48,7 @@ export interface SupabaseJwtPayload {
     [key: string]: unknown;
   };
   role?: string;
-  /** Supabase Auth session; an Owner session counts only once apps/api approved this id. */
+  /** Supabase Auth session; an Owner session counts only once the backend (src/server) approved this id. */
   session_id?: string;
   exp?: number;
   iat?: number;
