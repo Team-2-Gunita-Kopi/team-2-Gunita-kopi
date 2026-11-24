@@ -95,4 +95,16 @@ describe("Admin inventory: delete an ingredient", () => {
     await waitFor(() => expect(api.recordStockMovement).toHaveBeenCalledTimes(1));
     expect(api.recordStockMovement.mock.calls[0]![0]).toMatchObject({ ingredientId: 23 });
   });
+
+  // Why: a deleted ingredient is no longer in the list, so its history rows need their own unit.
+  it("shows the unit on history rows of a deleted ingredient", async () => {
+    api.listIngredients.mockResolvedValue([RICE]);
+    api.listStockHistory.mockResolvedValue([{
+      id: 1, ingredientId: 21, ingredientName: "Espresso Beans", ingredientUnit: "g", type: "in", quantity: 500,
+      remainingStock: 500, userId: 1, userName: "Owner", dateTime: "2026-11-24T00:00:00Z", remarks: null,
+    }] as never);
+    renderWithProviders(<InventoryPage />);
+    await userEvent.click(await screen.findByRole("tab", { name: "Stock History" }));
+    expect(await screen.findByText("500 g")).toBeInTheDocument();
+  });
 });

@@ -115,7 +115,8 @@ export default function UsersPage() {
 
   // Name, username, status and password (UpdateUserRequestSchema); the role stays as it is. The
   // Owner's own new password needs the current one (checked again by the backend (src/server)).
-  const saveChanges = async (user: UserRow) => {
+  /** Returns false when no field changed (nothing is sent). */
+  const saveChanges = async (user: UserRow): Promise<boolean> => {
     const changes: UpdateUserRequest = {};
     if (form.fullName.trim() !== user.fullName) changes.fullName = form.fullName;
     if (form.username.trim().toLowerCase() !== user.username) changes.username = form.username;
@@ -125,7 +126,9 @@ export default function UsersPage() {
     }
     if (user.role === "barista" && form.status !== (user.isActive ? "active" : "inactive")) changes.status = form.status;
     if (form.password !== "") changes.password = form.password;
-    if (Object.keys(changes).length > 0) await updateUser(Number(user.id), changes);
+    if (Object.keys(changes).length === 0) return false;
+    await updateUser(Number(user.id), changes);
+    return true;
   };
 
   const save = async (e: React.FormEvent) => {
@@ -134,9 +137,12 @@ export default function UsersPage() {
     setErrorMessage("");
     setSaving(true);
     try {
-      if (view.kind === "add") await createUser();
-      else if (view.kind === "edit") await saveChanges(view.user);
-      toast(view.kind === "add" ? "Account created." : "Account updated.");
+      if (view.kind === "add") {
+        await createUser();
+        toast("Account created.");
+      } else if (view.kind === "edit") {
+        toast((await saveChanges(view.user)) ? "Account updated." : "No changes to save.");
+      }
       await client.invalidateQueries({ queryKey: ["users"] });
       backToList();
     } catch (err) {

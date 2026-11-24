@@ -15,6 +15,8 @@ export const StockTransactionSchema = z.object({
   id: z.number().int(),
   ingredientId: z.number().int(),
   ingredientName: z.string().nullable(),
+  /** The ingredient's unit, so history rows of a deleted ingredient keep it. */
+  ingredientUnit: z.string().nullable().optional(),
   type: StockTransactionTypeSchema,
   quantity: z.number(),
   /** Stock left after this movement (set by the database). */

@@ -403,6 +403,7 @@ export type Database = {
           category: string | null;
           created_by: number | null;
           date_created: string;
+          deleted_at: string | null;
           description: string | null;
           image: string | null;
           is_available: boolean;
@@ -415,6 +416,7 @@ export type Database = {
           category?: string | null;
           created_by?: number | null;
           date_created?: string;
+          deleted_at?: string | null;
           description?: string | null;
           image?: string | null;
           is_available?: boolean;
@@ -426,6 +428,7 @@ export type Database = {
           category?: string | null;
           created_by?: number | null;
           date_created?: string;
+          deleted_at?: string | null;
           description?: string | null;
           image?: string | null;
           is_available?: boolean;

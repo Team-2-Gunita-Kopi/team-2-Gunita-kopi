@@ -1,7 +1,8 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { focusManager } from "@tanstack/react-query";
 import type { Ingredient, StockTransaction } from "@/contracts";
 import { renderWithProviders } from "@/staff/test/render";
 
@@ -183,5 +184,20 @@ describe("POS inventory", () => {
         to: "2026-11-30",
       }),
     );
+  });
+
+  // Why: the Owner can delete an ingredient while the POS is open; Stock In / Out must not keep it.
+  it("moves Stock In / Out off an ingredient that disappeared from the list", async () => {
+    renderWithProviders(<PosInventoryPage />);
+    const row = (await screen.findByText("Espresso Beans")).closest("tr")!;
+    await userEvent.click(within(row).getByRole("button", { name: "Stock In/Out" }));
+    expect(screen.getByLabelText("Ingredient")).toHaveValue("21");
+    api.listIngredients.mockResolvedValue([RICE]);
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await waitFor(() => expect(screen.getByLabelText("Ingredient")).toHaveValue("23"));
+    focusManager.setFocused(undefined);
   });
 });

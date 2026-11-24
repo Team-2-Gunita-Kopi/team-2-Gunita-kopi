@@ -9,12 +9,14 @@ import {
   DataTable,
   Icon,
   Tabs,
+  useConfirm,
   useToast,
 } from "@/ui";
 import type { IconName } from "@/ui";
 import { useLiveQuery } from "@/owner/lib/data";
 import { USE_MOCKS } from "@/owner/lib/use-mocks";
 import {
+  deleteProduct,
   listProductsWithCosting,
   toProductRow,
   updateProduct,
@@ -128,6 +130,7 @@ function productIcon(category: string): IconName {
 
 export default function ProductsPage() {
   const toast = useToast();
+  const confirm = useConfirm();
   const router = useRouter();
   const client = useQueryClient();
   const products = useLiveQuery(["products"], listProductsWithCosting, {
@@ -166,6 +169,25 @@ export default function ProductsPage() {
   );
 
   const refresh = () => client.invalidateQueries({ queryKey: ["products"] });
+
+  // Soft delete: gone from the menu and the POS; past orders and reports keep it.
+  const removeProduct = async (row: ProductRow) => {
+    const ok = await confirm({
+      title: "Delete product",
+      message: `Delete ${row.name}? This cannot be undone. It disappears from the product list and the POS menu; past orders and reports keep it.`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteProduct(Number(row.id));
+    } catch (err) {
+      toast(`Could not delete ${row.name}: ${err instanceof Error ? err.message : "please try again."}`, true);
+      return;
+    }
+    toast(`${row.name} deleted.`);
+    await refresh();
+  };
 
   // FR-51: unavailable products disappear from the POS catalog.
   const toggleAvailable = async (row: ProductRow) => {
@@ -333,6 +355,15 @@ export default function ProductsPage() {
                   >
                     <Icon name="pencil" />
                     Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    disabled={USE_MOCKS}
+                    aria-label={`Delete ${row.name}`}
+                    onClick={() => void removeProduct(row)}
+                  >
+                    <Icon name="trash" />
                   </Button>
                   <Link
                     href="/admin/products/recipe-costing"

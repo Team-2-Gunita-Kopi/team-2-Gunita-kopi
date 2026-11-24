@@ -32,7 +32,7 @@ describe("createState", () => {
       shopName: "Gunita Kopi",
       receiptFooter: "Salamat po! Come again.",
       queuePrefix: "A",
-      autoLogoutMin: 5,
+      autoLogoutMin: 480,
     });
   });
 

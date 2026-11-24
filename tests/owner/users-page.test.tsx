@@ -124,4 +124,15 @@ describe("Users page", () => {
     expect(screen.queryByLabelText("Status")).not.toBeInTheDocument();
     expect(screen.getByText(/Role: Owner/)).toBeInTheDocument();
   });
+
+  // Why: "Account updated." must mean something was saved.
+  it("says there was nothing to save when no field changed", async () => {
+    renderWithProviders(<UsersPage />);
+    const editButtons = await screen.findAllByRole("button", { name: "Edit" });
+    await userEvent.click(editButtons[1]!);
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("No changes to save.")).toBeInTheDocument();
+    expect(screen.queryByText("Account updated.")).not.toBeInTheDocument();
+    expect(api.updateUser).not.toHaveBeenCalled();
+  });
 });

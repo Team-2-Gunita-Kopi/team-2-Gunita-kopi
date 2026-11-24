@@ -11,7 +11,7 @@ import { getIngredient } from "@/server/modules/ingredients/service";
 import { manilaDayStart, manilaNextDayStart } from "@/server/lib/dates";
 
 const SELECT =
-  "stock_trans_id, ingredient_id, user_id, type, quantity, remaining_stock, date_time, remarks, ingredients(ingredient_name), users(full_name)";
+  "stock_trans_id, ingredient_id, user_id, type, quantity, remaining_stock, date_time, remarks, ingredients(ingredient_name, unit), users(full_name)";
 
 /**
  * The Owner and Barista may record stock-in and stock-out.
@@ -26,7 +26,7 @@ interface TxRow {
   remaining_stock: number | null;
   date_time: string;
   remarks: string | null;
-  ingredients: { ingredient_name: string } | null;
+  ingredients: { ingredient_name: string; unit: string | null } | null;
   users: { full_name: string } | null;
 }
 
@@ -34,6 +34,7 @@ const toTransaction = (r: TxRow): StockTransaction => ({
   id: r.stock_trans_id,
   ingredientId: r.ingredient_id,
   ingredientName: r.ingredients?.ingredient_name ?? null,
+  ingredientUnit: r.ingredients?.unit ?? null,
   type: r.type as StockTransaction["type"],
   quantity: r.quantity,
   remainingStock: r.remaining_stock,
