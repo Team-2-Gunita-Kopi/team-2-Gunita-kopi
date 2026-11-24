@@ -23,6 +23,19 @@ export interface SessionHandlerOptions {
    * emailed code. Enables POST /auth/otp. Without it (POS), Owner accounts are refused at sign-in.
    */
   otpCookieName?: string;
+  /** Session cookie path. POS uses its basePath ("/staff") so the Admin site never receives it. */
+  cookiePath?: string;
+}
+
+/**
+ * apps/api base URL. On Vercel this is the private service binding API_URL (runtime only, so it
+ * is never required at build). Outside production a local default applies. Production without
+ * API_URL gives "" and every call fails loudly (auth.api_url_missing).
+ */
+export function resolveApiUrl(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.API_URL) return env.API_URL.replace(/\/+$/, "");
+  if (env.NODE_ENV === "production") return "";
+  return env.NEXT_PUBLIC_API_URL || "http://localhost:3002";
 }
 
 const CODE = /^\d{6}$/;
@@ -45,6 +58,8 @@ const logError = (message: string, status?: number, code?: string) =>
 const unavailable = () =>
   fail(503, "SERVICE_UNAVAILABLE", "Sign-in is temporarily unavailable");
 
+const apiUrlMissing = () => logError("auth.api_url_missing");
+
 // Cookie-authenticated state changes are accepted only from this site's own pages (CSRF).
 const sameOrigin = (req: NextRequest) =>
   req.headers.get("origin") === req.nextUrl.origin;
@@ -64,7 +79,7 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
   ) => {
     const pending: Cookie[] = [];
     const client = createServerClient(opts.supabaseUrl, opts.supabaseKey, {
-      cookieOptions: sessionCookieOptions(cookieName),
+      cookieOptions: sessionCookieOptions(cookieName, opts.cookiePath),
       cookies: {
         getAll: () => req.cookies.getAll(),
         setAll: (cookies) => {
@@ -90,6 +105,20 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
     return { client, apply };
   };
 
+  /** Expires a session cookie left at path "/" (before the POS moved to /staff). */
+  const clearRootCopies = (req: NextRequest, res: NextResponse) => {
+    if (!opts.cookiePath || opts.cookiePath === "/") return res;
+    const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+    for (const { name } of req.cookies.getAll()) {
+      if (name === opts.cookieName || name.startsWith(`${opts.cookieName}.`))
+        res.headers.append(
+          "set-cookie",
+          `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure}`,
+        );
+    }
+    return res;
+  };
+
   const clientIp = (req: NextRequest) => {
     const ip = trustedClientIp(req.headers);
     if (!ip)
@@ -103,6 +132,10 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
   };
 
   async function login(req: NextRequest) {
+    if (!opts.apiUrl) {
+      apiUrlMissing();
+      return unavailable();
+    }
     if (!sameOrigin(req))
       return fail(403, "FORBIDDEN", "Cross-site request refused");
     const ip = clientIp(req);
@@ -160,7 +193,7 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
     }
     // Display details only; never tokens.
     const meta = data.user.user_metadata ?? {};
-    return apply(
+    const res = apply(
       NextResponse.json({
         success: true,
         data: {
@@ -171,9 +204,14 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
         },
       }),
     );
+    return clearRootCopies(req, res);
   }
 
   const otpApi = async (body: Record<string, unknown>) => {
+    if (!opts.apiUrl) {
+      apiUrlMissing();
+      return { ok: false, payload: null, error: unavailable };
+    }
     const upstream = await fetch(`${opts.apiUrl}/api/auth/otp`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -362,13 +400,17 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
     const { error } = await client.auth.signOut();
     // Auth unreachable: still clear this browser's cookie.
     if (error) await client.auth.signOut({ scope: "local" });
-    return apply(NextResponse.json({ success: true }));
+    return clearRootCopies(req, apply(NextResponse.json({ success: true })));
   }
 
   async function proxy(
     req: NextRequest,
     ctx: { params: Promise<{ path: string[] }> },
   ) {
+    if (!opts.apiUrl) {
+      apiUrlMissing();
+      return fail(502, "BAD_GATEWAY", "The API is unreachable");
+    }
     const path = (await ctx.params).path.map(encodeURIComponent).join("/");
     // Tokens must never reach the browser: sign-in goes through /auth/* only. Owner setup is a
     // developer script against apps/api, never through a site.

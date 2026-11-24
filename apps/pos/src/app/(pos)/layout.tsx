@@ -19,6 +19,7 @@ import { mockRpc } from "@/lib/mock-db";
 import { QueryProvider } from "@/lib/query";
 import { USE_MOCKS } from "@/lib/use-mocks";
 import { useSync } from "@/features/pos/hooks/use-sync";
+import { withBasePath } from "@/lib/base-path";
 
 const POS_NAV_ITEMS: NavItem[] = [
   { label: "POS", short: "POS", href: "/pos", icon: "cart" },
@@ -94,6 +95,8 @@ function PosShell({ children }: { children: React.ReactNode }) {
     <>
       <OfflineBanner online={online} />
       <AppShell
+        hrefFor={withBasePath}
+        sidebarStorageKey="gk-pos-sidebar-collapsed"
         navItems={POS_NAV_ITEMS}
         currentPath={pathname}
         onNavigate={(href) => router.push(href)}

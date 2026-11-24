@@ -1,15 +1,16 @@
 "use client";
 
 import React from "react";
+import { withBasePath } from "@/lib/base-path";
 import type { PosProduct } from "@gunita/contracts/ui";
 import { Icon, formatPeso, type IconName } from "@gunita/ui";
 import { CAT_ICONS } from "./CategoryTabs";
 
 // Category glyphs exported from the Figma Staff POS mockups (apps/pos/public/icons).
 const CAT_ART: Partial<Record<IconName, { src: string; width: number; height: number }>> = {
-  iced: { src: "/icons/cat-iced.svg", width: 21, height: 40 },
-  pastry: { src: "/icons/cat-pastry.svg", width: 40, height: 44 },
-  rice: { src: "/icons/cat-rice.svg", width: 50, height: 23 },
+  iced: { src: withBasePath("/icons/cat-iced.svg"), width: 21, height: 40 },
+  pastry: { src: withBasePath("/icons/cat-pastry.svg"), width: 40, height: 44 },
+  rice: { src: withBasePath("/icons/cat-rice.svg"), width: 50, height: 23 },
 };
 
 export type Unorderable = "unavailable" | "out_of_stock";

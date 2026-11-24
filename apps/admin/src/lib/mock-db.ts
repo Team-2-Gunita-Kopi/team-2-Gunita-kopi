@@ -9,7 +9,7 @@ export async function mockRpc<T>(op: string, ...args: unknown[]): Promise<T> {
   }
   let res: Response;
   try {
-    res = await fetch(`${env.apiUrl}/api/mock/rpc`, {
+    res = await fetch(`${env.mockApiUrl}/api/mock/rpc`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ app: "owner", op, args }),

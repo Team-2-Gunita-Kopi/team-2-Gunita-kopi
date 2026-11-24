@@ -1,0 +1,46 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["sin1"],
+  "services": {
+    "admin": {
+      "root": "apps/admin",
+      "installCommand": "cd ../.. && npx -y pnpm@12.21.0 install --frozen-lockfile",
+      "buildCommand": "cd ../.. && npx -y pnpm@12.21.0 turbo run build --filter=@gunita/admin",
+      "bindings": [
+        { "type": "service", "service": "api", "format": "url", "env": "API_URL" }
+      ]
+    },
+    "pos": {
+      "root": "apps/pos",
+      "installCommand": "cd ../.. && npx -y pnpm@12.21.0 install --frozen-lockfile",
+      "buildCommand": "cd ../.. && npx -y pnpm@12.21.0 turbo run build --filter=@gunita/pos",
+      "bindings": [
+        { "type": "service", "service": "api", "format": "url", "env": "API_URL" }
+      ]
+    },
+    "api": {
+      "root": "apps/api",
+      "installCommand": "cd ../.. && npx -y pnpm@12.21.0 install --frozen-lockfile",
+      "buildCommand": "cd ../.. && npx -y pnpm@12.21.0 turbo run build --filter=@gunita/api"
+    }
+  },
+  "redirects": [
+    { "source": "/pos", "destination": "/staff/pos", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/staff", "destination": { "service": "pos" } },
+    { "source": "/staff/(.*)", "destination": { "service": "pos" } },
+    { "source": "/(.*)", "destination": { "service": "admin" } }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains"
+        }
+      ]
+    }
+  ]
+}
