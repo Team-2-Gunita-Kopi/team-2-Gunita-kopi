@@ -4,13 +4,13 @@
 //   OWNER_SETUP_TOKEN=<value from the API environment> API_URL=https://<api host> \
 //     node scripts/provision-owner.mjs
 //
-// Calls POST /api/setup/owner on apps/api, which creates the Supabase Auth user and the single
+// Calls POST /api/setup/owner on the app, which creates the Supabase Auth user and the single
 // owner_admin profile. The API refuses a second Owner (also enforced by the database). The password
 // is typed at a hidden prompt, so it never lands in shell history or environment variables.
 // Afterwards remove OWNER_SETUP_TOKEN from the API environment.
 import { createInterface } from "node:readline";
 
-const apiUrl = (process.env.API_URL ?? "http://localhost:3002").replace(/\/$/, "");
+const apiUrl = (process.env.API_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const token = process.env.OWNER_SETUP_TOKEN ?? "";
 if (token.length < 32) {
   console.error("Set OWNER_SETUP_TOKEN (the same 32+ character value as in the API environment).");

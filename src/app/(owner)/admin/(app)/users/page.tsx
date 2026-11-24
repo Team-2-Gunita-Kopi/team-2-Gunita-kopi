@@ -113,7 +113,7 @@ export default function UsersPage() {
   };
 
   // Name, username, status and password (UpdateUserRequestSchema); the role stays as it is. The
-  // Owner's own new password needs the current one (checked again by apps/api).
+  // Owner's own new password needs the current one (checked again by the backend (src/server)).
   const saveChanges = async (user: UserRow) => {
     const changes: UpdateUserRequest = {};
     if (form.fullName.trim() !== user.fullName) changes.fullName = form.fullName;

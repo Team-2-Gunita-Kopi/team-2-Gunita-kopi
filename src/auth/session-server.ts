@@ -12,7 +12,7 @@ export interface SessionHandlerOptions {
   callApi?: (path: string, init: RequestInit) => Promise<Response>;
   /** Base URL of a separately hosted backend, used with fetch when callApi is not given. */
   apiUrl?: string;
-  /** Shared with apps/api (INTERNAL_PROXY_SECRET); lets the API trust the forwarded client IP. */
+  /** Shared with the backend (src/server) (INTERNAL_PROXY_SECRET); lets the API trust the forwarded client IP. */
   proxySecret: string;
   allowedRoles: readonly Role[];
   /**
@@ -59,9 +59,9 @@ const sameOrigin = (req: NextRequest) =>
 /**
  * Backend-for-frontend session routes for the Admin and POS sites.
  * The Supabase session lives only in an HttpOnly cookie; the browser never holds a token.
- * - POST /auth/login:  username sign-in through apps/api, then sets the cookie.
+ * - POST /auth/login:  username sign-in through the backend (src/server), then sets the cookie.
  * - POST /auth/logout: revokes the session and clears the cookie.
- * - /api/*:            same-origin proxy to apps/api that adds the Bearer token from the cookie.
+ * - /api/*:            same-origin proxy to the backend (src/server) that adds the Bearer token from the cookie.
  */
 export function createSessionHandlers(opts: SessionHandlerOptions) {
   const callApi =
@@ -139,7 +139,7 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
     return signInThroughApi(req, ip, await req.text());
   }
 
-  /** Signs in through apps/api and stores the session in the HttpOnly cookie. */
+  /** Signs in through the backend (src/server) and stores the session in the HttpOnly cookie. */
   async function signInThroughApi(req: NextRequest, ip: string, body: string) {
     const upstream = await callApi("/api/auth/login", {
       method: "POST",
@@ -167,7 +167,7 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
     return storeSession(req, payload.data);
   }
 
-  /** Writes the session from apps/api into the HttpOnly cookie, for an allowed role only. */
+  /** Writes the session from the backend (src/server) into the HttpOnly cookie, for an allowed role only. */
   async function storeSession(
     req: NextRequest,
     tokens: { accessToken: string; refreshToken: string },
@@ -178,7 +178,7 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
       refresh_token: tokens.refreshToken,
     });
     if (error || !data.user) {
-      // Usually this site's Supabase URL or publishable key differs from apps/api's.
+      // Usually this site's Supabase URL or publishable key differs from the backend (src/server)'s.
       logError("auth.store_session_failed", error?.status, error?.code);
       return fail(502, "AUTH_ERROR", "Sign-in failed");
     }
@@ -249,9 +249,9 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
 
   /**
    * POST /auth/otp (Admin), second Owner sign-in step, on the HttpOnly challenge cookie:
-   * - { action: "verify", code }: apps/api checks the emailed code and approves the new session,
+   * - { action: "verify", code }: the backend (src/server) checks the emailed code and approves the new session,
    *   which is then written to the session cookie. Tokens never reach the browser.
-   * - { action: "resend" }: emails a new code (apps/api enforces the limits).
+   * - { action: "resend" }: emails a new code (the backend (src/server) enforces the limits).
    */
   async function otp(req: NextRequest) {
     if (!opts.otpCookieName) return fail(404, "NOT_FOUND", "Not found");
@@ -409,7 +409,7 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
     }
     const path = (await ctx.params).path.map(encodeURIComponent).join("/");
     // Tokens must never reach the browser: sign-in goes through /auth/* only. Owner setup is a
-    // developer script against apps/api, never through a site.
+    // developer script against the backend (src/server), never through a site.
     if (path.startsWith("auth/") || path.startsWith("setup/"))
       return fail(404, "NOT_FOUND", "Not found");
     const hasBody = req.method !== "GET" && req.method !== "HEAD";
@@ -417,7 +417,7 @@ export function createSessionHandlers(opts: SessionHandlerOptions) {
       return fail(403, "FORBIDDEN", "Cross-site request refused");
 
     const { client, apply } = session(req);
-    // Reads the cookie and refreshes an expiring token; apps/api verifies the token itself.
+    // Reads the cookie and refreshes an expiring token; the backend (src/server) verifies the token itself.
     const { data } = await client.auth.getSession();
     const headers = new Headers();
     for (const h of ["content-type", "x-request-id"]) {

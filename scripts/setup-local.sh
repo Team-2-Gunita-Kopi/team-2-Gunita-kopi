@@ -46,8 +46,7 @@ step "Done"
 cat <<EOF
 Start the apps:   npx -y pnpm@12.21.0 dev
   Admin (Owner):  http://localhost:3000/admin
-  POS (Barista):  http://localhost:3001/staff
-  API:            http://localhost:3002
+  POS (Barista):  http://localhost:3000/staff
   Sign-in codes:  http://127.0.0.1:54326  (Owner: after the password, open the newest email)
 Test accounts (local only):
 $(grep -E '^(OWNER|BARISTA)_' supabase/.env.seed-accounts.local | sed 's/^/  /')

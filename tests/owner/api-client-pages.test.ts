@@ -41,8 +41,10 @@ describe("apiAllPages", () => {
 describe("Admin sign-in guard", () => {
   // Why: the app icon must load on the sign-in page, so it skips the guard; pages must not.
   it("guards pages but not the app icon", async () => {
-    const icon = await middleware(new NextRequest("http://shop.local/admin/icon.svg"));
-    expect(icon.headers.get("location")).toBeNull();
+    for (const path of ["/admin/icon.svg", "/admin/icon-ghawdk.svg"]) {
+      const icon = await middleware(new NextRequest(`http://shop.local${path}`));
+      expect(icon.headers.get("location")).toBeNull();
+    }
     const page = await middleware(new NextRequest("http://shop.local/admin/dashboard"));
     expect(page.headers.get("location")).toBe("http://shop.local/admin/login?redirect=%2Fadmin%2Fdashboard");
   });

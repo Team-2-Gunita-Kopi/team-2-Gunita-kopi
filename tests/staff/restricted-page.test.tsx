@@ -25,8 +25,10 @@ describe("POS restricted page and guard", () => {
 
   // Why: the app icon must load on the sign-in page, so it skips the sign-in guard; pages must not.
   it("guards pages but not the app icon", async () => {
-    const icon = await middleware(new NextRequest("http://shop.local/staff/icon.svg"));
-    expect(icon.headers.get("location")).toBeNull();
+    for (const path of ["/staff/icon.svg", "/staff/icon-17n1zf.svg"]) {
+      const icon = await middleware(new NextRequest(`http://shop.local${path}`));
+      expect(icon.headers.get("location")).toBeNull();
+    }
     const page = await middleware(new NextRequest("http://shop.local/staff/orders"));
     expect(page.headers.get("location")).toBe("http://shop.local/staff/login?redirect=%2Fstaff%2Forders");
   });

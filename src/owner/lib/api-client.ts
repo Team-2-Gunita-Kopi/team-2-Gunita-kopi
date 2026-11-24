@@ -4,7 +4,7 @@ import { withBasePath } from "./base-path";
 export type ApiClientOptions = RequestInit;
 
 /**
- * Typed fetch client for the Admin website to communicate with @gunita/api.
+ * Typed fetch client for the Admin website to communicate with the backend (src/server).
  * Calls this site's same-origin /api proxy, which attaches the session from the HttpOnly
  * cookie on the server. Page scripts never handle access tokens.
  */

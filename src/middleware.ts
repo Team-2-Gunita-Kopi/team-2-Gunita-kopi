@@ -81,8 +81,9 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const area = pathname.startsWith("/admin") ? OWNER : pathname.startsWith("/staff") ? STAFF : null;
   if (!area) return NextResponse.next();
-  // The /api proxies answer with JSON 401/403 themselves; the app icon must load on sign-in pages.
-  if (pathname.startsWith(`${area.prefix}/api/`) || pathname === `${area.prefix}/icon.svg`) {
+  // The /api proxies answer with JSON 401/403 themselves; the app icon (Next serves it as
+  // icon-<hash>.svg) must load on sign-in pages.
+  if (pathname.startsWith(`${area.prefix}/api/`) || /^\/(admin|staff)\/icon(-\w+)?\.svg$/.test(pathname)) {
     return NextResponse.next();
   }
   return USE_MOCKS ? demoGuard(request, area) : guards.get(area.prefix)!(request);
