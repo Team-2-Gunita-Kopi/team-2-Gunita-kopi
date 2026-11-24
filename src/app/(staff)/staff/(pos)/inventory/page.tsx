@@ -142,9 +142,12 @@ export default function PosInventoryPage() {
     queryFn: listIngredientSupplierOptions,
   });
 
+  // Preselect the first ingredient, and move off one that is no longer listed (deleted by the Owner).
   useEffect(() => {
-    const firstIngredient = ingredients.data?.[0];
-    if (!ingredientId && firstIngredient) {
+    const list = ingredients.data;
+    const firstIngredient = list?.[0];
+    if (!firstIngredient) return;
+    if (!ingredientId || !list.some((i) => String(i.id) === ingredientId)) {
       setIngredientId(String(firstIngredient.id));
     }
   }, [ingredientId, ingredients.data]);
@@ -171,7 +174,7 @@ export default function PosInventoryPage() {
         }));
 
   const historyRows: HistoryRow[] = (history.data ?? []).map((t) => {
-    const unit = byId.get(String(t.ingredientId))?.unit;
+    const unit = t.ingredientUnit ?? byId.get(String(t.ingredientId))?.unit;
     return {
       id: String(t.id),
       date: formatHistoryDate(t.dateTime),

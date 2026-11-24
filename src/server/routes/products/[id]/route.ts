@@ -2,7 +2,7 @@ import { requireRole } from "@/server/lib/auth";
 import { jsonResponse, route } from "@/server/lib/response";
 import { readId, readJson } from "@/server/lib/request";
 import { UpdateProductRequestSchema } from "@/contracts";
-import { getProduct, updateProduct } from "@/server/modules/products/service";
+import { deleteProduct, getProduct, updateProduct } from "@/server/modules/products/service";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -17,4 +17,10 @@ export const PATCH = route(async (req, ctx: Ctx) => {
   const id = await readId(ctx);
   const body = await readJson(req, UpdateProductRequestSchema);
   return jsonResponse(await updateProduct(user, id, body));
+});
+
+// Owner only: soft delete (see deleteProduct).
+export const DELETE = route(async (req, ctx: Ctx) => {
+  const user = await requireRole(req, "owner_admin");
+  return jsonResponse(await deleteProduct(user, await readId(ctx)));
 });

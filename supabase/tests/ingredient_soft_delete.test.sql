@@ -113,7 +113,8 @@ begin
     perform public.set_product_recipe(942, '[{"ingredient_id":41,"quantity_needed":5}]');
     raise exception 'TEST FAILED: deleted ingredient added to a recipe';
   exception when others then
-    if sqlerrm not like 'VALIDATION%' then raise; end if;
+    -- 20261120001400 names the ingredient so the Owner knows which line to remove.
+    if sqlerrm not like 'VALIDATION: Old Beans was deleted%' then raise; end if;
   end;
 end $$;
 reset role;
@@ -131,6 +132,32 @@ begin
       {"is_addon": true, "ingredient_id": 43, "quantity": 1, "unit_price": 25}
     ]}');
   raise exception 'TEST FAILED: sold a deleted add-on';
+exception when others then
+  if sqlerrm not like 'CONFLICT%' then raise; end if;
+end $$;
+reset role;
+
+-- Product soft delete (20261120001400): the Owner hides a product and makes it unavailable; an
+-- order queued offline with it is a conflict, and its past orders stay.
+select set_config('request.jwt.claims', json_build_object('sub', :owner, 'session_id', :owner)::text, false);
+set role authenticated;
+update public.products set deleted_at = now(), is_available = false where product_id = 942;
+do $$
+begin
+  if (select deleted_at from public.products where product_id = 942) is null then
+    raise exception 'TEST FAILED: product not soft deleted';
+  end if;
+end $$;
+reset role;
+
+select set_config('request.jwt.claims', json_build_object('sub', :barista)::text, false);
+set role authenticated;
+do $$
+begin
+  perform public.process_checkout_transaction('{
+    "client_tx_id": "d5d5d5d5-d5d5-4d5d-8d5d-d5d5d5d5d5d6", "order_type": "take-out",
+    "amount_paid": 200, "items": [{"product_id": 942, "quantity": 1, "unit_price": 130}]}');
+  raise exception 'TEST FAILED: sold a deleted product';
 exception when others then
   if sqlerrm not like 'CONFLICT%' then raise; end if;
 end $$;

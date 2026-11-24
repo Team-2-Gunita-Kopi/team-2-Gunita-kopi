@@ -155,4 +155,21 @@ describe("Products page costing", () => {
     // No row claims a zero cost.
     expect(screen.queryByText("₱0.00")).not.toBeInTheDocument();
   });
+
+  // Why: delete cannot be undone from the app; the Owner must read that before confirming, and the
+  // product must disappear from the POS menu while past orders keep it.
+  it("deletes a product after a confirm that says it cannot be undone", async () => {
+    client.apiData.mockResolvedValue([LATTE_COSTING]);
+    renderWithProviders(<ProductsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Latte" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/cannot be undone/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/POS menu/i)).toBeInTheDocument();
+    client.apiData.mockResolvedValue({ id: 1 });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() =>
+      expect(client.apiData).toHaveBeenCalledWith("/api/products/1", expect.anything(), { method: "DELETE" }),
+    );
+    expect(await screen.findByText("Latte deleted.")).toBeInTheDocument();
+  });
 });

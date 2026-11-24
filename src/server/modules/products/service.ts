@@ -1,4 +1,5 @@
 import type {
+  DeleteProductResponse,
   CostingLine,
   CreateProductRequest,
   Page,
@@ -53,6 +54,7 @@ export async function listProducts(
   let query = user.supabaseClient
     .from("products")
     .select("*", { count: "exact" })
+    .is("deleted_at", null)
     .order("category")
     .order("product_name")
     .range(...pageRange(q));
@@ -72,6 +74,7 @@ export async function getProduct(
     .from("products")
     .select("*")
     .eq("product_id", id)
+    .is("deleted_at", null)
     .maybeSingle();
   if (error) throw dbError(error);
   if (!data) throw new NotFoundError("Product not found");
@@ -108,12 +111,34 @@ export async function updateProduct(
     .from("products")
     .update(toRow(body))
     .eq("product_id", id)
+    .is("deleted_at", null)
     .select()
     .maybeSingle();
   if (error) throw dbError(error);
   if (!data) throw new NotFoundError("Product not found");
   await auditAction(user, "product.update", "products", id, body);
   return toProduct(data);
+}
+
+/**
+ * Owner soft delete: the row stays for orders, reports and costing history, but every product read
+ * leaves it out. It is also made unavailable, so an order queued offline with it is a conflict.
+ */
+export async function deleteProduct(
+  user: AuthenticatedUser,
+  id: number,
+): Promise<DeleteProductResponse> {
+  const { data, error } = await user.supabaseClient
+    .from("products")
+    .update({ deleted_at: new Date().toISOString(), is_available: false })
+    .eq("product_id", id)
+    .is("deleted_at", null)
+    .select("product_id")
+    .maybeSingle();
+  if (error) throw dbError(error);
+  if (!data) throw new NotFoundError("Product not found");
+  await auditAction(user, "product.delete", "products", id, {});
+  return { id };
 }
 
 // --- Product image (FR-50; SDS 2.6/2.8: private Supabase Storage, authorized access) -----
@@ -276,6 +301,7 @@ export async function updateRecipe(
   productId: number,
   body: UpdateRecipeRequest,
 ): Promise<Recipe> {
+  await getProduct(user, productId); // 404 for a deleted product (stale Recipe & Costing screen)
   const { error } = await user.supabaseClient.rpc("set_product_recipe", {
     p_product_id: productId,
     p_items: body.items.map((i) => ({
@@ -365,6 +391,7 @@ export async function listCostings(
     user.supabaseClient
       .from("products")
       .select("product_id, product_name, price")
+      .is("deleted_at", null)
       .order("product_id"),
     user.supabaseClient
       .from("product_ingredients")

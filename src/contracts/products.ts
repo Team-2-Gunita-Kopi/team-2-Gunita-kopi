@@ -22,6 +22,10 @@ export const ProductSchema = z.object({
 });
 export type Product = z.infer<typeof ProductSchema>;
 
+/** DELETE /api/products/[id]: soft delete (hidden everywhere; orders and reports keep it). */
+export const DeleteProductResponseSchema = z.object({ id: z.number().int() });
+export type DeleteProductResponse = z.infer<typeof DeleteProductResponseSchema>;
+
 /**
  * Drink categories of the official menu (migration 20261120000300). Client decision: the general
  * add-on list is offered for every drink and for nothing else. Products are classified by category,

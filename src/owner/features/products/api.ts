@@ -1,4 +1,5 @@
 import {
+  DeleteProductResponseSchema,
   ProductCostingSchema,
   ProductSchema,
   RecipeSchema,
@@ -24,6 +25,10 @@ export const createProduct = (body: CreateProductRequest): Promise<Product> =>
 
 export const updateProduct = (id: number, body: UpdateProductRequest): Promise<Product> =>
   apiData(`/api/products/${id}`, ProductSchema, { method: "PATCH", body: JSON.stringify(body) });
+
+/** Soft delete: hidden from the menu and POS; orders and reports keep it. */
+export const deleteProduct = (id: number): Promise<{ id: number }> =>
+  apiData(`/api/products/${id}`, DeleteProductResponseSchema, { method: "DELETE" });
 
 // FR-50 product image: stored privately by the API (PNG, JPEG or WebP, 2 MB at most).
 export const uploadProductImage = (id: number, file: File): Promise<Product> =>

@@ -42,6 +42,7 @@ Route handlers in `apps/api` (Next.js on Vercel Functions). Request and response
 | `POST`  | `/api/products`              | owner                     | Create a product                           | FR-50, FR-52   |
 | `GET`   | `/api/products/[id]`         | owner, barista            | Product details                            | FR-05          |
 | `PATCH` | `/api/products/[id]`         | owner                     | Edit a product or its availability         | FR-50, FR-51   |
+| `DELETE` | `/api/products/[id]`        | owner                     | Soft delete a product                      | FR-50          |
 | `GET`   | `/api/products/[id]/recipe`  | owner                     | Recipe lines                               | FR-23          |
 | `PUT`   | `/api/products/[id]/recipe`  | owner                     | Replace the recipe                         | FR-23, FR-24   |
 | `GET`   | `/api/products/[id]/costing` | owner                     | Cost breakdown, total cost, margin         | FR-27 to FR-29 |
@@ -78,7 +79,9 @@ Route handlers in `apps/api` (Next.js on Vercel Functions). Request and response
 
 **`POST /api/products`**: body `CreateProductRequestSchema`: `name` (1-100, required), `price` (money, required), `description?`, `category?` (max 50), `isAvailable?` (default true), `image?` (Storage path or URL, max 255). `createdBy` is always the caller. **201** with the product.
 
-**`PATCH /api/products/[id]`**: any subset of the create fields. `{ "isAvailable": false }` alone switches availability (FR-51). Price changes never affect saved orders, which keep their own `unit_price`.
+**`PATCH /api/products/[id]`**: any subset of the create fields. `{ "isAvailable": false }` alone switches availability (FR-51). Price changes never affect saved orders, which keep their own `unit_price`. A deleted product answers 404.
+
+**`DELETE /api/products/[id]`**: soft delete. Sets `deleted_at` and `is_available = false`, so the product leaves every list, read, recipe and costing endpoint and the POS menu, and an order queued offline with it is a conflict; orders and reports keep it. Returns `{ id }`, audited as `product.delete`. 404 when missing or already deleted. There is no restore.
 
 ### Recipe and costing
 

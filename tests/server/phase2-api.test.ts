@@ -1729,3 +1729,72 @@ describe("ingredient soft delete (Owner)", () => {
     expect(calls.find((c) => c.op === "update")!.filters).toContainEqual(["is", ["deleted_at", null]]);
   });
 });
+
+describe("product soft delete (Owner)", () => {
+  // Why: deleting hides the product from the menu and POS but keeps orders and reports intact; it
+  // is also made unavailable, so an order queued offline with it becomes a conflict, not a sale.
+  it("hides the product, makes it unavailable and audits it", async () => {
+    onQuery = (c) => (c.op === "update" ? { data: { product_id: 5 } } : { data: [] });
+    const r = await call(productById.DELETE(req("DELETE", "/api/products/5", OWNER), params({ id: "5" })));
+    expect(r.status).toBe(200);
+    expect(r.body.data).toEqual({ id: 5 });
+    const update = calls.find((c) => c.op === "update")!;
+    expect(update.table).toBe("products");
+    expect(update.payload).toMatchObject({ is_available: false, deleted_at: expect.any(String) });
+    expect(update.filters).toContainEqual(["is", ["deleted_at", null]]);
+    expect(audits[0]).toEqual(expect.arrayContaining(["product.delete", "products", 5]));
+  });
+
+  it("answers 404 for a missing or already deleted product and audits nothing", async () => {
+    onQuery = (c) => (c.op === "update" ? { data: null } : { data: [] });
+    const r = await call(productById.DELETE(req("DELETE", "/api/products/5", OWNER), params({ id: "5" })));
+    expect(r.status).toBe(404);
+    expect(audits).toHaveLength(0);
+  });
+
+  it("refuses a barista (403)", async () => {
+    const r = await call(productById.DELETE(req("DELETE", "/api/products/5", "barista-token"), params({ id: "5" })));
+    expect(r.status).toBe(403);
+  });
+
+  // Why: the menu, the POS catalog and every product read must leave deleted products out.
+  it("leaves deleted products out of lists and single reads", async () => {
+    await call(products.GET(req("GET", "/api/products", OWNER), undefined));
+    expect(calls.find((c) => c.table === "products")!.filters).toContainEqual(["is", ["deleted_at", null]]);
+    calls.length = 0;
+    onQuery = () => ({ data: null });
+    const r = await call(productById.GET(req("GET", "/api/products/5", OWNER), params({ id: "5" })));
+    expect(r.status).toBe(404);
+    expect(calls.find((c) => c.table === "products")!.filters).toContainEqual(["is", ["deleted_at", null]]);
+  });
+
+  // Why: a stale Recipe & Costing screen must not change a deleted product's recipe.
+  it("does not save a recipe for a deleted product (404, no database write)", async () => {
+    onQuery = () => ({ data: null });
+    const r = await call(
+      recipeRoute.PUT(
+        req("PUT", "/api/products/5/recipe", OWNER, { items: [{ ingredientId: 21, quantityNeeded: 5 }] }),
+        params({ id: "5" }),
+      ),
+    );
+    expect(r.status).toBe(404);
+    expect(rpcCalls.some((c) => c.name === "set_product_recipe")).toBe(false);
+  });
+});
+
+describe("stock history keeps the unit of a deleted ingredient", () => {
+  // Why: a deleted ingredient is no longer in the inventory list, so the unit must come with the row.
+  it("returns the ingredient's unit with each movement", async () => {
+    onQuery = () => ({
+      data: [{
+        stock_trans_id: 1, ingredient_id: 41, user_id: 1, type: "in", quantity: 500, remaining_stock: 500,
+        date_time: "2026-11-24T00:00:00Z", remarks: null,
+        ingredients: { ingredient_name: "Old Beans", unit: "g" }, users: { full_name: "Owner" },
+      }],
+      count: 1,
+    });
+    const r = await call(stock.GET(req("GET", "/api/stock-transactions", OWNER), undefined));
+    expect(r.status).toBe(200);
+    expect(r.body.data.items[0]).toMatchObject({ ingredientName: "Old Beans", ingredientUnit: "g" });
+  });
+});

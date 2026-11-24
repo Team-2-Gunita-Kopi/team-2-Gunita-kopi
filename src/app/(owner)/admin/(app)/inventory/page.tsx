@@ -172,12 +172,15 @@ export default function InventoryPage() {
               : STOCK_BADGE[i.stockStatus].label,
         }));
 
+  // The row carries its own unit, so a deleted ingredient (no longer listed) keeps it.
+  const historyUnit = (t: { ingredientId: number; ingredientUnit?: string | null }) =>
+    t.ingredientUnit ?? byId.get(String(t.ingredientId))?.unit;
   const historyRows: HistoryRow[] = (history.data ?? []).map((t) => ({
     id: String(t.id),
     date: formatHistoryDate(t.dateTime),
     ingredient: t.ingredientName ?? `#${t.ingredientId}`,
     type: t.type === "in" ? "IN" : "OUT",
-    quantity: `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(t.quantity)}${byId.get(String(t.ingredientId))?.unit ? ` ${byId.get(String(t.ingredientId))?.unit}` : ""}`,
+    quantity: `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(t.quantity)}${historyUnit(t) ? ` ${historyUnit(t)}` : ""}`,
     remaining: t.remainingStock === null ? "" : String(t.remainingStock),
     user: t.userName ?? "—",
     remarks: t.remarks ?? "—",
