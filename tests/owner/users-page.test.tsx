@@ -1,7 +1,7 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import type { UserProfile } from "@/contracts";
 import { renderWithProviders } from "@/owner/test/render";
 
@@ -47,6 +47,7 @@ describe("Users page", () => {
     expect(path).toBe("/api/admin/employees");
     expect(JSON.parse(init.body as string)).toEqual({ username: "ana", password: "secret123", fullName: "Ana Cruz", role: "barista" });
     expect(await screen.findByRole("heading", { name: "Users" })).toBeInTheDocument();
+    expect(await screen.findByText("Account created.")).toBeInTheDocument();
   });
 
   it("edits the name, username, status and password in one request but never the role", async () => {
@@ -76,6 +77,17 @@ describe("Users page", () => {
       }),
     );
     expect(client.apiClient).not.toHaveBeenCalled();
+    // Why: the form closes on success; the toast is the only sign the account was saved.
+    expect(await screen.findByText("Account updated.")).toBeInTheDocument();
+  });
+
+  it("confirms and reports deactivating an account", async () => {
+    api.setUserStatus.mockResolvedValue(BARISTA);
+    renderWithProviders(<UsersPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Deactivate" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Deactivate" }));
+    await waitFor(() => expect(api.setUserStatus).toHaveBeenCalledWith(2, "inactive"));
+    expect(await screen.findByText("Test Barista deactivated.")).toBeInTheDocument();
   });
 
   it("asks the Owner for the current password before changing their own", async () => {

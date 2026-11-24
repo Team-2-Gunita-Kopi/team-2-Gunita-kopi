@@ -105,6 +105,8 @@ describe("Order details page", () => {
     await waitFor(() => {
       expect(ordersApi.updateOrderStatus).toHaveBeenCalledWith(12, "preparing");
     });
+    // Why: the button label changing is easy to miss; the toast confirms the server accepted it.
+    expect(await screen.findByText("Order marked Preparing.")).toBeInTheDocument();
     expect(
       await screen.findByRole("button", { name: "Preparing → Completed" }),
     ).toBeInTheDocument();

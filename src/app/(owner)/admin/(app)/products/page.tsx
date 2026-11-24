@@ -171,6 +171,7 @@ export default function ProductsPage() {
   const toggleAvailable = async (row: ProductRow) => {
     try {
       await updateProduct(Number(row.id), { isAvailable: !row.available });
+      toast(`${row.name} is now ${row.available ? "unavailable" : "available"}.`);
       await refresh();
     } catch (err) {
       toast(

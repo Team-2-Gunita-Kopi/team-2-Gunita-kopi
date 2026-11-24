@@ -130,6 +130,8 @@ describe("Products page costing", () => {
         }),
       );
     });
+    // Why: the switch alone does not prove the server accepted the change.
+    expect(await screen.findByText("Latte is now unavailable.")).toBeInTheDocument();
   });
 
   it("opens the full-page editor from the product row", async () => {

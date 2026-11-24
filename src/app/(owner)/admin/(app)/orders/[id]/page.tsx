@@ -16,7 +16,7 @@ import {
   useToast,
 } from "@/ui";
 import type { Order, OrderStatus } from "@/contracts";
-import type { Order as ReceiptOrder } from "@/contracts/ui";
+import { ORDER_STATUS_LABEL, type Order as ReceiptOrder } from "@/contracts/ui";
 import { useLiveQuery } from "@/owner/lib/data";
 import { USE_MOCKS } from "@/owner/lib/use-mocks";
 import {
@@ -152,6 +152,7 @@ export default function OrderDetailsPage() {
     if (!order) return;
     try {
       const updated = await updateOrderStatus(order.orderId, status);
+      toast(`Order marked ${ORDER_STATUS_LABEL[status]}.`);
       client.setQueryData(["order", orderId], updated);
       await client.invalidateQueries({ queryKey: ["orders"] });
     } catch (error) {
