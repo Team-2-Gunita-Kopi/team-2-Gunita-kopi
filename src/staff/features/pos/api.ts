@@ -20,8 +20,8 @@ import {
 } from "./api-mappers";
 import type { PosData } from "./types";
 
-// Receipt and idle-logout settings. The SRS leaves the inactivity period open (OI-06); 8 hours
-// (one shift, decided 2026-11-24) matches the POS layout's IdleLogout.
+// Receipt settings. autoLogoutMin is kept for the settings contract only: the POS has no idle
+// sign-out since 2026-11-25 (OI-06).
 const SETTINGS = {
   shopName: "Gunita Kopi",
   receiptFooter: "Salamat po! Come again.",

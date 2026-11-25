@@ -51,7 +51,7 @@ Next.js (App Router) · TypeScript strict · Tailwind (tokens in §5) · `@supab
 3. **Supabase RLS**: owner policies on all master-data tables; least privilege.
 4. **Admin MFA** (TOTP) required for owner accounts.
 5. **Audit log** entries for: price changes, product/ingredient delete, stock adjustments, user create/role/activate/deactivate, order cancel.
-6. **Idle auto-logout** (30 min; the POS uses 8 h, decided 2026-11-24): "Still there?" modal with seconds countdown → **Stay signed in** / **Sign out now**.
+6. **Idle auto-logout** (30 min, decided 2026-11-24; the POS has none since 2026-11-25): "Still there?" modal with seconds countdown → **Stay signed in** / **Sign out now**.
 7. Local dev host: `admin.localhost:3000`.
 
 ---
