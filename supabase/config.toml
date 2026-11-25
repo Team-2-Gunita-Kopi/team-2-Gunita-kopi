@@ -54,6 +54,12 @@ sender_name = "Gunita Kopi"
 subject = "Your Gunita Kopi sign-in code"
 content_path = "./supabase/templates/owner-sign-in-code.html"
 
+# Owner password recovery is by code, entered on /admin/forgot-password (POST /admin/auth/recovery
+# verifies it). A link ({{ .ConfirmationURL }}) would open the site URL instead.
+[auth.email.template.recovery]
+subject = "Your Gunita Kopi password reset code"
+content_path = "./supabase/templates/password-reset-code.html"
+
 # No authenticator apps: the second step is the emailed code.
 [auth.mfa.totp]
 enroll_enabled = false

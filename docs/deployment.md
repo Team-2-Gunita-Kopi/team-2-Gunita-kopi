@@ -105,7 +105,10 @@ merge to main (only when CI is green) --> Vercel Production (uses the production
 3. **Authentication** settings, the same as dev:
    - Sign-ups off.
    - Email OTP: 6 digits, expiry 300 s.
-   - The Magic Link and Recovery templates contain `{{ .Token }}`.
+   - The Magic Link and Reset Password templates contain `{{ .Token }}` and no link: paste
+     `supabase/templates/owner-sign-in-code.html` and `supabase/templates/password-reset-code.html`.
+     With the default Reset Password template, the email's link opens the site URL (the staff
+     sign-in) instead of the code step.
    - Custom SMTP (Resend) on, email rate limit 30/h.
    - TOTP MFA off.
    - Raise Supabase's per-IP sign-in limit so the app's own throttle trips first.
