@@ -11,7 +11,7 @@ import { CartFab } from "@/staff/features/pos/components/CartFab";
 import { CustomizeModal } from "@/staff/features/pos/components/CustomizeModal";
 import { PaymentModal } from "@/staff/features/pos/components/PaymentModal";
 import { ReceiptModal } from "@/staff/features/pos/components/ReceiptModal";
-import { checkout, recordToOrder } from "@/staff/features/pos/checkout";
+import { TIMED_OUT, checkout, checkoutTiming, recordToOrder, withTimeout } from "@/staff/features/pos/checkout";
 import { getSession } from "@/staff/features/auth";
 import { formatTime } from "@/ui";
 import { USE_MOCKS } from "@/staff/lib/use-mocks";
@@ -62,8 +62,10 @@ export default function PosPage() {
 
   const confirmPayment = async ({ type, paid }: { type: Order["type"]; paid: number }) => {
     if (isOnline()) {
-      const latest = await refetch();
-      const currentProducts = latest.data?.products ?? data?.products ?? [];
+      // Bounded: with no real internet the menu we already have is used (the server rechecks).
+      const latest = await withTimeout(refetch(), checkoutTiming.catalogCheckMs);
+      const currentProducts =
+        (latest === TIMED_OUT ? undefined : latest.data?.products) ?? data?.products ?? [];
       const unavailable = lines.find(
         (line) => !currentProducts.some((product) => product.id === line.productId && product.isActive),
       );

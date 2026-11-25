@@ -6,6 +6,25 @@ import { posDb, type OutboxOrderRecord } from "@/staff/offline/db";
 import { syncOutboxOrders } from "@/staff/offline/sync";
 import { posData } from "./index";
 
+/**
+ * How long a sale waits for the server before the receipt shows the order as pending. The browser
+ * can report "online" with no internet (e.g. Windows with virtual network adapters); without these
+ * limits Confirm would wait until the internet came back.
+ */
+export const checkoutTiming = { catalogCheckMs: 3_000, syncWaitMs: 4_000 };
+
+const TIMED_OUT = Symbol("timed out");
+
+/** Resolves with `promise`, or with TIMED_OUT after `ms`. The promise itself keeps running. */
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+export { TIMED_OUT };
+
 export interface CheckoutInput {
   lines: CartLine[];
   type: OrderType;
@@ -35,9 +54,10 @@ export async function checkout(input: CheckoutInput): Promise<{ record: OutboxOr
   let order: Order | undefined;
 
   if (online) {
-    // The order is already saved: nothing below may fail the checkout.
+    // The order is already saved: nothing below may fail or hold up the checkout. A sync that
+    // takes longer keeps running in the background; the receipt then shows the order as pending.
     try {
-      await syncOutboxOrders();
+      await withTimeout(syncOutboxOrders(), checkoutTiming.syncWaitMs);
     } catch {
       // saved, pending sync
     }

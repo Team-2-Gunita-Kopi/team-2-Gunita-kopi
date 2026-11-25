@@ -9,6 +9,7 @@ import { useCartStore } from "@/staff/features/pos/cart.store";
 import { connectivityStore } from "@/staff/lib/connectivity";
 import { posDb } from "@/staff/offline/db";
 import { renderWithProviders } from "@/staff/test/render";
+import { checkoutTiming } from "@/staff/features/pos/checkout";
 import PosPage from "@/app/(staff)/staff/(pos)/pos/page";
 
 let rpcCalls: string[] = [];
@@ -136,6 +137,30 @@ describe("checkout", () => {
     const [rec] = await posDb.ordersOutbox.toArray();
     expect(rec).toMatchObject({ status: "pending", provisionalNo: "OFF-001" });
     expect(rpcCalls).not.toContain("syncOrders");
+  });
+
+  // Why (found 2026-11-25): with Wi-Fi off, Windows can still report "online" (virtual network
+  // adapters), so every request just hangs. Confirm must not wait for the internet to come back.
+  it("online but the server never answers: the receipt still shows, as a pending order", async () => {
+    const saved = { ...checkoutTiming };
+    Object.assign(checkoutTiming, { catalogCheckMs: 50, syncWaitMs: 50 });
+    // Hung requests are failed at the end, so the serialized sync queue drains for later tests.
+    const hung: ((e: Error) => void)[] = [];
+    try {
+      const dialog = await openPayment();
+      vi.stubGlobal("fetch", vi.fn(() => new Promise((_resolve, reject) => hung.push(reject))));
+      await userEvent.type(within(dialog).getByLabelText("Amount paid"), "300");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Confirm payment" }));
+      const receipt = await screen.findByRole("dialog", { name: "Receipt" });
+      expect(within(receipt).getByText("OFF-001")).toBeInTheDocument();
+      expect(within(receipt).getByText("Pending sync")).toBeInTheDocument();
+      const [rec] = await posDb.ordersOutbox.toArray();
+      expect(rec).toMatchObject({ provisionalNo: "OFF-001" });
+      expect(rec!.status).not.toBe("synced");
+    } finally {
+      hung.forEach((reject) => reject(new Error("offline")));
+      Object.assign(checkoutTiming, saved);
+    }
   });
 
   it("FR-09: order slip shows the same order for staff without prices or payment", async () => {

@@ -4,6 +4,13 @@ import { withBasePath } from "./base-path";
 export type ApiClientOptions = RequestInit;
 
 /**
+ * A request with no answer gives up after this long. The browser can report "online" while
+ * there is no internet (e.g. Windows with virtual network adapters), and such a request would
+ * otherwise hang for minutes and hold up the sync queue.
+ */
+export const apiTiming = { requestTimeoutMs: 15_000 };
+
+/**
  * Typed fetch client for the POS website to communicate with @gunita/api.
  * Calls this site's same-origin /api proxy, which attaches the session from the HttpOnly
  * cookie on the server. Page scripts never handle access tokens.
@@ -24,6 +31,7 @@ export async function apiClient<T>(
       ...options,
       headers,
       credentials: "same-origin",
+      signal: options.signal ?? AbortSignal.timeout(apiTiming.requestTimeoutMs),
     });
 
     const data = (await response.json()) as ApiResponse<T>;
