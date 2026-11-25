@@ -75,7 +75,7 @@ Route handlers in `apps/api` (Next.js on Vercel Functions). Request and response
 
 ### Products
 
-**`GET /api/products`**: query `category`, `available` (`true`/`false`), `search` (name contains), paging. Returns `Page<Product>`: `{ id, name, description, category, price, isAvailable, image, createdBy, createdAt }`. Unavailable products are included so the POS can show them as sold out; filter with `available=true`.
+**`GET /api/products`**: query `category`, `available` (`true`/`false`), `search` (name contains), paging. Returns `Page<Product>`: `{ id, name, description, category, price, isAvailable, image, createdBy, createdAt, recipe }`, where `recipe` is `[{ ingredientId, quantityNeeded }]` (only on this list). The POS compares it with ingredient stock to show a product as "Out of stock"; checkout still rechecks stock in the database. Unavailable products are included so the POS can show them as sold out; filter with `available=true`.
 
 **`POST /api/products`**: body `CreateProductRequestSchema`: `name` (1-100, required), `price` (money, required), `description?`, `category?` (max 50), `isAvailable?` (default true), `image?` (Storage path or URL, max 255). `createdBy` is always the caller. **201** with the product.
 

@@ -10,6 +10,7 @@ import {
   OrderSchema as UiOrderSchema,
   PosIngredientSchema,
   PosProductSchema,
+  isOrderable,
   itemTotal,
   toOrderItems,
   type CartLine,
@@ -196,6 +197,19 @@ describe("API catalog to POS view models (FR-05, FR-14, FR-19)", () => {
     for (const image of ["13/11111111-2222-4333-8444-555555555555.png", "12/../x.png", "javascript:alert(1)", null]) {
       expect(toPosProduct({ ...base, image }).imageUrl).toBeUndefined();
     }
+  });
+
+  // The menu greys out a product whose recipe needs more of an ingredient than is in stock.
+  it("maps the recipe so an out-of-stock ingredient blocks the product", () => {
+    const p = toPosProduct({
+      id: 5, name: "Spanish Latte", description: null, category: "Iced Coffee", price: 99,
+      isAvailable: true, image: null, createdBy: 1, createdAt: "2026-11-18T00:00:00Z",
+      recipe: [{ ingredientId: 18, quantityNeeded: 18 }],
+    });
+    expect(PosProductSchema.safeParse(p).success).toBe(true);
+    expect(isOrderable(p, p.ingredients ?? [], { "18": 0 })).toEqual({ orderable: false, reason: "out_of_stock" });
+    expect(isOrderable(p, p.ingredients ?? [], { "18": 17 }).reason).toBe("out_of_stock");
+    expect(isOrderable(p, p.ingredients ?? [], { "18": 18 })).toEqual({ orderable: true });
   });
 
   it("maps ingredients with the database stock status", () => {
