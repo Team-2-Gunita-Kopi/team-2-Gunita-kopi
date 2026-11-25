@@ -37,6 +37,12 @@ export function toPosProduct(p: ApiProduct): PosProduct {
       return src ? withBasePath(src) : src;
     })(),
     isActive: p.isAvailable,
+    // Recipe lines drive the menu's "Out of stock" state (isOrderable); the server rechecks stock.
+    ingredients: p.recipe?.map((l) => ({
+      ingredientId: String(l.ingredientId),
+      quantity: l.quantityNeeded,
+      unit: "",
+    })),
     createdAt: p.createdAt,
   };
 }

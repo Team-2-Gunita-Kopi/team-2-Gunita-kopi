@@ -396,6 +396,31 @@ describe("products", () => {
     expect(r.body.error.code).toBe("VALIDATION_ERROR");
   });
 
+  // Without the recipe the POS cannot know a product is out of stock and lets the barista ring it up.
+  it("lists each product with its recipe lines for the POS stock check (FR-05)", async () => {
+    onQuery = () => ({
+      data: [
+        {
+          product_id: 5, product_name: "Spanish Latte", description: null, category: "Iced Coffee",
+          price: 99, is_available: true, image: null, created_by: 1, date_created: "2026-11-17",
+          product_ingredients: [
+            { ingredient_id: 18, quantity_needed: 18 },
+            { ingredient_id: 47, quantity_needed: 150 },
+          ],
+        },
+      ],
+      count: 1,
+    });
+    const list = await call(
+      products.GET(req("GET", "/api/products?available=true", "barista-token"), undefined),
+    );
+    expect(list.status).toBe(200);
+    expect(list.body.data.items[0].recipe).toEqual([
+      { ingredientId: 18, quantityNeeded: 18 },
+      { ingredientId: 47, quantityNeeded: 150 },
+    ]);
+  });
+
   it("rejects malformed JSON and non-numeric ids with 400", async () => {
     const bad = await call(
       products.POST(req("POST", "/api/products", OWNER, "{nope"), undefined),
@@ -1334,6 +1359,24 @@ describe("offline sync", () => {
       code: "VALIDATION",
       error: "Payment is cash only",
     });
+  });
+
+  // The barista must see which ingredient ran out, not a database id, to know why the sale was refused.
+  it("names the out-of-stock ingredient when a sale is refused", async () => {
+    onRpc = () => ({
+      error: { code: "P0001", message: "STOCK_CONFLICT: not enough stock for ingredient 18" },
+    });
+    onQuery = (c) =>
+      c.table === "ingredients" ? { data: { ingredient_name: "Espresso Beans" } } : { data: [] };
+    const r = await call(
+      sync.POST(req("POST", "/api/sync", "barista-token", { orders: [item(1)] }), undefined),
+    );
+    expect(r.body.data.results[0]).toMatchObject({
+      status: "conflict",
+      code: "STOCK_CONFLICT",
+      error: "Out of stock: Espresso Beans. This order was not saved.",
+    });
+    expect(calls.find((c) => c.table === "ingredients")!.filters).toContainEqual(["eq", ["ingredient_id", 18]]);
   });
 
   it("rejects a transactionId that differs from clientTxId", async () => {

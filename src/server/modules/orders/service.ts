@@ -66,12 +66,33 @@ export async function checkout(
       p_order: toCheckoutPayload(order),
     },
   );
-  if (error) throw dbError(error);
+  if (error) {
+    const mapped = dbError(error);
+    if (mapped.code === "STOCK_CONFLICT") throw await namedStockConflict(user, mapped);
+    throw mapped;
+  }
   const result = data as { order_id: number; duplicate: boolean } | null;
   if (!result?.order_id) {
     throw new AppError("Checkout returned no order", 500, "DATABASE_ERROR");
   }
   return { orderId: result.order_id, duplicate: result.duplicate };
+}
+
+/**
+ * The stock trigger names the ingredient by id ("not enough stock for ingredient 18"). The barista
+ * sees its name instead; the original message stays when the name cannot be read.
+ */
+async function namedStockConflict(user: AuthenticatedUser, err: AppError): Promise<AppError> {
+  const id = /ingredient (\d+)/.exec(err.message)?.[1];
+  if (!id) return err;
+  const { data } = await user.supabaseClient
+    .from("ingredients")
+    .select("ingredient_name")
+    .eq("ingredient_id", Number(id))
+    .maybeSingle();
+  return data?.ingredient_name
+    ? new AppError(`Out of stock: ${data.ingredient_name}. This order was not saved.`, 409, "STOCK_CONFLICT")
+    : err;
 }
 
 // --- Reading orders -----------------------------------------------------------------

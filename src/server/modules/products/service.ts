@@ -46,14 +46,17 @@ const toRow = (d: UpdateProductRequest) => ({
   image: d.image,
 });
 
-/** Both roles: baristas need the catalog for order entry (FR-05). */
+/**
+ * Both roles: baristas need the catalog for order entry (FR-05). Each product carries its recipe
+ * lines so the POS can mark it out of stock; checkout still rechecks stock in the database.
+ */
 export async function listProducts(
   user: AuthenticatedUser,
   q: ProductListQuery,
 ): Promise<Page<Product>> {
   let query = user.supabaseClient
     .from("products")
-    .select("*", { count: "exact" })
+    .select("*, product_ingredients(ingredient_id, quantity_needed)", { count: "exact" })
     .is("deleted_at", null)
     .order("category")
     .order("product_name")
@@ -63,7 +66,17 @@ export async function listProducts(
   if (q.search) query = query.ilike("product_name", `%${escapeLike(q.search)}%`);
   const { data, error, count } = await query;
   if (error) throw dbError(error);
-  return toPage(data.map(toProduct), count, q);
+  return toPage(
+    data.map(({ product_ingredients, ...row }) => ({
+      ...toProduct(row),
+      recipe: (product_ingredients ?? []).map((l) => ({
+        ingredientId: l.ingredient_id,
+        quantityNeeded: l.quantity_needed,
+      })),
+    })),
+    count,
+    q,
+  );
 }
 
 export async function getProduct(

@@ -19,6 +19,10 @@ export const ProductSchema = z.object({
   image: z.string().nullable(),
   createdBy: z.number().int().nullable(),
   createdAt: z.string(),
+  /** GET /api/products only: recipe lines, so the POS can mark a product out of stock (FR-05). */
+  recipe: z
+    .array(z.object({ ingredientId: z.number().int(), quantityNeeded: z.number() }))
+    .optional(),
 });
 export type Product = z.infer<typeof ProductSchema>;
 
