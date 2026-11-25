@@ -23,12 +23,10 @@ describe("POS restricted page and guard", () => {
     expect(nav.replace).toHaveBeenCalledWith("/staff/login");
   });
 
-  // Why: the app icon must load on the sign-in page, so it skips the sign-in guard; pages must not.
-  it("guards pages but not the app icon", async () => {
-    for (const path of ["/staff/icon.svg", "/staff/icon-17n1zf.svg"]) {
-      const icon = await middleware(new NextRequest(`http://shop.local${path}`));
-      expect(icon.headers.get("location")).toBeNull();
-    }
+  // Why: the tab icon must load on the sign-in page, so it lives outside the guarded area; pages must not.
+  it("guards pages but not the tab icon", async () => {
+    const icon = await middleware(new NextRequest("http://shop.local/brand/gunita-kopi-icon.png"));
+    expect(icon.headers.get("location")).toBeNull();
     const page = await middleware(new NextRequest("http://shop.local/staff/orders"));
     expect(page.headers.get("location")).toBe("http://shop.local/staff/login?redirect=%2Fstaff%2Forders");
   });

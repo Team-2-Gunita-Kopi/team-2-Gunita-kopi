@@ -17,6 +17,8 @@ const fontVars = [lora, raleway, fira, tagalog].map((f) => f.variable).join(" ")
 export const metadata: Metadata = {
   title: "Gunita Kopi | Admin Portal",
   description: "Private administration portal for Gunita Kopi Owner",
+  // Shop logo as the tab icon (approved 2026-11-25). /brand is outside the sign-in guard.
+  icons: { icon: "/brand/gunita-kopi-icon.png", apple: "/brand/gunita-kopi-icon.png" },
   robots: {
     index: false,
     follow: false,

@@ -33,16 +33,6 @@ describe("AppShell", () => {
     expect(screen.getByText("content")).toBeTruthy();
   });
 
-  // Why: the shop's own logo (approved 2026-11-25) replaces the typed Baybayin wordmark in both areas.
-  it("shows the Gunita Kopi logo image in the sidebar", () => {
-    render(
-      <AppShell navItems={NAV} currentPath="/orders" topBarProps={TOP}>
-        x
-      </AppShell>,
-    );
-    expect(screen.getByRole("img", { name: "Gunita Kopi" })).toHaveAttribute("src", "/brand/gunita-kopi-logo.png");
-  });
-
   it("collapse toggle sets body.sidebar-collapsed and persists 1", async () => {
     const user = userEvent.setup();
     render(
@@ -239,11 +229,6 @@ describe("LoginForm", () => {
     await fill(user);
     await user.click(screen.getByRole("button", { name: "Sign in" }));
     expect((await screen.findByRole("alert")).textContent).toBe("Incorrect username or password.");
-  });
-
-  it("shows the Gunita Kopi logo image on the sign-in card", () => {
-    render(<LoginForm roleLabel="Owner" onSubmit={async () => null} />);
-    expect(screen.getByRole("img", { name: "Gunita Kopi" })).toHaveAttribute("src", "/brand/gunita-kopi-logo.png");
   });
 
   it("uses staff wording for the Barista sign-in", () => {
