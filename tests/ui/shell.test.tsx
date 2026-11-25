@@ -324,10 +324,10 @@ describe("ForgotPasswordForm", () => {
         onBack={() => {}}
       />,
     );
-    await user.click(screen.getByRole("button", { name: "Send recovery link" }));
+    await user.click(screen.getByRole("button", { name: "Send code" }));
     expect(screen.getByRole("alert").textContent).toBe("Enter a valid email address.");
     await user.type(screen.getByLabelText("Email address"), " mark@gmail.com ");
-    await user.click(screen.getByRole("button", { name: "Send recovery link" }));
+    await user.click(screen.getByRole("button", { name: "Send code" }));
     expect(onRequestCode).toHaveBeenCalledWith("mark@gmail.com");
 
     expect(await screen.findByText("mark@gmail.com")).toBeTruthy();
@@ -361,7 +361,7 @@ describe("ForgotPasswordForm", () => {
       />,
     );
     await user.type(screen.getByLabelText("Email address"), "a@b.co");
-    await user.click(screen.getByRole("button", { name: "Send recovery link" }));
+    await user.click(screen.getByRole("button", { name: "Send code" }));
     await user.type(await screen.findByLabelText("Recovery code"), "999999");
     await user.click(screen.getByRole("button", { name: "Continue" }));
     expect((await screen.findByRole("alert")).textContent).toBe("That recovery code is invalid or has expired.");

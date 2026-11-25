@@ -134,7 +134,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
   };
 
   const sub = step === "email" ? "Forgot password" : step === "code" ? "Check your email" : "New password";
-  const cta = step === "email" ? "Send recovery link" : step === "code" ? "Continue" : "Save new password";
+  const cta = step === "email" ? "Send code" : step === "code" ? "Continue" : "Save new password";
 
   return (
     <div className="login-wrap">
