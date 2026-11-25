@@ -1,5 +1,6 @@
 import type {
   CreateSupplierRequest,
+  DeleteSupplierResponse,
   IngredientSupplierOption,
   Page,
   Supplier,
@@ -38,6 +39,7 @@ export async function listSuppliers(
   let query = user.supabaseClient
     .from("suppliers")
     .select("*", { count: "exact" })
+    .is("deleted_at", null)
     .order("supplier_name")
     .range(...pageRange(q));
   if (q.status) query = query.eq("status", q.status);
@@ -69,6 +71,7 @@ export async function getSupplier(
     .from("suppliers")
     .select("*")
     .eq("supplier_id", id)
+    .is("deleted_at", null)
     .maybeSingle();
   if (error) throw dbError(error);
   if (!data) throw new NotFoundError("Supplier not found");
@@ -104,10 +107,27 @@ export async function updateSupplier(
     .from("suppliers")
     .update(toRow(body))
     .eq("supplier_id", id)
+    .is("deleted_at", null)
     .select()
     .maybeSingle();
   if (error) throw dbError(error);
   if (!data) throw new NotFoundError("Supplier not found");
   await auditAction(user, "supplier.update", "suppliers", id, body);
   return toSupplier(data);
+}
+
+/**
+ * Owner soft delete in one database step (delete_supplier): the row stays for the audit log, but it
+ * leaves every supplier read, becomes inactive and is unlinked from its ingredients.
+ */
+export async function deleteSupplier(
+  user: AuthenticatedUser,
+  id: number,
+): Promise<DeleteSupplierResponse> {
+  const { data, error } = await user.supabaseClient.rpc("delete_supplier", {
+    p_supplier_id: id,
+  });
+  if (error) throw dbError(error);
+  await auditAction(user, "supplier.delete", "suppliers", id, {});
+  return { id, unlinkedIngredients: data ?? 0 };
 }

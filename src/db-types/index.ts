@@ -507,6 +507,7 @@ export type Database = {
           address: string | null;
           contact_number: string | null;
           contact_person: string | null;
+          deleted_at: string | null;
           status: string;
           supplier_id: number;
           supplier_name: string;
@@ -516,6 +517,7 @@ export type Database = {
           address?: string | null;
           contact_number?: string | null;
           contact_person?: string | null;
+          deleted_at?: string | null;
           status?: string;
           supplier_id?: never;
           supplier_name: string;
@@ -524,6 +526,7 @@ export type Database = {
           address?: string | null;
           contact_number?: string | null;
           contact_person?: string | null;
+          deleted_at?: string | null;
           status?: string;
           supplier_id?: never;
           supplier_name?: string;
@@ -709,6 +712,10 @@ export type Database = {
       delete_ingredient: {
         Args: { p_ingredient_id: number };
         Returns: { product_id: number; product_name: string }[];
+      };
+      delete_supplier: {
+        Args: { p_supplier_id: number };
+        Returns: number;
       };
       ingredient_unit_costs: {
         Args: Record<PropertyKey, never>;

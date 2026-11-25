@@ -51,6 +51,7 @@ Route handlers in `apps/api` (Next.js on Vercel Functions). Request and response
 | `POST`  | `/api/suppliers`             | owner                     | Create a supplier                          | FR-22          |
 | `GET`   | `/api/suppliers/[id]`        | owner                     | Supplier details                           | FR-22          |
 | `PATCH` | `/api/suppliers/[id]`        | owner                     | Edit, activate or deactivate a supplier    | FR-22          |
+| `DELETE` | `/api/suppliers/[id]`       | owner                     | Soft delete a supplier                     | FR-22          |
 | `GET`   | `/api/ingredients`           | owner, barista            | Inventory with stock status                | FR-14, FR-19   |
 | `POST`  | `/api/ingredients`           | owner                     | Create an ingredient                       | FR-21, FR-22   |
 | `GET`   | `/api/ingredients/[id]`      | owner, barista            | Ingredient details and stock status        | FR-14          |
@@ -128,7 +129,9 @@ Reference records only; no purchase orders or automatic reordering (SRS section 
 
 **`POST /api/suppliers`**: `name` (1-100, required), `contactPerson?` (100), `contactNumber?` (20), `address?` (255). New suppliers are `active`. **201**.
 
-**`PATCH /api/suppliers/[id]`**: any subset, plus `status: "active" | "inactive"`.
+**`PATCH /api/suppliers/[id]`**: any subset, plus `status: "active" | "inactive"`. A deleted supplier answers 404.
+
+**`DELETE /api/suppliers/[id]`**: soft delete through `delete_supplier()`. Sets `deleted_at` and `status = 'inactive'` and unlinks the supplier from its ingredients, so it leaves every supplier list and read and the Barista supplier options. Returns `{ id, unlinkedIngredients }`, audited as `supplier.delete`. 404 when missing or already deleted. There is no restore.
 
 ### Ingredients and inventory
 

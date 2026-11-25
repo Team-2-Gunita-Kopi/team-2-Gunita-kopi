@@ -2,10 +2,10 @@
 
 import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, DataTable, Dialog, Icon, Input, StatusBadge, useToast } from "@/ui";
+import { Button, DataTable, Dialog, Icon, Input, StatusBadge, useConfirm, useToast } from "@/ui";
 import type { Supplier } from "@/contracts";
 import { USE_MOCKS } from "@/owner/lib/use-mocks";
-import { createSupplier, listSuppliers, updateSupplier } from "@/owner/features/suppliers/api";
+import { createSupplier, deleteSupplier, listSuppliers, updateSupplier } from "@/owner/features/suppliers/api";
 import { listIngredients } from "@/owner/features/inventory/api";
 
 interface SupplierRow extends Record<string, unknown> {
@@ -43,6 +43,7 @@ const EMPTY = { name: "", contactPerson: "", contactNumber: "", address: "" };
 
 export default function SuppliersPage() {
   const toast = useToast();
+  const confirm = useConfirm();
   const client = useQueryClient();
   const suppliers = useQuery({ queryKey: ["suppliers"], enabled: !USE_MOCKS, queryFn: listSuppliers });
   // Same query key as the Inventory page, so the list is shared from the cache.
@@ -109,6 +110,29 @@ export default function SuppliersPage() {
     }
   };
 
+  // Soft delete: gone from this list and the ingredient forms; its ingredients lose the link.
+  const removeSupplier = async (row: SupplierRow) => {
+    const linked =
+      row.ingredients === 0
+        ? ""
+        : ` ${row.ingredients} ${row.ingredients === 1 ? "ingredient" : "ingredients"} will no longer have a supplier.`;
+    const ok = await confirm({
+      title: "Delete supplier",
+      message: `Delete ${row.name}? This cannot be undone. It disappears from the supplier list.${linked}`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteSupplier(Number(row.id));
+    } catch (err) {
+      toast(`Could not delete ${row.name}: ${err instanceof Error ? err.message : "please try again."}`, true);
+      return;
+    }
+    toast(`${row.name} deleted.`);
+    await Promise.all([refresh(), client.invalidateQueries({ queryKey: ["ingredients"] })]);
+  };
+
   const set = (key: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [key]: e.target.value });
 
@@ -168,6 +192,15 @@ export default function SuppliersPage() {
                   onClick={() => void toggleStatus(row)}
                 >
                   {row.status === "active" ? "Deactivate" : "Activate"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={USE_MOCKS}
+                  aria-label={`Delete ${row.name}`}
+                  onClick={() => void removeSupplier(row)}
+                >
+                  <Icon name="trash" />
                 </Button>
               </div>
             ),

@@ -18,10 +18,7 @@ async function run(fn: () => Promise<unknown>): Promise<string | null> {
 
 const Brand: React.FC<{ sub?: string }> = ({ sub }) => (
   <div className="login-brand">
-    <span className="login-baybayin" lang="tl-Tglg" aria-hidden="true">
-      ᜄᜓᜈᜒᜆ ᜃᜓᜉᜒ
-    </span>
-    <span className="brand-word">Gunita Kopi</span>
+    <img className="login-logo" src="/brand/gunita-kopi-logo.png" alt="Gunita Kopi" width={564} height={310} />
     {sub ? <span className="brand-sub">{sub}</span> : null}
   </div>
 );
