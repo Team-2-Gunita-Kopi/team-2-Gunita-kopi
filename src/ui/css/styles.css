@@ -29,7 +29,6 @@ body.sidebar-collapsed .sidebar{width:72px;flex-basis:72px;padding-left:.6rem;pa
 body.sidebar-collapsed .sb-toggle{align-self:center;}
 body.sidebar-collapsed .brand{align-items:center;white-space:nowrap;}
 body.sidebar-collapsed .brand-baybayin{font-size:.62rem;letter-spacing:0;text-align:center;white-space:nowrap;}
-body.sidebar-collapsed .brand-logo{max-width:3.25rem;margin:0 auto;border-radius:.35rem;}
 body.sidebar-collapsed .brand-word, body.sidebar-collapsed .brand-sub, body.sidebar-collapsed .sidebar-note, body.sidebar-collapsed .sidebar-baybayin, body.sidebar-collapsed .role-link .lbl-l, body.sidebar-collapsed .role-link .lbl-s{display:none;}
 body.sidebar-collapsed .role-link{position:relative;justify-content:center;padding:.7rem 0;white-space:nowrap;}
 .brand, .role-link .lbl-l, .role-link .lbl-s{white-space:nowrap;}
@@ -50,8 +49,6 @@ body.owner-mode:not(.wide-mode) #screen{max-width:1600px;width:100%;margin:0 aut
 .brand-baybayin{font-family:var(--font-baybayin);color:var(--leaf);font-size:1.15rem;letter-spacing:.2em;}
 .brand-word{font-family:var(--font-head);font-size:1.5rem;font-weight:700;color:var(--fg);}
 .brand-sub{font-size:.75rem;letter-spacing:.18em;text-transform:uppercase;color:var(--fg-muted);}
-/* Shop logo (approved 2026-11-25), replaces the typed Baybayin wordmark. */
-.brand-logo{display:block;width:100%;max-width:11.5rem;height:auto;border-radius:.6rem;margin-bottom:.35rem;}
 
 .role-nav{display:flex;flex-direction:column;gap:.4rem;}
 .role-link{display:flex;align-items:center;gap:.7rem;padding:.7rem .8rem;min-height:44px;border-radius:12px;color:var(--fg-muted);text-decoration:none;font-weight:500;border:1px solid transparent;transition:background .2s,color .2s,border-color .2s;}
@@ -365,7 +362,6 @@ body.auth-mode .main{padding:0;}
 .login-card{width:100%;max-width:400px;display:flex;flex-direction:column;gap:.9rem;padding:1.6rem;}
 .login-brand{display:flex;flex-direction:column;align-items:center;text-align:center;gap:.1rem;margin-bottom:.4rem;}
 .login-baybayin{font-family:var(--font-baybayin);color:var(--leaf);font-size:1.4rem;letter-spacing:.2em;opacity:.9;}
-.login-logo{display:block;width:min(15rem,75%);height:auto;border-radius:.75rem;margin:0 auto .3rem;}
 .pw-wrap{position:relative;display:block;}
 .pw-wrap input{padding-right:3rem;}
 .pw-eye{position:absolute;right:.3rem;top:50%;transform:translateY(-50%);width:44px;height:44px;background:none;border:0;color:var(--fg-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:10px;}

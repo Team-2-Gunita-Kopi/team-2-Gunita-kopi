@@ -70,7 +70,10 @@ export const LoginForm: React.FC<LoginFormProps> = ({ roleLabel, onSubmit, onFor
     <div className="login-wrap">
       <form className="login-card card" onSubmit={submit} noValidate>
         <div className="login-brand">
-          <img className="login-logo" src="/brand/gunita-kopi-logo.png" alt="Gunita Kopi" width={564} height={310} />
+          <span className="login-baybayin" lang="tl-Tglg" aria-hidden="true">
+            ᜄᜓᜈᜒᜆ ᜃᜓᜉᜒ
+          </span>
+          <span className="brand-word">Gunita Kopi</span>
           <span className="brand-sub">{staff ? "POS System · Staff Sign-in" : `${roleLabel} Sign-in`}</span>
         </div>
         {notice ? (

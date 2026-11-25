@@ -19,6 +19,8 @@ export const metadata: Metadata = {
   title: "Gunita Kopi | POS Terminal",
   description: "Private offline-first Point of Sale for Gunita Kopi Baristas",
   manifest: "/staff/manifest.webmanifest",
+  // Shop logo as the tab icon (approved 2026-11-25). /brand is outside the sign-in guard.
+  icons: { icon: "/brand/gunita-kopi-icon.png", apple: "/brand/gunita-kopi-icon.png" },
   robots: {
     index: false,
     follow: false,
