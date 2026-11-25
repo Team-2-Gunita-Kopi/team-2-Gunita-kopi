@@ -46,6 +46,7 @@ const LABELS = ["POS", "Orders", "Inventory"];
 beforeEach(() => {
   flags.useMocks = true;
   pending.count = 0;
+  idle.timeoutMs = 0;
   document.cookie = `${MOCK_SESSION_COOKIE}=${encodeMockSession({ userId: "u2", role: "barista", fullName: "Bea Barista", username: "bea" })}; path=/`;
 });
 
@@ -57,9 +58,12 @@ afterEach(() => {
 
 describe("pos shell", () => {
   // Why (decided 2026-11-24): the shop tablet stays signed in for a whole shift (8 hours).
-  it("signs the Barista out after 8 idle hours", async () => {
+  // Why (decided 2026-11-25): an internet outage can last any time, so the POS never signs the
+  // Barista out for being idle; only Log out does.
+  it("never signs the Barista out for being idle", async () => {
     render(<PosAppLayout>content</PosAppLayout>);
-    await waitFor(() => expect(idle.timeoutMs).toBe(8 * 60 * 60 * 1000));
+    await screen.findByText("Bea Barista");
+    expect(idle.timeoutMs).toBe(0);
   });
 
   it("renders 3 nav links with POS current", () => {
@@ -88,11 +92,13 @@ describe("pos shell", () => {
     await waitFor(() => expect(screen.queryByText("Offline — orders are saved on this device")).not.toBeInTheDocument());
   });
 
-  it("shows the pending count and a Sync now button", async () => {
+  // Why (decided 2026-11-25): sync runs on its own, so the top bar shows no button and no count.
+  it("shows no Sync now button and no sync count", async () => {
     pending.count = 2;
     render(<PosAppLayout>content</PosAppLayout>);
-    expect(await screen.findByText("2 to sync")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sync now" })).toBeInTheDocument();
+    await screen.findByText("Bea Barista");
+    expect(screen.queryByRole("button", { name: "Sync now" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/to sync/)).not.toBeInTheDocument();
   });
 
   it("resets demo data after confirm and hides Reset when mocks are off", async () => {

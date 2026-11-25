@@ -50,7 +50,7 @@ Next.js (App Router) · TypeScript strict · Tailwind (tokens in §5) · `@supab
 2. Server re-checks role on every Route Handler (`/api/orders`, `/api/sync`, stock endpoints). RLS enforces least privilege.
 3. **Barista can:** create orders, advance/cancel orders (Pending/Preparing only), view orders, view inventory, record **Stock In/Out**.
 4. **Barista cannot:** edit products/prices/recipes, manage suppliers/users, view reports/costing/margins, delete anything master-data.
-5. **Idle auto-logout** (8 hours, one shift; the Owner portal uses 30 min, decided 2026-11-24): "Still there?" modal with countdown → **Stay signed in** / **Sign out now**. ⚠️ Never sign out while there are **unsynced pending orders** without a clear warning — the queue stays on the device and resumes after next login.
+5. **No idle auto-logout** (decided 2026-11-25; was 8 hours): an internet outage can last any time, so the Barista stays signed in until **Log out**. The Owner portal keeps its 30-min idle sign-out.
 6. Local dev host: `pos.localhost:3000`.
 
 ---
@@ -173,7 +173,7 @@ Email/username + password, show/hide toggle, inline error, loading state, no sig
    - `catalog` → products, recipes (qty needed), add-on rules, ingredient stock snapshot, settings (shop name, receipt footer, queue prefix).
    - `pending_orders` → `{ client_txn_id, payload, created_at, status: 'pending'|'syncing'|'synced'|'failed', error? }`
    - `pending_actions` → queued status changes/cancels/stock txs with their own `client_txn_id`.
-3. **Sync triggers:** `online` event · Background Sync (where supported) · **app reopen / tab visible** · manual **"Sync now"** button. (Background Sync is not available on every browser — the other triggers are mandatory fallbacks.)
+3. **Sync triggers:** `online` event · Background Sync (where supported) · **app reopen / tab visible** · a retry every minute while online. There is no manual "Sync now" button (removed 2026-11-25). (Background Sync is not available on every browser — the other triggers are mandatory fallbacks.)
 
 **Flow**
 ```
@@ -233,7 +233,7 @@ R3, R4, R9, R10 are **enforced server-side** (Postgres functions / Route Handler
 ```
 src/app/
   (auth)/login/
-  (pos)/layout.tsx              # shell + barista guard + OfflineBanner + IdleLogout + SyncProvider
+  (pos)/layout.tsx              # shell + barista guard + OfflineBanner + useSync (no idle logout)
   (pos)/pos/ orders/ inventory/
   api/sync/route.ts  api/orders/route.ts  api/stock/route.ts
   manifest.ts

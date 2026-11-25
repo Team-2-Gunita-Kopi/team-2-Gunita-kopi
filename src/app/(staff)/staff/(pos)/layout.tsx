@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AppShell,
-  IdleLogout,
   NavItem,
   OverlayProvider,
   useConfirm,
@@ -13,7 +12,6 @@ import {
 } from "@/ui";
 import { getSession, signOut } from "@/staff/features/auth";
 import { OfflineBanner } from "@/staff/components/OfflineBanner";
-import { SyncIndicator } from "@/staff/components/SyncIndicator";
 import { useConnectivity } from "@/staff/lib/connectivity";
 import { mockRpc } from "@/staff/lib/mock-db";
 import { QueryProvider } from "@/staff/lib/query";
@@ -27,8 +25,8 @@ const POS_NAV_ITEMS: NavItem[] = [
   { label: "Inventory", short: "Stock", href: "/staff/inventory", icon: "box" },
 ];
 
-// Idle sign-out (decided 2026-11-24): the shop tablet stays signed in for a whole shift.
-const IDLE_MS = 8 * 60 * 60 * 1000;
+// No idle sign-out (decided 2026-11-25): an internet outage can last any time, so the Barista
+// stays signed in until Log out. Sync runs on its own (useSync), so there is no Sync now button.
 
 function PosShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -38,7 +36,7 @@ function PosShell({ children }: { children: React.ReactNode }) {
   const toast = useToast();
   const { online, simulatedOffline, setSimulatedOffline } = useConnectivity();
   const [userName, setUserName] = useState("Barista");
-  const { pendingCount, failedCount, syncNow, isSyncing } = useSync();
+  useSync();
 
   useEffect(() => {
     const session = getSession();
@@ -48,14 +46,6 @@ function PosShell({ children }: { children: React.ReactNode }) {
   const handleLogout = async () => {
     await signOut();
     router.push("/staff/login");
-  };
-
-  const handleSyncNow = async () => {
-    try {
-      await syncNow();
-    } catch (e) {
-      toast(e instanceof Error ? e.message : "Sync failed.", true);
-    }
   };
 
   const resetDemo = async () => {
@@ -86,12 +76,6 @@ function PosShell({ children }: { children: React.ReactNode }) {
       ]
     : [];
 
-  const unsynced = pendingCount + failedCount;
-  const warning =
-    unsynced > 0
-      ? `You have ${unsynced} unsynced order${unsynced === 1 ? "" : "s"}. They stay on this device and will sync after you sign in again.`
-      : undefined;
-
   return (
     <>
       <OfflineBanner online={online} />
@@ -111,24 +95,11 @@ function PosShell({ children }: { children: React.ReactNode }) {
           userName,
           roleLabel: "Barista",
           onLogout: handleLogout,
-          statusSlot: (
-            <SyncIndicator
-              pending={pendingCount}
-              failed={failedCount}
-              syncing={isSyncing}
-              onSync={handleSyncNow}
-            />
-          ),
           menuItems,
         }}
       >
         {children}
       </AppShell>
-      <IdleLogout
-        timeoutMs={IDLE_MS}
-        onLogout={handleLogout}
-        warning={warning}
-      />
     </>
   );
 }

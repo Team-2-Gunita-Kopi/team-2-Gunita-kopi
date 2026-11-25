@@ -9,18 +9,21 @@ import { syncOutboxOrders } from "@/staff/offline/sync";
 import { initSyncTriggers } from "@/staff/offline/triggers";
 
 export const CATALOG_REFRESH_MS = 5 * 60 * 1000;
+// There is no Sync now button (decided 2026-11-25): queued orders are retried on this timer too,
+// because a Wi-Fi that stays connected while the internet is down never fires `online`.
+export const SYNC_RETRY_MS = 60 * 1000;
 
 export interface UseSync {
   pendingCount: number;
   failedCount: number;
-  syncNow(): Promise<void>;
   isSyncing: boolean;
 }
 
 /**
  * Outbox sync state plus the triggers that keep it moving. Mount it once (the POS layout):
  * on login/mount and on `online` / visibility-to-visible it syncs, on reconnect it syncs and
- * refreshes the catalog, and while online it refreshes the catalog every 5 minutes.
+ * refreshes the catalog, and while online it retries the outbox every minute (a no-op when it
+ * is empty) and refreshes the catalog every 5 minutes.
  */
 export function useSync(): UseSync {
   const queryClient = useQueryClient();
@@ -39,10 +42,6 @@ export function useSync(): UseSync {
 
   const refreshCatalog = useCallback(() => queryClient.invalidateQueries({ queryKey: ["catalog"] }), [queryClient]);
 
-  const syncNow = useCallback(async () => {
-    await syncOutboxOrders();
-  }, []);
-
   // online event, visibilitychange to visible, and an initial sync when online
   useEffect(() => initSyncTriggers(), []);
 
@@ -56,6 +55,13 @@ export function useSync(): UseSync {
     wasOnline.current = online;
   }, [online, refreshCatalog]);
 
+  // every minute while online: retry queued orders
+  useEffect(() => {
+    if (!online) return;
+    const id = setInterval(() => void syncOutboxOrders(), SYNC_RETRY_MS);
+    return () => clearInterval(id);
+  }, [online]);
+
   // every 5 minutes while online
   useEffect(() => {
     if (!online) return;
@@ -63,5 +69,5 @@ export function useSync(): UseSync {
     return () => clearInterval(id);
   }, [online, refreshCatalog]);
 
-  return { pendingCount: counts.pending, failedCount: counts.failed, syncNow, isSyncing };
+  return { pendingCount: counts.pending, failedCount: counts.failed, isSyncing };
 }

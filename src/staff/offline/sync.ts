@@ -92,7 +92,7 @@ let queue: Promise<unknown> = Promise.resolve();
 let running = 0;
 
 /**
- * The single sync entry point (triggers, checkout, the Sync now button). Runs are serialized, so
+ * The single sync entry point (triggers, checkout, the one-minute retry). Runs are serialized, so
  * overlapping calls never submit the same order twice. Never rejects.
  */
 export function syncOutboxOrders(): Promise<SyncExecutionResult> {

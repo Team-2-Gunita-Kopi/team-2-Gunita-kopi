@@ -6,7 +6,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { connectivityStore } from "@/staff/lib/connectivity";
 import { posDb } from "@/staff/offline/db";
 import { saveOrderToOutbox, markOrderStatus } from "@/staff/offline/outbox";
-import { CATALOG_REFRESH_MS, useSync } from "@/staff/features/pos/hooks/use-sync";
+import { CATALOG_REFRESH_MS, SYNC_RETRY_MS, useSync } from "@/staff/features/pos/hooks/use-sync";
+import { syncOutboxOrders } from "@/staff/offline/sync";
 
 vi.mock("@/staff/offline/sync", async (orig) => ({
   ...(await orig<typeof import("@/staff/offline/sync")>()),
@@ -51,5 +52,20 @@ describe("useSync", () => {
     expect(spy).toHaveBeenCalledTimes(1);
     act(() => connectivityStore.setState({ simulatedOffline: false }));
     expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  // Why (decided 2026-11-25): there is no Sync now button. When the Wi-Fi stays connected but the
+  // internet drops, the browser never fires "online", so queued orders must be retried on a timer.
+  it("retries the outbox every minute while online, and not while offline", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const sync = vi.mocked(syncOutboxOrders);
+    setup();
+    sync.mockClear();
+    await act(async () => void vi.advanceTimersByTime(SYNC_RETRY_MS));
+    expect(sync).toHaveBeenCalledTimes(1);
+    act(() => connectivityStore.setState({ simulatedOffline: true }));
+    sync.mockClear();
+    await act(async () => void vi.advanceTimersByTime(SYNC_RETRY_MS * 3));
+    expect(sync).not.toHaveBeenCalled();
   });
 });
