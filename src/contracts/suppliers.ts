@@ -29,6 +29,13 @@ export const SupplierSchema = z.object({
 });
 export type Supplier = z.infer<typeof SupplierSchema>;
 
+/** DELETE /api/suppliers/[id]: soft delete; how many ingredients lost the supplier. */
+export const DeleteSupplierResponseSchema = z.object({
+  id: z.number().int(),
+  unlinkedIngredients: z.number().int(),
+});
+export type DeleteSupplierResponse = z.infer<typeof DeleteSupplierResponseSchema>;
+
 export const CreateSupplierRequestSchema = z.object({
   name: z.string().trim().min(1, "Supplier name is required").max(100),
   contactPerson: optionalText(100),

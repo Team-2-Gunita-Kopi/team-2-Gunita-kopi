@@ -52,10 +52,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({ items, currentPath = "",
       {collapsed ? <Hamburger /> : <PanelClose />}
     </button>
     <div className="brand">
-      <span className="brand-baybayin" lang="tl-Tglg" aria-hidden="true">
-        ᜄᜓᜈᜒᜆ ᜃᜓᜉᜒ
-      </span>
-      <span className="brand-word">Gunita Kopi</span>
+      <img className="brand-logo" src="/brand/gunita-kopi-logo.png" alt="Gunita Kopi" width={564} height={310} />
       <span className="brand-sub">POS System</span>
     </div>
     <nav className="role-nav" aria-label="Main navigation">

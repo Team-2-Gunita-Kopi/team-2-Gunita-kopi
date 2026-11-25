@@ -1,7 +1,9 @@
 import {
+  DeleteSupplierResponseSchema,
   SupplierSchema,
   pageOf,
   type CreateSupplierRequest,
+  type DeleteSupplierResponse,
   type Supplier,
   type UpdateSupplierRequest,
 } from "@/contracts";
@@ -16,3 +18,7 @@ export const createSupplier = (body: CreateSupplierRequest): Promise<Supplier> =
 
 export const updateSupplier = (id: number, body: UpdateSupplierRequest): Promise<Supplier> =>
   apiData(`/api/suppliers/${id}`, SupplierSchema, { method: "PATCH", body: JSON.stringify(body) });
+
+/** Soft delete; its ingredients lose the supplier link. */
+export const deleteSupplier = (id: number): Promise<DeleteSupplierResponse> =>
+  apiData(`/api/suppliers/${id}`, DeleteSupplierResponseSchema, { method: "DELETE" });

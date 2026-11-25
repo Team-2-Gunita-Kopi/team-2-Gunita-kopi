@@ -1710,6 +1710,48 @@ describe("dashboard (Owner)", () => {
   });
 });
 
+describe("supplier soft delete (Owner)", () => {
+  // Why: one database step hides the supplier and unlinks its ingredients; the Owner must learn how
+  // many ingredients lost it, and the audit log must record who deleted what.
+  it("deletes through delete_supplier, audits it and returns the unlinked ingredient count", async () => {
+    onRpc = (name) => (name === "delete_supplier" ? { data: 2 } : { data: null });
+    const r = await call(supplierById.DELETE(req("DELETE", "/api/suppliers/6", OWNER), params({ id: "6" })));
+    expect(r.status).toBe(200);
+    expect(r.body.data).toEqual({ id: 6, unlinkedIngredients: 2 });
+    expect(rpcCalls).toContainEqual({ name: "delete_supplier", args: { p_supplier_id: 6 } });
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toEqual(expect.arrayContaining(["supplier.delete", "suppliers", 6]));
+  });
+
+  it("refuses a barista (403) before touching the database", async () => {
+    const r = await call(supplierById.DELETE(req("DELETE", "/api/suppliers/6", "barista-token"), params({ id: "6" })));
+    expect(r.status).toBe(403);
+    expect(rpcCalls.some((c) => c.name === "delete_supplier")).toBe(false);
+  });
+
+  // Why: a second delete (two tabs, a stale list) must be a clear 404, not a second audit entry.
+  it("answers 404 for a missing or already deleted supplier and audits nothing", async () => {
+    onRpc = (name) =>
+      name === "delete_supplier"
+        ? { error: { code: "P0002", message: "NOT_FOUND: supplier not found" } }
+        : { data: null };
+    const r = await call(supplierById.DELETE(req("DELETE", "/api/suppliers/6", OWNER), params({ id: "6" })));
+    expect(r.status).toBe(404);
+    expect(audits).toHaveLength(0);
+  });
+
+  // Why: a deleted supplier must vanish from the Owner's list, reads and edits.
+  it("leaves deleted suppliers out of the list, reads and edits", async () => {
+    onQuery = (c) => ({ data: c.op === "select" && c.filters.some(([f]) => f === "range") ? [] : null, count: 0 });
+    await call(suppliers.GET(req("GET", "/api/suppliers", OWNER), undefined));
+    await call(supplierById.GET(req("GET", "/api/suppliers/6", OWNER), params({ id: "6" })));
+    await call(supplierById.PATCH(req("PATCH", "/api/suppliers/6", OWNER, { name: "New" }), params({ id: "6" })));
+    const supplierCalls = calls.filter((c) => c.table === "suppliers");
+    expect(supplierCalls).toHaveLength(3);
+    for (const c of supplierCalls) expect(c.filters).toContainEqual(["is", ["deleted_at", null]]);
+  });
+});
+
 describe("ingredient soft delete (Owner)", () => {
   // Why: one database step hides the ingredient and takes it out of recipes; the Owner must learn
   // which products changed, and the audit log must record who deleted what.
