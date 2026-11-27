@@ -1,41 +1,56 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { renderWithProviders } from "@/owner/test/render";
 
 vi.mock("@/owner/lib/use-mocks", () => ({ USE_MOCKS: false }));
 const client = vi.hoisted(() => ({ apiData: vi.fn() }));
 vi.mock("@/owner/lib/api-client", () => client);
-const download = vi.hoisted(() => ({ downloadCsv: vi.fn() }));
-vi.mock("@/owner/features/reports/api", async (importActual) => ({
-  ...(await importActual<typeof import("@/owner/features/reports/api")>()),
-  ...download,
-}));
 vi.mock("@/owner/features/orders/api", async (importActual) => ({
   ...(await importActual<typeof import("@/owner/features/orders/api")>()),
-  listOrders: async () => [],
+  listOrders: async () => [
+    { orderId: "A-7", orderDate: "2026-11-28T02:15:00Z", orderType: "dine-in", status: "completed", total: 450 },
+    { orderId: "A-8", orderDate: "2026-11-28T03:00:00Z", orderType: "take-out", status: "cancelled", total: 120 },
+  ],
 }));
 
 import ReportsPage from "@/app/(owner)/admin/(app)/reports/page";
 import { manilaToday } from "@/owner/features/orders/api";
 
-describe("Reports Export CSV and Print", () => {
+const PRINT_INFO = {
+  reportId: "GK-RPT-20261128-AB12CD34",
+  preparedAt: "2026-11-28T07:30:00.000Z",
+  preparedBy: { fullName: "Ana Reyes", username: "ana.owner", role: "owner_admin" },
+  ownerName: "Ana Reyes",
+};
+
+const printDoc = () => document.body.querySelector<HTMLElement>(".report-print")!;
+const printPost = () => client.apiData.mock.calls.find(([, , opts]) => opts?.method === "POST");
+
+describe("Reports Print", () => {
+  let print: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
     vi.clearAllMocks();
-    client.apiData.mockImplementation((endpoint: string) => {
+    print = vi.spyOn(window, "print").mockImplementation(() => {});
+    client.apiData.mockImplementation((endpoint: string, _schema: unknown, opts?: { method?: string }) => {
+      if (opts?.method === "POST") return Promise.resolve(PRINT_INFO);
       if (endpoint.startsWith("/api/reports/daily")) {
         return Promise.resolve({
           type: "daily",
-          rows: [{ date: manilaToday(), orderCount: 2, itemsSold: 3, totalSales: 1250 }],
-          totals: { orderCount: 2, itemsSold: 3, totalSales: 1250 },
+          rows: [
+            { date: manilaToday(), orderCount: 2, itemsSold: 3, totalSales: 1250 },
+            { date: manilaToday(new Date(Date.now() - 86_400_000)), orderCount: 1, itemsSold: 1, totalSales: 100.5 },
+          ],
+          totals: { orderCount: 3, totalSales: 1350.5 },
         });
       }
       if (endpoint.startsWith("/api/reports/stock-status")) {
         return Promise.resolve({
           type: "stock-status",
           rows: [
-            { ingredientId: 1, ingredientName: "Fresh Milk", unit: "ml", currentStock: 100, reorderLevel: 500, stockStatus: "low-stock", supplierName: null },
+            { ingredientId: 1, ingredientName: "Fresh Milk", unit: "ml", currentStock: 100, reorderLevel: 500, stockStatus: "low-stock" },
+            { ingredientId: 2, ingredientName: "Espresso Beans", unit: "g", currentStock: 900, reorderLevel: 200, stockStatus: "available" },
           ],
         });
       }
@@ -43,32 +58,81 @@ describe("Reports Export CSV and Print", () => {
     });
   });
 
-  it("exports the daily table with its column names", async () => {
+  it("has no Export CSV button", async () => {
     renderWithProviders(<ReportsPage />);
-    const exportButton = await screen.findByRole("button", { name: "Export CSV" });
-    await waitFor(() => expect(exportButton).toBeEnabled());
-    await userEvent.click(exportButton);
-    const [filename, csv] = download.downloadCsv.mock.calls[0] as [string, string];
-    expect(filename).toBe(`gunita-kopi-daily-${manilaToday()}.csv`);
-    const lines = csv.split("\r\n");
-    expect(lines[0]).toBe("Date,Orders,Sales");
-    expect(lines).toHaveLength(8); // header + 7 days
-    expect(lines[7]).toBe(`${manilaToday()},2,"₱1,250.00"`);
+    await screen.findByRole("button", { name: "Print" });
+    expect(screen.queryByRole("button", { name: /csv/i })).toBeNull();
   });
 
-  it("exports stock status with readable status labels", async () => {
+  it("prints the daily report with metadata, parameters, totals, preparation info and blank signatures", async () => {
+    renderWithProviders(<ReportsPage />);
+    await screen.findAllByText("₱1,250.00");
+    await userEvent.click(screen.getByRole("button", { name: "Print" }));
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+
+    // Audited server-side; only the filters and the row count are sent, never the preparer.
+    const [endpoint, , opts] = printPost()!;
+    expect(endpoint).toBe("/api/reports/daily");
+    const body = JSON.parse(opts.body);
+    expect(body).toEqual({
+      parameters: { Date: manilaToday(), Period: expect.stringMatching(/ to /), "Sales counted": "Completed orders only" },
+      recordCount: 9, // 7 days + 2 orders
+    });
+
+    const doc = within(printDoc());
+    expect(doc.getByRole("heading", { level: 1, name: "Daily Sales Report" })).toBeInTheDocument();
+    expect(doc.getByText("Gunita Kopi", { selector: ".rp-business" })).toBeInTheDocument();
+    expect(doc.getAllByText("GK-RPT-20261128-AB12CD34").length).toBeGreaterThan(1);
+    expect(doc.getAllByText("Ana Reyes").length).toBeGreaterThan(0);
+    expect(doc.getByText("ana.owner · Owner / Admin")).toBeInTheDocument();
+    expect(doc.getByText(manilaToday(), { selector: "dd" })).toBeInTheDocument();
+
+    // Totals match the shown rows: 3 orders, ₱1,350.50 over the 7 days.
+    const daily = printDoc().querySelectorAll("table")[0]!;
+    expect(daily.querySelectorAll("tbody tr")).toHaveLength(7);
+    expect(daily.querySelector("tfoot")!.textContent).toBe("Total3₱1,350.50");
+    const orders = printDoc().querySelectorAll("table")[1]!;
+    expect(orders.querySelectorAll("tbody tr")).toHaveLength(2);
+    expect(orders.textContent).toContain("Cancelled");
+    expect(doc.getByText("Records included").nextSibling!.textContent).toBe("9");
+
+    const prepared = within(doc.getByRole("region", { name: "PREPARED BY" }));
+    expect(prepared.getByText("Name: Ana Reyes")).toBeInTheDocument();
+    expect(prepared.getByText("Position: Owner / Admin")).toBeInTheDocument();
+    const approval = within(doc.getByRole("region", { name: "OWNER'S APPROVAL" }));
+    expect(approval.getByText("Name: Ana Reyes")).toBeInTheDocument();
+    expect(approval.getByText("Position: Owner")).toBeInTheDocument();
+    // Signature and date lines stay blank for handwriting: no image, no generated text.
+    expect(printDoc().querySelectorAll(".rp-sign-line span")).toHaveLength(4);
+    printDoc().querySelectorAll(".rp-sign-line span").forEach((s) => expect(s.textContent).toBe(""));
+    expect(printDoc().querySelector("img, canvas, svg")).toBeNull();
+  });
+
+  it("prints only the filtered stock rows with readable status labels", async () => {
     renderWithProviders(<ReportsPage />);
     await userEvent.click(await screen.findByRole("tab", { name: "Stock Status" }));
     await screen.findByText("Fresh Milk");
-    await userEvent.click(screen.getByRole("button", { name: "Export CSV" }));
-    const [, csv] = download.downloadCsv.mock.calls[0] as [string, string];
-    expect(csv).toBe("Ingredient,Unit,Current Stock,Reorder Level,Status\r\nFresh Milk,ml,100,500,Low Stock");
+    await userEvent.click(screen.getByRole("button", { name: "Low stock only" }));
+    await userEvent.click(screen.getByRole("button", { name: "Print" }));
+    await waitFor(() => expect(print).toHaveBeenCalled());
+
+    expect(JSON.parse(printPost()![2].body)).toEqual({ parameters: { "Stock filter": "Low stock only" }, recordCount: 1 });
+    const table = printDoc().querySelector("table")!;
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(1);
+    expect(table.textContent).toContain("Fresh Milkml100500Low Stock");
+    expect(table.textContent).not.toContain("Espresso Beans");
   });
 
-  it("prints the page", async () => {
-    const print = vi.spyOn(window, "print").mockImplementation(() => {});
+  it("shows the error and does not print when the server refuses", async () => {
+    client.apiData.mockImplementation((endpoint: string, _s: unknown, opts?: { method?: string }) =>
+      opts?.method === "POST"
+        ? Promise.reject(new Error("You do not have access to this resource"))
+        : Promise.resolve({ type: "daily", rows: [], totals: { orderCount: 0, totalSales: 0 } }),
+    );
     renderWithProviders(<ReportsPage />);
     await userEvent.click(await screen.findByRole("button", { name: "Print" }));
-    expect(print).toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent("You do not have access to this resource");
+    expect(print).not.toHaveBeenCalled();
+    expect(printDoc()).toBeNull();
   });
 });

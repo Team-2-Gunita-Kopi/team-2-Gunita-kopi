@@ -1,3 +1,3 @@
 # Reports Feature
 
-This folder contains financial summary generators, export actions, and sales visualizer charts.
+This folder contains financial summary generators, the printed report (`ReportPrint.tsx`), and sales visualizer charts.

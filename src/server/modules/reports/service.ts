@@ -1,12 +1,15 @@
 import type {
   BestSellerRow,
   Report,
+  ReportPrintInfo,
+  ReportPrintRequest,
   ReportQuery,
   ReportType,
   StockStatus,
   StockStatusRow,
 } from "@/contracts";
 import { AuthenticatedUser } from "@/server/lib/auth";
+import { auditAction } from "@/server/lib/audit";
 import { dbError } from "@/server/lib/errors";
 import { manilaDayStart, manilaNextDayStart } from "@/server/lib/dates";
 
@@ -82,6 +85,47 @@ export async function generateReport(
     case "stock-status":
       return { type, rows: await stockStatus(user) };
   }
+}
+
+/**
+ * Print Report: issues a report ID, reads the preparer from the session's own profile row (never from
+ * the request) and the active Owner's name for the approval block, and audits the print.
+ */
+export async function prepareReportPrint(
+  user: AuthenticatedUser,
+  type: ReportType,
+  body: ReportPrintRequest,
+): Promise<ReportPrintInfo> {
+  const db = user.supabaseClient;
+  const [me, owner] = await Promise.all([
+    db.from("users").select("full_name, username").eq("user_id", user.userId).single(),
+    db
+      .from("users")
+      .select("full_name")
+      .eq("role", "owner_admin")
+      .eq("status", "active")
+      .order("user_id")
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (me.error) throw dbError(me.error);
+  if (owner.error) throw dbError(owner.error);
+
+  const now = new Date();
+  const day = now.toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }).replace(/-/g, "");
+  const reportId = `GK-RPT-${day}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+  await auditAction(user, "report_prepared_for_print", "reports", reportId, {
+    reportType: type,
+    parameters: body.parameters,
+    recordCount: body.recordCount,
+    preparedBy: me.data.username,
+  });
+  return {
+    reportId,
+    preparedAt: now.toISOString(),
+    preparedBy: { fullName: me.data.full_name, username: me.data.username, role: user.role },
+    ownerName: owner.data?.full_name ?? null,
+  };
 }
 
 /** Current unit cost per product (product_costing.total_cost), for the given ids. */

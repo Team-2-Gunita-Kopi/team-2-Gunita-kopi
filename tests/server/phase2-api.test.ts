@@ -1497,6 +1497,60 @@ describe("reports", () => {
     );
     expect(r.status).toBe(400);
   });
+
+  it("prepares a report for print with the session's identity and audits it", async () => {
+    audits.length = 0;
+    onQuery = (query) => {
+      if (query.table !== "users") return { data: [] };
+      if (query.filters.some(([f, a]) => f === "eq" && a[0] === "user_id" && a[1] === 1)) {
+        return { data: { full_name: "Ana Reyes", username: "ana.owner" } };
+      }
+      return { data: { full_name: "Ana Reyes" } };
+    };
+    const r = await call(
+      reports.POST(
+        req("POST", "/api/reports/daily", OWNER, {
+          parameters: { Date: "2026-11-28" },
+          recordCount: 9,
+          // Ignored: the preparer comes from the session, never the request.
+          preparedBy: { fullName: "Someone Else", username: "x", role: "owner_admin" },
+        }),
+        params({ type: "daily" }),
+      ),
+    );
+    expect(r.status).toBe(200);
+    expect(r.body.data.reportId).toMatch(/^GK-RPT-\d{8}-[0-9A-F]{8}$/);
+    expect(r.body.data.preparedBy).toEqual({ fullName: "Ana Reyes", username: "ana.owner", role: "owner_admin" });
+    expect(r.body.data.ownerName).toBe("Ana Reyes");
+    const ownerLookup = calls.find((c) => c.filters.some(([f, a]) => f === "eq" && a[0] === "role"));
+    expect(ownerLookup!.filters).toContainEqual(["eq", ["status", "active"]]);
+    expect(audits).toEqual([
+      [
+        expect.objectContaining({ userId: 1, role: "owner_admin" }),
+        "report_prepared_for_print",
+        "reports",
+        r.body.data.reportId,
+        { reportType: "daily", parameters: { Date: "2026-11-28" }, recordCount: 9, preparedBy: "ana.owner" },
+      ],
+    ]);
+  });
+
+  it("refuses report printing to a barista and bad print bodies", async () => {
+    audits.length = 0;
+    const body = { parameters: {}, recordCount: 0 };
+    const barista = await call(
+      reports.POST(req("POST", "/api/reports/daily", "barista-token", body), params({ type: "daily" })),
+    );
+    expect(barista.status).toBe(403);
+    const bad = await call(
+      reports.POST(
+        req("POST", "/api/reports/daily", OWNER, { parameters: { x: "y".repeat(201) }, recordCount: -1 }),
+        params({ type: "daily" }),
+      ),
+    );
+    expect(bad.status).toBe(400);
+    expect(audits).toHaveLength(0);
+  });
 });
 
 describe("costing and error mapping", () => {

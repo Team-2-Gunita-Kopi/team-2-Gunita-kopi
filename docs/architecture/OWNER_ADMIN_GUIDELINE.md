@@ -168,7 +168,7 @@ Email/username + password, show/hide eye toggle, inline error, loading state, **
 ### 8.6 Suppliers
 Table (name, contact person, number, address, status chip) + add/edit modal. Toggle Active/Inactive. Inactive suppliers can't be assigned to new ingredients.
 
-### 8.7 Reports (sub-tabs, each with **Export CSV**)
+### 8.7 Reports (sub-tabs, each with **Print**: a formal A4 report with report ID, parameters, totals, preparation info and signature blocks; audited as `report_prepared_for_print`. No CSV export.)
 1. **Daily Sales** — bar chart + table (date, orders, total). 
 2. **Monthly Sales** — bar chart + table.
 3. **Best Sellers** — date-range picker, horizontal bars (product, qty, revenue).
