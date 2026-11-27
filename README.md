@@ -2,6 +2,16 @@
 
 Gunita Kopi is a modern Point of Sale (POS) and inventory management system designed for coffee shop operations. It calculates real-time recipe costing, tracks stock levels, and enables seamless offline order taking.
 
+## Admin landing page
+https://gunitakopi.vercel.app/admin/login
+
+## User Credentials 
+**Admin username**: admingunita
+**password**: admin123
+
+**Staff username**: Juan
+**password**: barista1
+
 ## Key Architecture Rule
 
 > **Important**: The frontend websites (the Owner area (`/admin`) and the POS area (`/staff`)) **never connect directly to the database**. All business data requests go to the site's own `/api` route, which reads the HttpOnly session cookie on the server and forwards the call to the backend API (the backend (`src/server`), a private Vercel service) with the user's token. The browser never holds a token. The frontend uses Supabase Auth strictly for user authentication. The database is protected behind Row Level Security (RLS) and server-side authorization.
