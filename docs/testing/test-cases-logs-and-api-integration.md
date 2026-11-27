@@ -117,7 +117,7 @@ Evidence: an automated test file, or **Live** (checked on the deployed site on t
 | TC-E03 | Save with no changes | Open Edit, save unchanged | "No changes to save.", nothing sent | Pass | `tests/owner/users-page.test.tsx`; Live 2026-11-25 |
 | TC-D01 | Dashboard totals | Open Dashboard | Matches the Daily report (₱1,855, 10 orders on 2026-11-25) | Pass | Live 2026-11-25 |
 | TC-D02 | Reports | Open Daily, Monthly, Best Sellers, Stock Status | Each loads with correct totals | Pass | `tests/owner/reports-*.test.tsx`; Live 2026-11-25 |
-| TC-D03 | Export CSV | Click Export CSV | File with the report rows | Pass | `tests/owner/reports-export.test.ts` |
+| TC-D03 | Print Report | Click Print | A4 report with report ID, filters, matching totals, preparer from the session, blank signature lines; audit entry `report_prepared_for_print`; no Export CSV button | Pass | `tests/owner/reports-buttons.test.tsx`, `tests/server/phase2-api.test.ts` |
 
 ---
 

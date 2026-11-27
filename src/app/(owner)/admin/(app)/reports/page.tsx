@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart, Button, DataTable, Icon, StatusBadge, Tabs, formatPeso, formatQueueNumber } from "@/ui";
-import type { BestSellerRow, ReportType } from "@/contracts";
+import type { BestSellerRow, ReportPrintInfo, ReportType } from "@/contracts";
+import { ORDER_STATUS_LABEL } from "@/contracts/ui";
 import { USE_MOCKS } from "@/owner/lib/use-mocks";
-import { downloadCsv, getReport, toCsv } from "@/owner/features/reports/api";
+import { getReport, prepareReportPrint } from "@/owner/features/reports/api";
+import { ReportPrint, type PrintTable } from "@/owner/features/reports/ReportPrint";
 import { listOrders, manilaToday } from "@/owner/features/orders/api";
 
 type Row = Record<string, unknown>;
@@ -43,6 +45,10 @@ const TITLES: Record<ReportType, string> = {
 };
 
 const TYPE_LABEL: Record<string, string> = { "dine-in": "Dine-in", "take-out": "Take-out", "pre-order": "Pre-order" };
+
+const STOCK_LABEL: Record<string, string> = { available: "In Stock", "low-stock": "Low Stock", "out-of-stock": "Out of Stock" };
+
+const SALES_COUNTED = "Completed orders only";
 
 const MOCK_BEST_SELLERS: BestSellerRow[] = [
   { productId: 1, productName: "Salabat", unitsSold: 46, revenue: 3450, currentUnitCost: null },
@@ -212,13 +218,108 @@ export default function ReportsPage() {
     ],
   };
 
-  // FR-35: the CSV holds exactly what the table shows, with the table's column names.
-  const exportCsv = () => {
-    const stockLabel: Record<string, string> = { available: "In Stock", "low-stock": "Low Stock", "out-of-stock": "Out of Stock" };
-    const csvRows =
-      activeTab === "stock-status" ? rows.map((r) => ({ ...r, status: stockLabel[String(r.status)] ?? r.status })) : rows;
-    const period = activeTab === "daily" ? selectedDate : activeTab === "monthly" ? selectedMonth : today;
-    downloadCsv(`gunita-kopi-${activeTab}-${period}.csv`, toCsv(csvRows, columns[activeTab]));
+  const dayOrderColumns = [
+    { key: "queue", header: "Queue", className: "mono" },
+    { key: "time", header: "Time" },
+    { key: "type", header: "Type" },
+    { key: "status", header: "Status", render: (row: Row) => <StatusBadge status={String(row.status)} /> },
+    { key: "total", header: "Total", className: "num" },
+    { key: "payment", header: "Payment" },
+  ];
+  const dayOrderRows: Row[] = (dayOrders.data ?? []).map((o) => ({
+    queue: formatQueueNumber(o.orderId),
+    time: new Date(o.orderDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" }),
+    type: o.orderType ? (TYPE_LABEL[o.orderType] ?? o.orderType) : "—",
+    status: o.status,
+    total: formatPeso(o.total),
+    payment: "Cash",
+  }));
+
+  // Print Report: the same rows and filters as on screen; totals come from the same numbers.
+  const [printInfo, setPrintInfo] = useState<ReportPrintInfo | null>(null);
+  const [printError, setPrintError] = useState("");
+  const [preparing, setPreparing] = useState(false);
+  useEffect(() => {
+    if (!printInfo) return;
+    const done = () => setPrintInfo(null);
+    window.addEventListener("afterprint", done, { once: true });
+    window.print();
+    return () => window.removeEventListener("afterprint", done);
+  }, [printInfo]);
+
+  const sumOf = (values: number[]) => values.reduce((a, b) => a + b, 0);
+  const printTables: PrintTable[] = [];
+  let printParams: Record<string, string> = {};
+  let summary: [string, string][] = [];
+  let subtitle = "";
+  if (activeTab === "daily") {
+    const weekOrders = sumOf(week.map((d) => dailyByDate.get(d)?.orderCount ?? 0));
+    const weekSales = sumOf(week.map((d) => dailyByDate.get(d)?.totalSales ?? 0));
+    subtitle = `7 days ending ${selectedDate}`;
+    printParams = { Date: selectedDate, Period: `${week[0]} to ${selectedDate}`, "Sales counted": SALES_COUNTED };
+    printTables.push(
+      { title: `Daily sales, ${week[0]} to ${selectedDate}`, columns: columns.daily, rows, total: { date: "Total", orders: weekOrders, sales: formatPeso(weekSales) } },
+      {
+        title: `Orders on ${selectedDate}`,
+        columns: dayOrderColumns,
+        rows: dayOrderRows.map((o) => ({ ...o, status: ORDER_STATUS_LABEL[o.status as keyof typeof ORDER_STATUS_LABEL] ?? o.status })),
+        total: { queue: `${dayOrderRows.length} orders, all statuses` },
+      },
+    );
+    summary = [
+      [`Sales on ${selectedDate}`, formatPeso(daySales)],
+      [`Orders on ${selectedDate}`, String(dayCount)],
+      ["Average order", formatPeso(dayCount > 0 ? daySales / dayCount : 0)],
+      ["Orders, 7 days", String(weekOrders)],
+      ["Sales, 7 days", formatPeso(weekSales)],
+    ];
+  } else if (activeTab === "monthly") {
+    const yearOrders = sumOf(monthlyRows.map((m) => m.orderCount));
+    const yearSales = sumOf(monthlyRows.map((m) => m.totalSales));
+    const first = monthAtOffset(selectedMonth, -11);
+    subtitle = `12 months ending ${selectedMonth}`;
+    printParams = { Month: selectedMonth, Period: `${first} to ${selectedMonth}`, "Sales counted": SALES_COUNTED };
+    printTables.push({ title: `Monthly sales, ${first} to ${selectedMonth}`, columns: columns.monthly, rows, total: { month: "Total", orders: yearOrders, sales: formatPeso(yearSales) } });
+    summary = [
+      ["Orders, 12 months", String(yearOrders)],
+      ["Sales, 12 months", formatPeso(yearSales)],
+      [`Sales in ${selectedMonth}`, formatPeso(monthlyRows[11]?.totalSales ?? 0)],
+    ];
+  } else if (activeTab === "best-sellers") {
+    const units = sumOf(bestSellerData.map((s) => s.unitsSold));
+    const revenue = sumOf(bestSellerData.map((s) => s.revenue));
+    subtitle = `${bestSellersFrom || "All dates"} to ${bestSellersTo || "All dates"}`;
+    printParams = { From: bestSellersFrom || "All dates", To: bestSellersTo || "All dates", Ranking: "Top 20 by units sold", "Sales counted": SALES_COUNTED };
+    printTables.push({ title: "Best sellers by units sold", columns: columns["best-sellers"], rows, total: { product: "Total", qtySold: units, sales: formatPeso(revenue) } });
+    summary = [
+      ["Products listed", String(rows.length)],
+      ["Units sold", String(units)],
+      ["Sales", formatPeso(revenue)],
+    ];
+  } else {
+    const count = (status: string) => String(rows.filter((r) => r.status === status).length);
+    subtitle = lowStockOnly ? "Low and out of stock ingredients" : "All ingredients";
+    printParams = { "Stock filter": lowStockOnly ? "Low stock only" : "All ingredients" };
+    printTables.push({ title: "Ingredient stock", columns: columns["stock-status"], rows: rows.map((r) => ({ ...r, status: STOCK_LABEL[String(r.status)] ?? r.status })) });
+    summary = [
+      ["Ingredients listed", String(rows.length)],
+      ["In Stock", count("available")],
+      ["Low Stock", count("low-stock")],
+      ["Out of Stock", count("out-of-stock")],
+    ];
+  }
+  const recordCount = sumOf(printTables.map((t) => t.rows.length));
+
+  const printReport = async () => {
+    setPrintError("");
+    setPreparing(true);
+    try {
+      setPrintInfo(await prepareReportPrint(activeTab, { parameters: printParams, recordCount }));
+    } catch (error) {
+      setPrintError(error instanceof Error ? error.message : "Could not prepare the report for printing.");
+    } finally {
+      setPreparing(false);
+    }
   };
 
   return (
@@ -268,11 +369,7 @@ export default function ReportsPage() {
               </label>
             </>
           )}
-          <Button onClick={exportCsv} disabled={rows.length === 0}>
-            <Icon name="download" />
-            Export CSV
-          </Button>
-          <Button onClick={() => window.print()}>
+          <Button onClick={printReport} disabled={preparing}>
             <Icon name="printer" />
             Print
           </Button>
@@ -286,6 +383,19 @@ export default function ReportsPage() {
         <p className="text-sm text-[var(--danger)]">
           {report.error instanceof Error ? report.error.message : "Could not load the report."}
         </p>
+      )}
+      {printError && <p className="text-sm text-[var(--danger)]" role="alert">{printError}</p>}
+      {printInfo && (
+        <ReportPrint
+          info={printInfo}
+          title={TITLES[activeTab]}
+          reportType={tabs.find((t) => t.id === activeTab)!.label}
+          subtitle={subtitle}
+          parameters={printParams}
+          tables={printTables}
+          summary={summary}
+          recordCount={recordCount}
+        />
       )}
 
       {activeTab === "daily" && (
@@ -308,22 +418,8 @@ export default function ReportsPage() {
           <DataTable<Row> columns={columns.daily} data={rows} keyExtractor={(row) => String(row.date)} />
           <h2 className="report-section-title">Orders on {selectedDate}</h2>
           <DataTable<Row>
-            columns={[
-              { key: "queue", header: "Queue", className: "mono" },
-              { key: "time", header: "Time" },
-              { key: "type", header: "Type" },
-              { key: "status", header: "Status", render: (row) => <StatusBadge status={String(row.status)} /> },
-              { key: "total", header: "Total", className: "num" },
-              { key: "payment", header: "Payment" },
-            ]}
-            data={(dayOrders.data ?? []).map((o) => ({
-              queue: formatQueueNumber(o.orderId),
-              time: new Date(o.orderDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" }),
-              type: o.orderType ? (TYPE_LABEL[o.orderType] ?? o.orderType) : "—",
-              status: o.status,
-              total: formatPeso(o.total),
-              payment: "Cash",
-            }))}
+            columns={dayOrderColumns}
+            data={dayOrderRows}
             keyExtractor={(row) => String(row.queue)}
             emptyMessage={dayOrders.isLoading ? "Loading orders…" : "No orders on this date."}
           />

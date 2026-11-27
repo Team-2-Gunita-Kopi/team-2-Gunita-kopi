@@ -75,6 +75,28 @@ export type Report =
 
 const ReportTotalsSchema = z.object({ orderCount: z.number(), totalSales: z.number() });
 
+/**
+ * POST /api/reports/[type]: the Owner prepares the shown report for printing. The body holds only the
+ * filters as shown and the number of printed rows; who prepared it comes from the session.
+ */
+export const ReportPrintRequestSchema = z.object({
+  parameters: z
+    .record(z.string().max(60), z.string().max(200))
+    .refine((p) => Object.keys(p).length <= 12, "Too many report parameters"),
+  recordCount: z.number().int().min(0).max(100_000),
+});
+export type ReportPrintRequest = z.infer<typeof ReportPrintRequestSchema>;
+
+export const ReportPrintInfoSchema = z.object({
+  reportId: z.string(),
+  /** ISO timestamp set by the server. */
+  preparedAt: z.string(),
+  preparedBy: z.object({ fullName: z.string(), username: z.string(), role: z.string() }),
+  /** Full name of the active Owner account, for the approval block; null if none is found. */
+  ownerName: z.string().nullable(),
+});
+export type ReportPrintInfo = z.infer<typeof ReportPrintInfoSchema>;
+
 /** Response of GET /api/reports/[type], for validating it in the Admin site. */
 export const ReportSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("daily"), rows: z.array(DailySalesRowSchema), totals: ReportTotalsSchema }),

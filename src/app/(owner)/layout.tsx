@@ -1,9 +1,10 @@
 import React from "react";
 import { Lora, Raleway, Noto_Sans_Tagalog } from "next/font/google";
 import localFont from "next/font/local";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "@/ui/css/styles.css";
 import "../globals.css";
+import { NoZoom } from "@/ui/NoZoom";
 
 const lora = Lora({ subsets: ["latin"], weight: ["600", "700"], variable: "--font-lora", display: "swap" });
 const raleway = Raleway({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-raleway", display: "swap" });
@@ -25,6 +26,13 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -33,6 +41,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={fontVars} suppressHydrationWarning>
       <body className="owner-mode" suppressHydrationWarning>
+        <NoZoom />
         {children}
       </body>
     </html>
