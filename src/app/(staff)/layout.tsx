@@ -5,6 +5,7 @@ import type { Metadata, Viewport } from "next";
 import "@/ui/css/styles.css";
 import "../globals.css";
 import { ServiceWorkerRegister } from "@/staff/components/ServiceWorkerRegister";
+import { NoZoom } from "@/ui/NoZoom";
 
 const lora = Lora({ subsets: ["latin"], weight: ["600", "700"], variable: "--font-lora", display: "swap" });
 const raleway = Raleway({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-raleway", display: "swap" });
@@ -44,6 +45,7 @@ export default function RootLayout({
     <html lang="en" className={fontVars} suppressHydrationWarning>
       <body className="staff-mode" suppressHydrationWarning>
         <ServiceWorkerRegister />
+        <NoZoom />
         {children}
       </body>
     </html>
