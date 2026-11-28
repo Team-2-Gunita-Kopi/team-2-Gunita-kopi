@@ -19,6 +19,12 @@ const toSupplier = (r: Tables<"suppliers">): Supplier => ({
   contactPerson: r.contact_person,
   contactNumber: r.contact_number,
   address: r.address,
+  street: r.street,
+  barangay: r.barangay,
+  city: r.city,
+  province: r.province,
+  zipCode: r.zip_code,
+  region: r.region,
   status: r.status as Supplier["status"],
 });
 
@@ -28,7 +34,14 @@ const toRow = (
   supplier_name: d.name,
   contact_person: d.contactPerson,
   contact_number: d.contactNumber,
-  address: d.address,
+  street: d.street,
+  barangay: d.barangay,
+  city: d.city,
+  province: d.province,
+  zip_code: d.zipCode,
+  region: d.region,
+  // The address fields replace the old one-line address (the request sends all six or none).
+  address: d.street === undefined ? undefined : null,
   status: d.status,
 });
 

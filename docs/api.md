@@ -126,11 +126,11 @@ Route handlers in `apps/api` (Next.js on Vercel Functions). Request and response
 
 Reference records only; no purchase orders or automatic reordering (SRS section 8).
 
-**`GET /api/suppliers`**: query `status`, `search`, paging. `Supplier`: `{ id, name, contactPerson, contactNumber, address, status }`.
+**`GET /api/suppliers`**: query `status`, `search`, paging. `Supplier`: `{ id, name, contactPerson, contactNumber, address, street, barangay, city, province, zipCode, region, status }`. `address` is the old one-line address of suppliers saved before the address fields (null once they are filled). The Owner page searches and filters the full list in the browser (search box over name, contact and every address part; Province and City / Municipality filters).
 
-**`POST /api/suppliers`**: `name` (1-100, required), `contactPerson?` (100), `contactNumber?` (20), `address?` (255). New suppliers are `active`. **201**.
+**`POST /api/suppliers`**: `name` (1-100, required), `contactPerson?` (100), `contactNumber?` (20), and the address, all required: `street` (1-150), `barangay` (1-100), `city` (1-100), `province` (1-100), `zipCode` (4 digits), `region` (one of `PH_REGIONS` in `@/contracts`, the 18 Philippine regions). Saving the address clears the old `address`. New suppliers are `active`. **201**.
 
-**`PATCH /api/suppliers/[id]`**: any subset, plus `status: "active" | "inactive"`. A deleted supplier answers 404.
+**`PATCH /api/suppliers/[id]`**: any subset, plus `status: "active" | "inactive"`; the address fields are sent all six or none (400 otherwise). A deleted supplier answers 404.
 
 **`DELETE /api/suppliers/[id]`**: soft delete through `delete_supplier()`. Sets `deleted_at` and `status = 'inactive'` and unlinks the supplier from its ingredients, so it leaves every supplier list and read and the Barista supplier options. Returns `{ id, unlinkedIngredients }`, audited as `supplier.delete`. 404 when missing or already deleted. There is no restore.
 
