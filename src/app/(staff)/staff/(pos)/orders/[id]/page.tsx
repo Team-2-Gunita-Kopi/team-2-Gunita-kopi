@@ -20,6 +20,7 @@ import {
 } from "@/ui";
 import { USE_MOCKS } from "@/staff/lib/use-mocks";
 import {
+  cancelOrderItems,
   getOrder,
   NEXT_STATUS,
   updateOrderStatus,
@@ -108,7 +109,10 @@ function toReceiptOrder(order: Order): ReceiptOrder {
     status: order.status,
     type: order.orderType ?? "dine-in",
     items,
-    totalAmount: order.total,
+    // The receipt shows the sale as rung up, cancelled items included, so it matches the payment.
+    totalAmount:
+      Math.round(order.items.reduce((sum, line) => sum + line.subtotal, 0) * 100) /
+      100,
     taxAmount: 0,
     discountAmount: 0,
     paidAmount: order.payment?.amountPaid ?? 0,
@@ -129,6 +133,9 @@ export default function PosOrderDetailsPage() {
   const client = useQueryClient();
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [showSlip, setShowSlip] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  // Items ticked in the Cancel items pop-up: lineId -> how many to cancel.
+  const [picked, setPicked] = useState<Record<number, number>>({});
   const orderQuery = useQuery({
     queryKey: ["pos-order", orderId],
     enabled: !USE_MOCKS && validId,
@@ -143,6 +150,10 @@ export default function PosOrderDetailsPage() {
   const nextStatus = order ? NEXT_STATUS[order.status] : undefined;
   const canCancel =
     order?.status === "pending" || order?.status === "preparing";
+  const activeItems = items.filter(({ item }) => item.status !== "cancelled");
+  const activeUnits = activeItems.reduce((n, { item }) => n + item.quantity, 0);
+  // With one item left, "Cancel order" does the same thing.
+  const canCancelItems = canCancel && activeUnits > 1;
 
   const changeStatus = async (status: OrderStatus) => {
     if (!order) return;
@@ -168,6 +179,27 @@ export default function PosOrderDetailsPage() {
       danger: true,
     });
     if (accepted) await changeStatus("cancelled");
+  };
+
+  const cancelItems = async () => {
+    if (!order) return;
+    const chosen = Object.entries(picked).map(([lineId, quantity]) => ({
+      lineId: Number(lineId),
+      quantity,
+    }));
+    try {
+      const updated = await cancelOrderItems(order.orderId, chosen);
+      toast("Items cancelled.");
+      setCancelOpen(false);
+      setPicked({});
+      client.setQueryData(["pos-order", orderId], updated);
+      await client.invalidateQueries({ queryKey: ["pos-orders"] });
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : "Could not cancel the items.",
+        true,
+      );
+    }
   };
 
   if (USE_MOCKS) {
@@ -244,6 +276,18 @@ export default function PosOrderDetailsPage() {
                 : "Preparing → Completed"}
             </Button>
           ) : null}
+          {canCancelItems ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setPicked({});
+                setCancelOpen(true);
+              }}
+            >
+              Cancel items
+            </Button>
+          ) : null}
           {canCancel ? (
             <Button
               size="sm"
@@ -273,6 +317,9 @@ export default function PosOrderDetailsPage() {
                     <strong>
                       {item.quantity}× {item.name ?? "Item"}
                     </strong>
+                    {item.status === "cancelled" ? (
+                      <StatusBadge status="cancelled" />
+                    ) : null}
                     {item.customization ? (
                       <span>{item.customization}</span>
                     ) : null}
@@ -360,6 +407,67 @@ export default function PosOrderDetailsPage() {
           )}
         </aside>
       </div>
+
+      <Dialog
+        isOpen={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        title={`Cancel items — Order ${formatQueueNumber(order.orderId)}`}
+      >
+        <div className="order-detail-items">
+          {activeItems.map(({ item }) => (
+            <div className="order-detail-item" key={item.lineId}>
+              <label className="order-detail-item-description">
+                <span>
+                  <input
+                    type="checkbox"
+                    checked={item.lineId in picked}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setPicked((current) => {
+                        const next = { ...current };
+                        if (checked) next[item.lineId] = item.quantity;
+                        else delete next[item.lineId];
+                        return next;
+                      });
+                    }}
+                  />{" "}
+                  {item.quantity}× {item.name ?? "Item"}
+                </span>
+              </label>
+              {item.lineId in picked && item.quantity > 1 ? (
+                <input
+                  type="number"
+                  min={1}
+                  max={item.quantity}
+                  aria-label={`How many ${item.name ?? "items"} to cancel`}
+                  value={picked[item.lineId]}
+                  onChange={(e) => {
+                    const value = Math.min(
+                      item.quantity,
+                      Math.max(1, Math.trunc(Number(e.target.value)) || 1),
+                    );
+                    setPicked((current) => ({ ...current, [item.lineId]: value }));
+                  }}
+                />
+              ) : (
+                <span className="num">{formatPeso(item.subtotal)}</span>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="modal-actions">
+          <Button variant="outline" onClick={() => setCancelOpen(false)}>
+            Keep items
+          </Button>
+          <Button
+            variant="danger"
+            disabled={Object.keys(picked).length === 0}
+            onClick={() => void cancelItems()}
+          >
+            Cancel selected
+          </Button>
+        </div>
+      </Dialog>
 
       {receiptOrder ? (
         <Dialog
