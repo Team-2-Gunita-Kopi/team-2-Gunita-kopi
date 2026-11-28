@@ -332,7 +332,10 @@ export default function PosOrderDetailsPage() {
                       {item.quantity}× {item.name ?? "Item"}
                     </strong>
                     {item.status === "cancelled" ? (
-                      <StatusBadge status="cancelled" />
+                      // Wrapped so the item-note style (direct child spans) does not restyle the badge.
+                      <div>
+                        <StatusBadge status="cancelled" />
+                      </div>
                     ) : null}
                     {item.customization ? (
                       <span>{item.customization}</span>
