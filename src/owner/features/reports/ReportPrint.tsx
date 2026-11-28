@@ -77,7 +77,7 @@ function SignatureBlock({ heading, name, position }: { heading: string; name?: s
 
 /**
  * The printed report (A4, multi-page): a document of its own, rendered into <body> so the print
- * stylesheet can print it alone. Hidden on screen. Signatures and the preparer's name and position
+ * stylesheet can print it alone. Hidden on screen. Signatures, both names and the preparer's position
  * are blank lines for handwriting.
  */
 export function ReportPrint({ info, title, reportType, subtitle, parameters, tables, summary, recordCount }: ReportPrintProps) {
@@ -187,7 +187,7 @@ export function ReportPrint({ info, title, reportType, subtitle, parameters, tab
 
       <div className="rp-signatures">
         <SignatureBlock heading="PREPARED BY" />
-        <SignatureBlock heading="OWNER'S APPROVAL" name={info.ownerName ?? ""} position="Owner" />
+        <SignatureBlock heading="OWNER'S APPROVAL" position="Owner" />
       </div>
     </article>,
     document.body,
