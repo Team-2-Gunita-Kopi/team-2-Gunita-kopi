@@ -46,22 +46,28 @@ function Pairs({ items }: { items: [string, string | null][] }) {
   );
 }
 
-/** Without a name, the Name line is left blank for handwriting. */
-function SignatureBlock({ heading, name, position }: { heading: string; name?: string; position: string }) {
+/** Without a value, the line is left blank for handwriting. */
+function SignField({ label, value }: { label: string; value?: string }) {
+  return value === undefined ? (
+    <p className="rp-sign-line">
+      {label}: <span />
+    </p>
+  ) : (
+    <p>
+      {label}: {value}
+    </p>
+  );
+}
+
+function SignatureBlock({ heading, name, position }: { heading: string; name?: string; position?: string }) {
   return (
     <section className="rp-sign" aria-label={heading}>
       <h3>{heading}</h3>
       <p className="rp-sign-line rp-sign-tall">
         Signature: <span />
       </p>
-      {name === undefined ? (
-        <p className="rp-sign-line">
-          Name: <span />
-        </p>
-      ) : (
-        <p>Name: {name}</p>
-      )}
-      <p>Position: {position}</p>
+      <SignField label="Name" value={name} />
+      <SignField label="Position" value={position} />
       <p className="rp-sign-line">
         Date: <span />
       </p>
@@ -71,8 +77,8 @@ function SignatureBlock({ heading, name, position }: { heading: string; name?: s
 
 /**
  * The printed report (A4, multi-page): a document of its own, rendered into <body> so the print
- * stylesheet can print it alone. Hidden on screen. Signatures and the "Prepared by" name are blank
- * lines for handwriting.
+ * stylesheet can print it alone. Hidden on screen. Signatures and the preparer's name and position
+ * are blank lines for handwriting.
  */
 export function ReportPrint({ info, title, reportType, subtitle, parameters, tables, summary, recordCount }: ReportPrintProps) {
   const prepared = formatDateTime(info.preparedAt);
@@ -180,7 +186,7 @@ export function ReportPrint({ info, title, reportType, subtitle, parameters, tab
       </section>
 
       <div className="rp-signatures">
-        <SignatureBlock heading="PREPARED BY" position="Owner / Admin" />
+        <SignatureBlock heading="PREPARED BY" />
         <SignatureBlock heading="OWNER'S APPROVAL" name={info.ownerName ?? ""} position="Owner" />
       </div>
     </article>,
