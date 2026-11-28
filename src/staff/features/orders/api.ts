@@ -44,3 +44,12 @@ export function updateOrderStatus(
     body: JSON.stringify({ status }),
   });
 }
+export function cancelOrderItems(
+  orderId: number,
+  items: { lineId: number; quantity: number }[],
+): Promise<Order> {
+  return apiData(`/api/orders/${orderId}/cancel-items`, OrderSchema, {
+    method: "POST",
+    body: JSON.stringify({ items }),
+  });
+}

@@ -1,7 +1,7 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { Order } from "@/contracts";
 import { renderWithProviders } from "@/staff/test/render";
 
@@ -14,6 +14,7 @@ vi.mock("next/navigation", async (importOriginal) => ({
 const ordersApi = vi.hoisted(() => ({
   getOrder: vi.fn(),
   updateOrderStatus: vi.fn(),
+  cancelOrderItems: vi.fn(),
   NEXT_STATUS: { pending: "preparing", preparing: "completed" },
 }));
 vi.mock("@/staff/features/orders/api", () => ordersApi);
@@ -40,6 +41,7 @@ const order: Order = {
       subtotal: 280,
       customization: "Scrambled egg",
       specialInstructions: null,
+      status: "pending",
     },
     {
       lineId: 100,
@@ -52,6 +54,7 @@ const order: Order = {
       subtotal: 140,
       customization: "Heated",
       specialInstructions: null,
+      status: "pending",
     },
   ],
   total: 420,
@@ -139,5 +142,79 @@ describe("Barista order details page", () => {
 
     expect(screen.getByRole("dialog", { name: "Receipt" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Print" })).toBeInTheDocument();
+  });
+
+  // A customer may cancel one item, not the whole order (design 2026-11-28).
+  const ensaymadaCancelled: Order = {
+    ...order,
+    items: order.items.map((i) => (i.lineId === 100 ? { ...i, status: "cancelled" } : i)),
+    total: 280,
+  };
+
+  it("cancels only the items the barista ticks", async () => {
+    const user = userEvent.setup();
+    ordersApi.cancelOrderItems.mockReset().mockResolvedValue(ensaymadaCancelled);
+    renderWithProviders(<PosOrderDetailsPage />);
+    await screen.findByRole("heading", { name: "Order 011" });
+
+    await user.click(screen.getByRole("button", { name: "Cancel items" }));
+    const dialog = await screen.findByRole("dialog", { name: "Cancel items — Order 011" });
+    const submit = within(dialog).getByRole("button", { name: "Cancel selected" });
+    expect(submit).toBeDisabled();
+    await user.click(within(dialog).getByRole("checkbox", { name: "2× Ensaymada" }));
+    await user.click(submit);
+
+    await waitFor(() => {
+      expect(ordersApi.cancelOrderItems).toHaveBeenCalledWith(11, [{ lineId: 100, quantity: 2 }]);
+    });
+    expect(await screen.findByText("Items cancelled.")).toBeInTheDocument();
+    expect(screen.getByText("Cancelled")).toBeInTheDocument();
+    expect(screen.getByText("₱280.00", { selector: ".order-detail-total .num" })).toBeInTheDocument();
+    expect(ordersApi.updateOrderStatus).not.toHaveBeenCalled();
+  });
+
+  it("lets the barista cancel part of an item's quantity", async () => {
+    const user = userEvent.setup();
+    ordersApi.cancelOrderItems.mockReset().mockResolvedValue(order);
+    renderWithProviders(<PosOrderDetailsPage />);
+    await screen.findByRole("heading", { name: "Order 011" });
+
+    await user.click(screen.getByRole("button", { name: "Cancel items" }));
+    const dialog = await screen.findByRole("dialog", { name: "Cancel items — Order 011" });
+    await user.click(within(dialog).getByRole("checkbox", { name: "2× Longsilog" }));
+    const howMany = within(dialog).getByRole("spinbutton", { name: "How many Longsilog to cancel" });
+    expect(howMany).toHaveValue(2);
+    fireEvent.change(howMany, { target: { value: "1" } });
+    await user.click(within(dialog).getByRole("button", { name: "Cancel selected" }));
+
+    await waitFor(() => {
+      expect(ordersApi.cancelOrderItems).toHaveBeenCalledWith(11, [{ lineId: 99, quantity: 1 }]);
+    });
+  });
+
+  it("offers Cancel items only when the order has more than one item left to cancel", async () => {
+    const single: Order = { ...order, items: [{ ...order.items[0]!, quantity: 1, subtotal: 140 }], total: 140 };
+    ordersApi.getOrder.mockResolvedValue(single);
+    const { unmount } = renderWithProviders(<PosOrderDetailsPage />);
+    await screen.findByRole("heading", { name: "Order 011" });
+    expect(screen.queryByRole("button", { name: "Cancel items" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel order" })).toBeInTheDocument();
+    unmount();
+
+    ordersApi.getOrder.mockResolvedValue({ ...order, status: "completed" });
+    renderWithProviders(<PosOrderDetailsPage />);
+    await screen.findByRole("heading", { name: "Order 011" });
+    expect(screen.queryByRole("button", { name: "Cancel items" })).toBeNull();
+  });
+
+  it("keeps the receipt total equal to the sale that was paid", async () => {
+    const user = userEvent.setup();
+    ordersApi.getOrder.mockResolvedValue(ensaymadaCancelled);
+    renderWithProviders(<PosOrderDetailsPage />);
+    await screen.findByRole("heading", { name: "Order 011" });
+
+    await user.click(screen.getByRole("button", { name: "Receipt" }));
+    const receipt = screen.getByRole("dialog", { name: "Receipt" });
+    expect(within(receipt).getAllByText("₱420.00").length).toBeGreaterThan(0);
   });
 });

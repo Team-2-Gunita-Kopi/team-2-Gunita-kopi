@@ -40,6 +40,7 @@ const order: Order = {
       subtotal: 280,
       customization: "Scrambled egg",
       specialInstructions: null,
+      status: "pending",
     },
     {
       lineId: 102,
@@ -52,6 +53,7 @@ const order: Order = {
       subtotal: 50,
       customization: null,
       specialInstructions: null,
+      status: "pending",
     },
   ],
   total: 330,

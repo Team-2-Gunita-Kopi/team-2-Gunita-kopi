@@ -44,6 +44,7 @@ const order: Order = {
       subtotal: 145,
       customization: "Less sugar",
       specialInstructions: "No lid",
+      status: "pending",
     },
     {
       lineId: 102,
@@ -56,6 +57,7 @@ const order: Order = {
       subtotal: 25,
       customization: null,
       specialInstructions: null,
+      status: "pending",
     },
   ],
   total: 170,

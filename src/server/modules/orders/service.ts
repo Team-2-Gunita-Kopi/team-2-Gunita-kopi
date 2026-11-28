@@ -1,4 +1,5 @@
 import type {
+  CancelOrderItemsRequest,
   CreateOrderRequest,
   Order,
   OrderListQuery,
@@ -153,8 +154,16 @@ async function loadOrders(
       subtotal: r.subtotal,
       customization: r.customization,
       specialInstructions: r.special_instructions,
+      status: r.status as OrderStatus,
     });
-    order.total = Math.round((order.total + r.subtotal) * 100) / 100;
+    if (r.status !== "cancelled") {
+      order.total = Math.round((order.total + r.subtotal) * 100) / 100;
+    }
+  }
+  // Cancelled items do not count: the order is cancelled only when every item is.
+  for (const order of orders.values()) {
+    order.status =
+      order.items.find((i) => i.status !== "cancelled")?.status ?? "cancelled";
   }
   for (const p of payments.data) {
     const order = orders.get(p.order_id);
@@ -207,8 +216,8 @@ export async function listOrders(
 }
 
 /**
- * Moves every row of the order to the new status. The database enforces the transitions
- * (pending -> preparing -> completed, pending/preparing -> cancelled) and answers
+ * Moves every item of the order that is not cancelled to the new status. The database enforces
+ * the transitions (pending -> preparing -> completed, pending/preparing -> cancelled) and answers
  * INVALID_TRANSITION (409) otherwise. Who changed it and when goes to the audit log.
  */
 export async function updateOrderStatus(
@@ -220,9 +229,37 @@ export async function updateOrderStatus(
     .from("orders")
     .update({ status })
     .eq("order_id", orderId)
+    .neq("status", "cancelled")
     .select("order_line_id");
   if (error) throw dbError(error);
-  if (data.length === 0) throw new NotFoundError("Order not found");
+  if (data.length === 0) {
+    // 404 when the order does not exist; otherwise every item is already cancelled.
+    const order = await getOrder(user, orderId);
+    throw new AppError(
+      `An order cannot move from ${order.status} to ${status}`,
+      409,
+      "INVALID_TRANSITION",
+    );
+  }
   await auditAction(user, "order.status", "orders", orderId, { status });
+  return getOrder(user, orderId);
+}
+
+/**
+ * Cancels chosen items (or part of an item's quantity) of a pending/preparing order through
+ * cancel_order_items, which also cancels their add-ons and returns their stock in one transaction.
+ * Refunds are handled by hand: the payment is not changed.
+ */
+export async function cancelOrderItems(
+  user: AuthenticatedUser,
+  orderId: number,
+  items: CancelOrderItemsRequest["items"],
+): Promise<Order> {
+  const { error } = await user.supabaseClient.rpc("cancel_order_items", {
+    p_order_id: orderId,
+    p_items: items.map((i) => ({ line_id: i.lineId, quantity: i.quantity })),
+  });
+  if (error) throw dbError(error);
+  await auditAction(user, "order.cancel_items", "orders", orderId, { items });
   return getOrder(user, orderId);
 }

@@ -187,6 +187,7 @@ const recipeRoute = await import("@/server/routes/products/[id]/recipe/route");
 const costingList = await import("@/server/routes/products/costing/route");
 const orders = await import("@/server/routes/orders/route");
 const orderById = await import("@/server/routes/orders/[id]/route");
+const cancelItems = await import("@/server/routes/orders/[id]/cancel-items/route");
 const sync = await import("@/server/routes/sync/route");
 const reports = await import("@/server/routes/reports/[type]/route");
 const dashboard = await import("@/server/routes/dashboard/route");
@@ -1296,6 +1297,94 @@ describe("orders and checkout", () => {
       ),
     );
     expect(bogus.status).toBe(400);
+  });
+
+  // A customer may cancel one item, not the whole order (design 2026-11-28).
+  const lines7 = order7.data as Record<string, unknown>[];
+  const withStatus = (...statuses: string[]): Result => ({
+    data: [
+      ...lines7.map((l, i) => ({ ...l, status: statuses[i] })),
+      { ...lines7[0], order_line_id: 3, product_id: 2, quantity: 1, unit_price: 60, subtotal: 60, customization: null,
+        products: { product_name: "Cookie" }, status: statuses[2] },
+    ],
+  });
+
+  it("cancels chosen items through cancel_order_items and audits it", async () => {
+    onQuery = ordersDb;
+    const r = await call(
+      cancelItems.POST(
+        req("POST", "/api/orders/7/cancel-items", "barista-token", { items: [{ lineId: 1, quantity: 1 }] }),
+        params({ id: "7" }),
+      ),
+    );
+    expect(r.status).toBe(200);
+    expect(rpcCalls).toEqual([
+      { name: "cancel_order_items", args: { p_order_id: 7, p_items: [{ line_id: 1, quantity: 1 }] } },
+    ]);
+    expect(audits).toEqual([[expect.anything(), "order.cancel_items", "orders", 7, { items: [{ lineId: 1, quantity: 1 }] }]]);
+    expect(r.body.data.orderId).toBe(7);
+  });
+
+  it("rejects an empty cancel-items request before touching the database", async () => {
+    const r = await call(
+      cancelItems.POST(
+        req("POST", "/api/orders/7/cancel-items", "barista-token", { items: [] }),
+        params({ id: "7" }),
+      ),
+    );
+    expect(r.status).toBe(400);
+    expect(r.body.error.code).toBe("VALIDATION_ERROR");
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it("maps a refused item cancel to 409 INVALID_TRANSITION and audits nothing", async () => {
+    onRpc = () => ({
+      error: { code: "P0001", message: "INVALID_TRANSITION: items can be cancelled only while the order is pending or preparing" },
+    });
+    const r = await call(
+      cancelItems.POST(
+        req("POST", "/api/orders/7/cancel-items", "barista-token", { items: [{ lineId: 1, quantity: 1 }] }),
+        params({ id: "7" }),
+      ),
+    );
+    expect(r.status).toBe(409);
+    expect(r.body.error.code).toBe("INVALID_TRANSITION");
+    expect(audits).toHaveLength(0);
+  });
+
+  it("leaves cancelled items out of the order's status and total", async () => {
+    onQuery = (c) => (c.table === "payments" ? payment7 : withStatus("cancelled", "cancelled", "pending"));
+    const r = await call(orderById.GET(req("GET", "/api/orders/7", "barista-token"), params({ id: "7" })));
+    expect(r.body.data).toMatchObject({ status: "pending", total: 60 });
+    expect(r.body.data.items.map((i: { status: string }) => i.status)).toEqual(["cancelled", "cancelled", "pending"]);
+
+    onQuery = (c) => (c.table === "payments" ? payment7 : withStatus("cancelled", "cancelled", "cancelled"));
+    const gone = await call(orderById.GET(req("GET", "/api/orders/7", "barista-token"), params({ id: "7" })));
+    expect(gone.body.data).toMatchObject({ status: "cancelled", total: 0 });
+  });
+
+  it("moves only the active items when the status changes", async () => {
+    onQuery = (c) => (c.op === "update" ? { data: [{ order_line_id: 3 }] } : ordersDb(c));
+    const ok = await call(
+      orderById.PATCH(
+        req("PATCH", "/api/orders/7", "barista-token", { status: "preparing" }),
+        params({ id: "7" }),
+      ),
+    );
+    expect(ok.status).toBe(200);
+    expect(calls.find((c) => c.op === "update")!.filters).toContainEqual(["neq", ["status", "cancelled"]]);
+
+    // Every item already cancelled: nothing to move, and the order still exists.
+    onQuery = (c) =>
+      c.op === "update" ? { data: [] } : c.table === "payments" ? payment7 : withStatus("cancelled", "cancelled", "cancelled");
+    const done = await call(
+      orderById.PATCH(
+        req("PATCH", "/api/orders/7", "barista-token", { status: "preparing" }),
+        params({ id: "7" }),
+      ),
+    );
+    expect(done.status).toBe(409);
+    expect(done.body.error.code).toBe("INVALID_TRANSITION");
   });
 });
 

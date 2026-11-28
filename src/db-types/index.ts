@@ -695,6 +695,10 @@ export type Database = {
     Functions: {
       app_role: { Args: Record<PropertyKey, never>; Returns: string };
       app_user_id: { Args: Record<PropertyKey, never>; Returns: number };
+      cancel_order_items: {
+        Args: { p_items: Json; p_order_id: number };
+        Returns: undefined;
+      };
       create_barista_ingredient: {
         Args: {
           p_name: string;

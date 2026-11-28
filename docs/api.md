@@ -64,6 +64,7 @@ Route handlers in `apps/api` (Next.js on Vercel Functions). Request and response
 | `POST`  | `/api/orders`                | barista                   | Checkout (online)                          | FR-01 to FR-13 |
 | `GET`   | `/api/orders/[id]`           | owner, barista            | Order, receipt and order slip data         | FR-08, FR-09   |
 | `PATCH` | `/api/orders/[id]`           | owner, barista            | Change order status                        | FR-10          |
+| `POST`  | `/api/orders/[id]/cancel-items` | owner, barista         | Cancel chosen items of an order            | FR-10          |
 | `POST`  | `/api/sync`                  | barista                   | Save offline orders                        | FR-56 to FR-60 |
 | `GET`   | `/api/reports/[type]`        | owner                     | Daily, monthly, best sellers, stock status | FR-30 to FR-35 |
 | `GET`   | `/api/dashboard`             | owner                     | Dashboard summary                          | FR-36 to FR-39 |
@@ -229,7 +230,9 @@ Returns `{ duplicate, order }`: **201** for a new sale, **200** with `duplicate:
 
 **`GET /api/orders`**: query `status` (one or a comma list, e.g. `pending,preparing` for the queue), `from`, `to`, paging; newest first. Returns `Page<Order>`.
 
-**`PATCH /api/orders/[id]`**: body `{ status }`. Allowed: `pending -> preparing -> completed`, and `pending`/`preparing -> cancelled`. Others: **409 `INVALID_TRANSITION`**. Completed orders count as sales in the reports. The change is audited with the user and time.
+**`PATCH /api/orders/[id]`**: body `{ status }`. Allowed: `pending -> preparing -> completed`, and `pending`/`preparing -> cancelled`. Others: **409 `INVALID_TRANSITION`**. Completed orders count as sales in the reports. The change is audited with the user and time. Only items that are not cancelled move; an order whose items are all cancelled answers **409 `INVALID_TRANSITION`**.
+
+**`POST /api/orders/[id]/cancel-items`**: body `{ items: [{ lineId, quantity }] }` (product items; `quantity` 1 to the item quantity). Cancels those items and their add-ons through `cancel_order_items` while the order is pending or preparing, returns their ingredients to stock and returns the updated `Order` (each item has its own `status`; the order `status` and `total` leave cancelled items out; the payment is unchanged, refunds are by hand). Errors: **400** bad body or quantity, **409 `CONFLICT`** not an active product item of the order, **409 `INVALID_TRANSITION`** order not pending/preparing, **404** unknown order. Audited as `order.cancel_items`.
 
 ### Offline sync
 
