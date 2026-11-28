@@ -32,27 +32,35 @@ const ROLE_LABEL: Record<string, string> = { owner_admin: "Owner / Admin", baris
 const isNum = (c: { className?: string }) => (c.className ?? "").split(" ").includes("num");
 const text = (v: unknown) => (v === null || v === undefined ? "" : String(v));
 
-function Pairs({ items }: { items: [string, string][] }) {
+/** A null value prints as a blank line to fill in by hand. */
+function Pairs({ items }: { items: [string, string | null][] }) {
   return (
     <dl className="rp-pairs">
       {items.map(([k, v]) => (
         <React.Fragment key={k}>
           <dt>{k}</dt>
-          <dd>{v}</dd>
+          {v === null ? <dd className="rp-write" /> : <dd>{v}</dd>}
         </React.Fragment>
       ))}
     </dl>
   );
 }
 
-function SignatureBlock({ heading, name, position }: { heading: string; name: string; position: string }) {
+/** Without a name, the Name line is left blank for handwriting. */
+function SignatureBlock({ heading, name, position }: { heading: string; name?: string; position: string }) {
   return (
     <section className="rp-sign" aria-label={heading}>
       <h3>{heading}</h3>
       <p className="rp-sign-line rp-sign-tall">
         Signature: <span />
       </p>
-      <p>Name: {name}</p>
+      {name === undefined ? (
+        <p className="rp-sign-line">
+          Name: <span />
+        </p>
+      ) : (
+        <p>Name: {name}</p>
+      )}
       <p>Position: {position}</p>
       <p className="rp-sign-line">
         Date: <span />
@@ -63,11 +71,11 @@ function SignatureBlock({ heading, name, position }: { heading: string; name: st
 
 /**
  * The printed report (A4, multi-page): a document of its own, rendered into <body> so the print
- * stylesheet can print it alone. Hidden on screen. Signatures are blank lines for handwriting.
+ * stylesheet can print it alone. Hidden on screen. Signatures and the "Prepared by" name are blank
+ * lines for handwriting.
  */
 export function ReportPrint({ info, title, reportType, subtitle, parameters, tables, summary, recordCount }: ReportPrintProps) {
   const prepared = formatDateTime(info.preparedAt);
-  const preparer = info.preparedBy.fullName || info.preparedBy.username;
   const params = Object.entries(parameters);
   const paramText = params.map(([k, v]) => `${k}: ${v}`).join("; ");
 
@@ -97,7 +105,7 @@ export function ReportPrint({ info, title, reportType, subtitle, parameters, tab
               ["Report ID", info.reportId],
               ["Report type", reportType],
               ["Generated", prepared],
-              ["Prepared by", preparer],
+              ["Prepared by", null],
             ]}
           />
         </section>
@@ -161,7 +169,7 @@ export function ReportPrint({ info, title, reportType, subtitle, parameters, tab
         <Pairs
           items={[
             ["Report ID", info.reportId],
-            ["Prepared by", preparer],
+            ["Prepared by", null],
             ["Username and role", `${info.preparedBy.username} · ${ROLE_LABEL[info.preparedBy.role] ?? info.preparedBy.role}`],
             ["Date and time prepared", prepared],
             ["Report type", reportType],
@@ -172,7 +180,7 @@ export function ReportPrint({ info, title, reportType, subtitle, parameters, tab
       </section>
 
       <div className="rp-signatures">
-        <SignatureBlock heading="PREPARED BY" name={preparer} position="Owner / Admin" />
+        <SignatureBlock heading="PREPARED BY" position="Owner / Admin" />
         <SignatureBlock heading="OWNER'S APPROVAL" name={info.ownerName ?? ""} position="Owner" />
       </div>
     </article>,
