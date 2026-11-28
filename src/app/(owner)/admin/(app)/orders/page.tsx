@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import Link from "next/link";
 import type { Order, OrderStatus } from "@/contracts";
 import {
   Button,
@@ -212,18 +211,8 @@ export default function OrdersPage() {
       key: "queue",
       header: "Queue",
       className: "mono",
-      render: (row) =>
-        USE_MOCKS ? (
-          formatQueueNumber(row.queue)
-        ) : (
-          <Link
-            href={`/admin/orders/${row.orderId}`}
-            className="order-queue-link"
-            aria-label={`View details for order ${formatQueueNumber(row.queue)}`}
-          >
-            {formatQueueNumber(row.queue)}
-          </Link>
-        ),
+      // Plain text: orders are handled by the staff on the POS; the Owner only lists them.
+      render: (row) => formatQueueNumber(row.queue),
     },
     { key: "cashier", header: "Cashier" },
     { key: "type", header: "Type" },

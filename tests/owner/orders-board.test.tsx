@@ -124,16 +124,12 @@ describe("Owner orders board", () => {
     });
   });
 
-  it("opens order details from the queue number and keeps actions off the board", async () => {
+  // Orders are handled by the staff on the POS; the Owner board only lists them (2026-11-28).
+  it("shows the queue number as plain text and keeps actions off the board", async () => {
     renderWithProviders(<OrdersPage />);
-    await waitFor(() => {
-      expect(
-        screen.getAllByRole("link", { name: "View details for order 012" }),
-      ).toHaveLength(1);
-    });
-    expect(
-      screen.getAllByRole("link", { name: "View details for order 012" })[0],
-    ).toHaveAttribute("href", "/admin/orders/12");
+    const table = screen.getByRole("table");
+    expect(await within(table).findByText("012")).toBeInTheDocument();
+    expect(within(table).queryByRole("link")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Actions for order/ }),
     ).not.toBeInTheDocument();
