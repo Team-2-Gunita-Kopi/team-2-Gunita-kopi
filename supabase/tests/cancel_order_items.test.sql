@@ -1,4 +1,5 @@
--- Cancel single items of an order (20261120001600), checked on a migrated database.
+-- Cancel single items of an order (20261120001600; pending only and refund reason since
+-- 20261120001700), checked on a migrated database.
 -- Each check raises 'TEST FAILED: ...' on a wrong result; run with psql -v ON_ERROR_STOP=1.
 
 \set owner   '''00000000-0000-0000-0000-0000000000a3'''
@@ -79,7 +80,8 @@ begin
   end if;
 
   -- Customer cancels 1 of the 3 lattes: its syrup goes with it.
-  perform public.cancel_order_items(v_order, jsonb_build_array(jsonb_build_object('line_id', v_latte, 'quantity', 1)));
+  perform public.cancel_order_items(v_order, jsonb_build_array(jsonb_build_object('line_id', v_latte, 'quantity', 1)),
+                                    '  Customer changed mind ');
   if (select quantity || '/' || subtotal from public.orders where order_line_id = v_latte) <> '2/200.00'
      or (select quantity || '/' || subtotal from public.orders where order_line_id = v_syrup) <> '2/50.00' then
     raise exception 'TEST FAILED: active lines not reduced';
@@ -88,6 +90,11 @@ begin
         from public.orders where order_id = v_order and order_line_id > v_cookie)
      <> '931:1:100.00:cancelled,:1:25.00:cancelled' then
     raise exception 'TEST FAILED: cancelled copies (product first, then add-on)';
+  end if;
+  -- The reason is kept, trimmed, on the cancelled rows only (refund = their subtotal, 125).
+  if (select string_agg(coalesce(cancel_reason, '-'), ',' order by order_line_id) from public.orders
+       where order_id = v_order) <> '-,-,-,Customer changed mind,Customer changed mind' then
+    raise exception 'TEST FAILED: cancel reason on cancelled rows';
   end if;
   if pg_temp.stock(31) <> 464 or pg_temp.stock(32) <> 60 or pg_temp.stock(33) <> 190 then
     raise exception 'TEST FAILED: item stock return % % %', pg_temp.stock(31), pg_temp.stock(32), pg_temp.stock(33);
@@ -111,6 +118,7 @@ begin
   perform pg_temp.expect_error(format('select public.cancel_order_items(%s, ''[{"line_id":%s,"quantity":3}]'')', v_order, v_latte), 'VALIDATION');
   perform pg_temp.expect_error(format('select public.cancel_order_items(%s, ''[{"line_id":%s,"quantity":1}]'')', v_order, v_syrup), 'CONFLICT');
   perform pg_temp.expect_error(format('select public.cancel_order_items(%s, ''[{"line_id":1,"quantity":1}]'')', 999999), 'NOT_FOUND');
+  perform pg_temp.expect_error(format('select public.cancel_order_items(%s, ''[{"line_id":%s,"quantity":1}]'', %L)', v_order, v_latte, repeat('x', 101)), 'VALIDATION');
   v_other := (public.process_checkout_transaction('{
     "client_tx_id": "88888888-8888-4888-8888-888888888888", "order_type": "take-out", "amount_paid": 120,
     "items": [{"product_id": 932, "quantity": 2, "unit_price": 60}]}')->>'order_id')::int;
@@ -119,13 +127,7 @@ begin
     raise exception 'TEST FAILED: a refused cancel changed stock';
   end if;
 
-  -- Moving the order on touches only the active items.
-  update public.orders set status = 'preparing' where order_id = v_order and status <> 'cancelled';
-  if (select status from public.v_order_totals where order_id = v_order) <> 'preparing' then
-    raise exception 'TEST FAILED: status after advancing';
-  end if;
-
-  -- A second latte is cancelled while preparing.
+  -- A second latte is cancelled, still pending (no reason given: older app version).
   perform public.cancel_order_items(v_order, jsonb_build_array(jsonb_build_object('line_id', v_latte, 'quantity', 1)));
   if pg_temp.stock(31) <> 482 or pg_temp.stock(32) <> 80 then
     raise exception 'TEST FAILED: second item return';
@@ -146,8 +148,20 @@ begin
   end if;
   perform pg_temp.expect_error(format('select public.cancel_order_items(%s, ''[{"line_id":%s,"quantity":1}]'')', v_order, v_cookie), 'INVALID_TRANSITION');
 
-  -- A completed order cannot have items cancelled.
+  -- Once preparing the customer pays: no item or order can be cancelled, by any path.
   update public.orders set status = 'preparing' where order_id = v_other;
+  if (select status from public.v_order_totals where order_id = v_other) <> 'preparing' then
+    raise exception 'TEST FAILED: status after advancing';
+  end if;
+  perform pg_temp.expect_error(format('select public.cancel_order_items(%s, ''[{"line_id":%s,"quantity":1}]'', ''Wrong order'')',
+    v_other, (select order_line_id from public.orders where order_id = v_other)), 'INVALID_TRANSITION');
+  perform pg_temp.expect_error(format('update public.orders set status = ''cancelled'' where order_id = %s', v_other),
+    'INVALID_TRANSITION');
+  if pg_temp.stock(33) <> 180 then
+    raise exception 'TEST FAILED: a refused preparing cancel changed stock';
+  end if;
+
+  -- A completed order cannot have items cancelled.
   update public.orders set status = 'completed' where order_id = v_other;
   perform pg_temp.expect_error(format('select public.cancel_order_items(%s, ''[{"line_id":%s,"quantity":1}]'')',
     v_other, (select order_line_id from public.orders where order_id = v_other)), 'INVALID_TRANSITION');

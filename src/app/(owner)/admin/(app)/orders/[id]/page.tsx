@@ -16,7 +16,12 @@ import {
   useToast,
 } from "@/ui";
 import type { Order, OrderStatus } from "@/contracts";
-import { ORDER_STATUS_LABEL, type Order as ReceiptOrder } from "@/contracts/ui";
+import {
+  ORDER_STATUS_LABEL,
+  canCancel as canCancelStatus,
+  orderRefund,
+  type Order as ReceiptOrder,
+} from "@/contracts/ui";
 import { useLiveQuery } from "@/owner/lib/data";
 import { USE_MOCKS } from "@/owner/lib/use-mocks";
 import {
@@ -79,7 +84,9 @@ function groupItems(order: Order) {
 
 function toReceiptOrder(order: Order): ReceiptOrder {
   const items: ReceiptOrder["items"] = [];
-  for (const line of [...order.items].sort((a, b) => a.lineId - b.lineId)) {
+  // Cancelled items are left out; the Refunded line makes paid = total + change + refunded.
+  const active = order.items.filter((line) => line.status !== "cancelled");
+  for (const line of active.sort((a, b) => a.lineId - b.lineId)) {
     const parent = items[items.length - 1];
     if (line.isAddon && parent) {
       parent.addons = [
@@ -119,6 +126,7 @@ function toReceiptOrder(order: Order): ReceiptOrder {
     discountAmount: 0,
     paidAmount: order.payment?.amountPaid ?? 0,
     changeAmount: order.payment?.changeAmount ?? 0,
+    refundedAmount: orderRefund(order.items).amount,
     paymentMethod: receiptPaymentMethod(order.payment?.paymentMethod ?? "cash"),
     createdAt: order.orderDate,
     createdBy: String(order.cashierId ?? ""),
@@ -145,8 +153,12 @@ export default function OrderDetailsPage() {
     [order],
   );
   const nextStatus = order ? NEXT_STATUS[order.status] : undefined;
-  const canCancel =
-    order?.status === "pending" || order?.status === "preparing";
+  // Only while pending: once preparing the customer pays for the order.
+  const canCancel = order ? canCancelStatus(order.status) : false;
+  const refund = useMemo(
+    () => (order ? orderRefund(order.items) : { amount: 0, reason: null }),
+    [order],
+  );
 
   const changeStatus = async (status: OrderStatus) => {
     if (!order) return;
@@ -347,6 +359,18 @@ export default function OrderDetailsPage() {
                   {formatPeso(order.payment.changeAmount)}
                 </dd>
               </div>
+              {refund.amount > 0 ? (
+                <div>
+                  <dt>Refunded</dt>
+                  <dd className="num">{formatPeso(refund.amount)}</dd>
+                </div>
+              ) : null}
+              {refund.amount > 0 && refund.reason ? (
+                <div>
+                  <dt>Refund reason</dt>
+                  <dd>{refund.reason}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt>Date</dt>
                 <dd>{displayDateTime(order.payment.dateTime)}</dd>

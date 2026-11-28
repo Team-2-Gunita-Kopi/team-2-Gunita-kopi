@@ -212,7 +212,9 @@ Returns `{ duplicate, order }`: **201** for a new sale, **200** with `duplicate:
       "unitPrice": 120,
       "subtotal": 240,
       "customization": "less ice",
-      "specialInstructions": null
+      "specialInstructions": null,
+      "status": "pending",
+      "cancelReason": null
     }
   ],
   "total": 255,
@@ -230,9 +232,9 @@ Returns `{ duplicate, order }`: **201** for a new sale, **200** with `duplicate:
 
 **`GET /api/orders`**: query `status` (one or a comma list, e.g. `pending,preparing` for the queue), `from`, `to`, paging; newest first. Returns `Page<Order>`.
 
-**`PATCH /api/orders/[id]`**: body `{ status }`. Allowed: `pending -> preparing -> completed`, and `pending`/`preparing -> cancelled`. Others: **409 `INVALID_TRANSITION`**. Completed orders count as sales in the reports. The change is audited with the user and time. Only items that are not cancelled move; an order whose items are all cancelled answers **409 `INVALID_TRANSITION`**.
+**`PATCH /api/orders/[id]`**: body `{ status }`. Allowed: `pending -> preparing -> completed`, and `pending -> cancelled` (once preparing the customer pays; nothing can be cancelled, decided 2026-11-28). Others: **409 `INVALID_TRANSITION`**. Completed orders count as sales in the reports. The change is audited with the user and time. Only items that are not cancelled move; an order whose items are all cancelled answers **409 `INVALID_TRANSITION`**.
 
-**`POST /api/orders/[id]/cancel-items`**: body `{ items: [{ lineId, quantity }] }` (product items; `quantity` 1 to the item quantity). Cancels those items and their add-ons through `cancel_order_items` while the order is pending or preparing, returns their ingredients to stock and returns the updated `Order` (each item has its own `status`; the order `status` and `total` leave cancelled items out; the payment is unchanged, refunds are by hand). Errors: **400** bad body or quantity, **409 `CONFLICT`** not an active product item of the order, **409 `INVALID_TRANSITION`** order not pending/preparing, **404** unknown order. Audited as `order.cancel_items`.
+**`POST /api/orders/[id]/cancel-items`**: body `{ items: [{ lineId, quantity }], reason }` (product items; `quantity` 1 to the item quantity; `reason` required, trimmed, 1-100 characters). Cancels those items and their add-ons through `cancel_order_items` while the order is pending, keeps `reason` on the cancelled rows, returns their ingredients to stock and returns the updated `Order` (each item has its own `status` and `cancelReason`; the order `status` and `total` leave cancelled items out). The payment row is unchanged: the refund is the full subtotal of the cancelled items (nothing was made while pending), so amount paid = total + change + refunded; the POS and Admin order pages and the receipt show it as Refunded. The POS cancels a whole order through this endpoint too (all active items), so its reason is kept. Errors: **400** bad body, quantity or reason, **409 `CONFLICT`** not an active product item of the order, **409 `INVALID_TRANSITION`** order not pending, **404** unknown order. Audited as `order.cancel_items` with the items and reason.
 
 ### Offline sync
 

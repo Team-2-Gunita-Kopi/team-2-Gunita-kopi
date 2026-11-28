@@ -50,6 +50,8 @@ export const OrderSchema = z.object({
   discountAmount: z.number().nonnegative().default(0),
   paidAmount: z.number().nonnegative(),
   changeAmount: z.number().nonnegative().default(0),
+  /** Given back for cancelled items; paid = total + change + refunded. */
+  refundedAmount: z.number().nonnegative().optional(),
   paymentMethod: z.enum(["cash", "card", "qr_code", "other"]),
   createdAt: z.string(),
   createdBy: z.string(),

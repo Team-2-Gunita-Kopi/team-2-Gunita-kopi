@@ -5,17 +5,24 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Order, OrderStatus } from "@/contracts";
-import { ORDER_STATUS_LABEL, ORDER_TYPE_LABEL } from "@/contracts/ui";
+import {
+  CANCEL_REASONS,
+  ORDER_STATUS_LABEL,
+  ORDER_TYPE_LABEL,
+  canCancel as canCancelStatus,
+  orderRefund,
+} from "@/contracts/ui";
 import type { Order as ReceiptOrder } from "@/contracts/ui";
 import {
   Button,
   Dialog,
   Icon,
+  Input,
   Receipt,
+  Select,
   StatusBadge,
   formatPeso,
   formatQueueNumber,
-  useConfirm,
   useToast,
 } from "@/ui";
 import { USE_MOCKS } from "@/staff/lib/use-mocks";
@@ -74,7 +81,9 @@ function groupItems(order: Order) {
 
 function toReceiptOrder(order: Order): ReceiptOrder {
   const items: ReceiptOrder["items"] = [];
-  for (const line of [...order.items].sort((a, b) => a.lineId - b.lineId)) {
+  // Cancelled items are left out; the Refunded line makes paid = total + change + refunded.
+  const active = order.items.filter((line) => line.status !== "cancelled");
+  for (const line of active.sort((a, b) => a.lineId - b.lineId)) {
     const parent = items[items.length - 1];
     if (line.isAddon && parent) {
       parent.addons = [
@@ -109,14 +118,12 @@ function toReceiptOrder(order: Order): ReceiptOrder {
     status: order.status,
     type: order.orderType ?? "dine-in",
     items,
-    // The receipt shows the sale as rung up, cancelled items included, so it matches the payment.
-    totalAmount:
-      Math.round(order.items.reduce((sum, line) => sum + line.subtotal, 0) * 100) /
-      100,
+    totalAmount: order.total,
     taxAmount: 0,
     discountAmount: 0,
     paidAmount: order.payment?.amountPaid ?? 0,
     changeAmount: order.payment?.changeAmount ?? 0,
+    refundedAmount: orderRefund(order.items).amount,
     paymentMethod: receiptPaymentMethod(order.payment?.paymentMethod ?? "cash"),
     createdAt: order.orderDate,
     createdBy: String(order.cashierId ?? ""),
@@ -129,13 +136,15 @@ export default function PosOrderDetailsPage() {
   const orderId = Number(id);
   const validId = Number.isSafeInteger(orderId) && orderId > 0;
   const toast = useToast();
-  const confirm = useConfirm();
   const client = useQueryClient();
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [showSlip, setShowSlip] = useState(false);
-  const [cancelOpen, setCancelOpen] = useState(false);
+  // Which cancel pop-up is open: chosen items, or the whole order.
+  const [cancelMode, setCancelMode] = useState<"items" | "order" | null>(null);
   // Items ticked in the Cancel items pop-up: lineId -> how many to cancel.
   const [picked, setPicked] = useState<Record<number, number>>({});
+  const [reason, setReason] = useState("");
+  const [reasonNote, setReasonNote] = useState("");
   const orderQuery = useQuery({
     queryKey: ["pos-order", orderId],
     enabled: !USE_MOCKS && validId,
@@ -148,12 +157,24 @@ export default function PosOrderDetailsPage() {
     [order],
   );
   const nextStatus = order ? NEXT_STATUS[order.status] : undefined;
-  const canCancel =
-    order?.status === "pending" || order?.status === "preparing";
+  // Only while pending: once preparing the customer pays for the order.
+  const canCancel = order ? canCancelStatus(order.status) : false;
   const activeItems = items.filter(({ item }) => item.status !== "cancelled");
   const activeUnits = activeItems.reduce((n, { item }) => n + item.quantity, 0);
   // With one item left, "Cancel order" does the same thing.
   const canCancelItems = canCancel && activeUnits > 1;
+  const refund = useMemo(
+    () => (order ? orderRefund(order.items) : { amount: 0, reason: null }),
+    [order],
+  );
+  const reasonText = reason === "Other" ? reasonNote.trim() : reason;
+
+  const openCancel = (mode: "items" | "order") => {
+    setPicked({});
+    setReason("");
+    setReasonNote("");
+    setCancelMode(mode);
+  };
 
   const changeStatus = async (status: OrderStatus) => {
     if (!order) return;
@@ -170,27 +191,23 @@ export default function PosOrderDetailsPage() {
     }
   };
 
-  const cancelOrder = async () => {
-    if (!order) return;
-    const accepted = await confirm({
-      title: "Cancel order",
-      message: `Cancel order ${formatQueueNumber(order.orderId)}? Cancelled orders cannot be reopened.`,
-      confirmLabel: "Cancel order",
-      danger: true,
-    });
-    if (accepted) await changeStatus("cancelled");
-  };
-
+  // The whole order is cancelled as all of its items, so its reason and refund are kept the same way.
   const cancelItems = async () => {
-    if (!order) return;
-    const chosen = Object.entries(picked).map(([lineId, quantity]) => ({
-      lineId: Number(lineId),
-      quantity,
-    }));
+    if (!order || !cancelMode) return;
+    const chosen =
+      cancelMode === "order"
+        ? activeItems.map(({ item }) => ({
+            lineId: item.lineId,
+            quantity: item.quantity,
+          }))
+        : Object.entries(picked).map(([lineId, quantity]) => ({
+            lineId: Number(lineId),
+            quantity,
+          }));
     try {
-      const updated = await cancelOrderItems(order.orderId, chosen);
-      toast("Items cancelled.");
-      setCancelOpen(false);
+      const updated = await cancelOrderItems(order.orderId, chosen, reasonText);
+      toast(cancelMode === "order" ? "Order cancelled." : "Items cancelled.");
+      setCancelMode(null);
       setPicked({});
       client.setQueryData(["pos-order", orderId], updated);
       await client.invalidateQueries({ queryKey: ["pos-orders"] });
@@ -280,10 +297,7 @@ export default function PosOrderDetailsPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => {
-                setPicked({});
-                setCancelOpen(true);
-              }}
+              onClick={() => openCancel("items")}
             >
               Cancel items
             </Button>
@@ -292,7 +306,7 @@ export default function PosOrderDetailsPage() {
             <Button
               size="sm"
               variant="danger"
-              onClick={() => void cancelOrder()}
+              onClick={() => openCancel("order")}
             >
               Cancel order
             </Button>
@@ -389,6 +403,18 @@ export default function PosOrderDetailsPage() {
                   {formatPeso(order.payment.changeAmount)}
                 </dd>
               </div>
+              {refund.amount > 0 ? (
+                <div>
+                  <dt>Refunded</dt>
+                  <dd className="num">{formatPeso(refund.amount)}</dd>
+                </div>
+              ) : null}
+              {refund.amount > 0 && refund.reason ? (
+                <div>
+                  <dt>Refund reason</dt>
+                  <dd>{refund.reason}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt>Date</dt>
                 <dd>{displayDateTime(order.payment.dateTime)}</dd>
@@ -409,62 +435,92 @@ export default function PosOrderDetailsPage() {
       </div>
 
       <Dialog
-        isOpen={cancelOpen}
-        onClose={() => setCancelOpen(false)}
-        title={`Cancel items — Order ${formatQueueNumber(order.orderId)}`}
+        isOpen={cancelMode !== null}
+        onClose={() => setCancelMode(null)}
+        title={`${cancelMode === "order" ? "Cancel order" : "Cancel items"} — Order ${formatQueueNumber(order.orderId)}`}
       >
-        <div className="order-detail-items">
-          {activeItems.map(({ item }) => (
-            <div className="order-detail-item" key={item.lineId}>
-              <label className="order-detail-item-description">
-                <span>
+        {cancelMode === "order" ? (
+          <p>
+            The customer gets back {formatPeso(order.total)}. Cancelled orders
+            cannot be reopened.
+          </p>
+        ) : (
+          <div className="order-detail-items">
+            {activeItems.map(({ item }) => (
+              <div className="order-detail-item" key={item.lineId}>
+                <label className="order-detail-item-description">
+                  <span>
+                    <input
+                      type="checkbox"
+                      checked={item.lineId in picked}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setPicked((current) => {
+                          const next = { ...current };
+                          if (checked) next[item.lineId] = item.quantity;
+                          else delete next[item.lineId];
+                          return next;
+                        });
+                      }}
+                    />{" "}
+                    {item.quantity}× {item.name ?? "Item"}
+                  </span>
+                </label>
+                {item.lineId in picked && item.quantity > 1 ? (
                   <input
-                    type="checkbox"
-                    checked={item.lineId in picked}
+                    type="number"
+                    min={1}
+                    max={item.quantity}
+                    aria-label={`How many ${item.name ?? "items"} to cancel`}
+                    value={picked[item.lineId]}
                     onChange={(e) => {
-                      const checked = e.target.checked;
-                      setPicked((current) => {
-                        const next = { ...current };
-                        if (checked) next[item.lineId] = item.quantity;
-                        else delete next[item.lineId];
-                        return next;
-                      });
+                      const value = Math.min(
+                        item.quantity,
+                        Math.max(1, Math.trunc(Number(e.target.value)) || 1),
+                      );
+                      setPicked((current) => ({
+                        ...current,
+                        [item.lineId]: value,
+                      }));
                     }}
-                  />{" "}
-                  {item.quantity}× {item.name ?? "Item"}
-                </span>
-              </label>
-              {item.lineId in picked && item.quantity > 1 ? (
-                <input
-                  type="number"
-                  min={1}
-                  max={item.quantity}
-                  aria-label={`How many ${item.name ?? "items"} to cancel`}
-                  value={picked[item.lineId]}
-                  onChange={(e) => {
-                    const value = Math.min(
-                      item.quantity,
-                      Math.max(1, Math.trunc(Number(e.target.value)) || 1),
-                    );
-                    setPicked((current) => ({ ...current, [item.lineId]: value }));
-                  }}
-                />
-              ) : (
-                <span className="num">{formatPeso(item.subtotal)}</span>
-              )}
-            </div>
-          ))}
-        </div>
+                  />
+                ) : (
+                  <span className="num">{formatPeso(item.subtotal)}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <Select
+          label="Reason"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          options={[
+            { value: "", label: "Choose a reason" },
+            ...CANCEL_REASONS.map((r) => ({ value: r, label: r })),
+          ]}
+        />
+        {reason === "Other" ? (
+          <Input
+            label="Note"
+            maxLength={100}
+            value={reasonNote}
+            onChange={(e) => setReasonNote(e.target.value)}
+          />
+        ) : null}
         <div className="modal-actions">
-          <Button variant="outline" onClick={() => setCancelOpen(false)}>
-            Keep items
+          <Button variant="outline" onClick={() => setCancelMode(null)}>
+            {cancelMode === "order" ? "Keep order" : "Keep items"}
           </Button>
           <Button
             variant="danger"
-            disabled={Object.keys(picked).length === 0}
+            disabled={
+              !reasonText ||
+              (cancelMode === "items" && Object.keys(picked).length === 0)
+            }
             onClick={() => void cancelItems()}
           >
-            Cancel selected
+            {cancelMode === "order" ? "Cancel order" : "Cancel selected"}
           </Button>
         </div>
       </Dialog>

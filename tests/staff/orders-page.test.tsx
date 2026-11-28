@@ -45,6 +45,7 @@ const order: Order = {
       customization: "Less sugar",
       specialInstructions: "No lid",
       status: "pending",
+      cancelReason: null,
     },
     {
       lineId: 102,
@@ -58,6 +59,7 @@ const order: Order = {
       customization: null,
       specialInstructions: null,
       status: "pending",
+      cancelReason: null,
     },
   ],
   total: 170,
