@@ -230,7 +230,7 @@ function flattenOrders(orders: Order[]): OrderLineRow[] {
         cashier: order.cashierName ?? "—",
         type: order.orderType ? ORDER_TYPE_LABEL[order.orderType] : "—",
         orderDate: order.orderDate,
-        status: order.status,
+        status: item.status,
         product: item.name ?? "—",
         ingredient: item.isAddon ? (item.name ?? "—") : "—",
         addon: item.isAddon ? "Yes" : "No",

@@ -141,4 +141,23 @@ describe("Owner orders board", () => {
       screen.queryByRole("menuitem", { name: "Cancel order" }),
     ).not.toBeInTheDocument();
   });
+
+  // Each item has its own status: a cancelled item must not show the order's status (2026-11-28).
+  it("shows each item's own status, so a cancelled item is not shown as completed", async () => {
+    const mixed: Order = {
+      ...order,
+      status: "completed",
+      items: [
+        { ...order.items[0]!, lineId: 40, isAddon: false, productId: 1, ingredientId: null, name: "Barkada", status: "cancelled" },
+        { ...order.items[0]!, lineId: 42, isAddon: false, productId: 2, ingredientId: null, name: "Hungarian", status: "completed" },
+      ],
+    };
+    ordersApi.listOrders.mockResolvedValue([mixed]);
+    renderWithProviders(<OrdersPage />);
+    const table = await screen.findByRole("table");
+    const barkada = (await within(table).findByText("Barkada")).closest("tr")!;
+    expect(within(barkada).getByText("Cancelled")).toBeInTheDocument();
+    const hungarian = within(table).getByText("Hungarian").closest("tr")!;
+    expect(within(hungarian).getByText("Completed")).toBeInTheDocument();
+  });
 });
