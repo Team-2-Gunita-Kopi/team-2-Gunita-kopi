@@ -30,6 +30,7 @@
   .rp-pairs{display:grid;grid-template-columns:max-content 1fr;gap:1mm 5mm;margin:0;}
   .rp-pairs dt{color:#555;}
   .rp-pairs dd{margin:0;font-weight:600;}
+  .rp-pairs dd.rp-write{border-bottom:1px solid #111;min-height:6mm;}
 
   .rp-section{margin-bottom:6mm;}
   .rp-keep{break-inside:avoid;}

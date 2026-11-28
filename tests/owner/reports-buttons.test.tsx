@@ -83,7 +83,13 @@ describe("Reports Print", () => {
     expect(doc.getByRole("heading", { level: 1, name: "Daily Sales Report" })).toBeInTheDocument();
     expect(doc.getByText("Gunita Kopi", { selector: ".rp-business" })).toBeInTheDocument();
     expect(doc.getAllByText("GK-RPT-20261128-AB12CD34").length).toBeGreaterThan(1);
-    expect(doc.getAllByText("Ana Reyes").length).toBeGreaterThan(0);
+    // The preparer writes their name by hand on the printed copy: every "Prepared by" is a blank line.
+    const preparedBy = doc.getAllByText("Prepared by", { selector: "dt" });
+    expect(preparedBy).toHaveLength(2);
+    preparedBy.forEach((dt) => {
+      expect(dt.nextElementSibling).toHaveClass("rp-write");
+      expect(dt.nextElementSibling!.textContent).toBe("");
+    });
     expect(doc.getByText("ana.owner · Owner / Admin")).toBeInTheDocument();
     expect(doc.getByText(manilaToday(), { selector: "dd" })).toBeInTheDocument();
 
@@ -96,14 +102,16 @@ describe("Reports Print", () => {
     expect(orders.textContent).toContain("Cancelled");
     expect(doc.getByText("Records included").nextSibling!.textContent).toBe("9");
 
-    const prepared = within(doc.getByRole("region", { name: "PREPARED BY" }));
-    expect(prepared.getByText("Name: Ana Reyes")).toBeInTheDocument();
+    const preparedRegion = doc.getByRole("region", { name: "PREPARED BY" });
+    const prepared = within(preparedRegion);
+    expect(preparedRegion.textContent).not.toContain("Ana Reyes");
+    expect(prepared.getByText(/^Name:/).querySelector("span")!.textContent).toBe("");
     expect(prepared.getByText("Position: Owner / Admin")).toBeInTheDocument();
     const approval = within(doc.getByRole("region", { name: "OWNER'S APPROVAL" }));
     expect(approval.getByText("Name: Ana Reyes")).toBeInTheDocument();
     expect(approval.getByText("Position: Owner")).toBeInTheDocument();
-    // Signature and date lines stay blank for handwriting: no image, no generated text.
-    expect(printDoc().querySelectorAll(".rp-sign-line span")).toHaveLength(4);
+    // Signature, date and the preparer's name lines stay blank for handwriting: no image, no generated text.
+    expect(printDoc().querySelectorAll(".rp-sign-line span")).toHaveLength(5);
     printDoc().querySelectorAll(".rp-sign-line span").forEach((s) => expect(s.textContent).toBe(""));
     expect(printDoc().querySelector("img, canvas, svg")).toBeNull();
   });
