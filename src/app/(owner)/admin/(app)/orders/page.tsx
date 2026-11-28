@@ -135,7 +135,7 @@ function flattenOrders(orders: Order[]): OrderLineRow[] {
                 ? "Pre-order"
                 : "—",
         orderDate: order.orderDate,
-        status: order.status,
+        status: item.status,
         product: item.name ?? "—",
         ingredient: item.isAddon ? (item.name ?? "—") : "—",
         addon: item.isAddon ? "Yes" : "No",
