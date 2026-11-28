@@ -1851,6 +1851,63 @@ describe("route coverage: one supplier and the users list", () => {
     expect(empty.status).toBe(400);
   });
 
+  // Suppliers are searched and filtered by place, so every address field is required (2026-11-28).
+  const ADDRESS = {
+    street: " 12 Mabini St. ",
+    barangay: "Poblacion",
+    city: "La Trinidad",
+    province: "Benguet",
+    zipCode: "2601",
+    region: "CAR (Cordillera Administrative Region)",
+  };
+  const ADDRESS_COLUMNS = {
+    street: "12 Mabini St.",
+    barangay: "Poblacion",
+    city: "La Trinidad",
+    province: "Benguet",
+    zip_code: "2601",
+    region: "CAR (Cordillera Administrative Region)",
+  };
+
+  it("POST /api/suppliers saves each address field and returns them", async () => {
+    onQuery = () => ({ data: { ...SUPPLIER, ...ADDRESS_COLUMNS, address: null } });
+    const r = await call(suppliers.POST(req("POST", "/api/suppliers", OWNER, { name: "Bean Co", ...ADDRESS }), undefined));
+    expect(r.status).toBe(201);
+    const insert = calls.find((c) => c.op === "insert" && c.table === "suppliers");
+    expect(insert?.payload).toMatchObject({ supplier_name: "Bean Co", ...ADDRESS_COLUMNS, address: null });
+    expect(r.body.data).toMatchObject({
+      street: "12 Mabini St.", barangay: "Poblacion", city: "La Trinidad", province: "Benguet",
+      zipCode: "2601", region: "CAR (Cordillera Administrative Region)", address: null,
+    });
+  });
+
+  it.each([
+    ["no address", { name: "Bean Co" }],
+    ["blank province", { name: "Bean Co", ...ADDRESS, province: "  " }],
+    ["5-digit ZIP", { name: "Bean Co", ...ADDRESS, zipCode: "26010" }],
+    ["unknown region", { name: "Bean Co", ...ADDRESS, region: "Region 99" }],
+  ])("POST /api/suppliers refuses %s before saving", async (_label, body) => {
+    const r = await call(suppliers.POST(req("POST", "/api/suppliers", OWNER, body), undefined));
+    expect(r.status).toBe(400);
+    expect(r.body.error.code).toBe("VALIDATION_ERROR");
+    expect(calls.some((c) => c.op === "insert" && c.table === "suppliers")).toBe(false);
+  });
+
+  // Why: half an address cannot be filtered on; the whole address replaces the old one-line text.
+  it("PATCH /api/suppliers/:id takes the whole address or none of it", async () => {
+    const half = await call(
+      supplierById.PATCH(req("PATCH", "/api/suppliers/6", OWNER, { city: "Baguio" }), params({ id: "6" })),
+    );
+    expect(half.status).toBe(400);
+    expect(calls.some((c) => c.op === "update" && c.table === "suppliers")).toBe(false);
+
+    onQuery = () => ({ data: { ...SUPPLIER, ...ADDRESS_COLUMNS, address: null } });
+    const whole = await call(supplierById.PATCH(req("PATCH", "/api/suppliers/6", OWNER, ADDRESS), params({ id: "6" })));
+    expect(whole.status).toBe(200);
+    const update = calls.find((c) => c.op === "update" && c.table === "suppliers");
+    expect(update?.payload).toEqual({ ...ADDRESS_COLUMNS, address: null });
+  });
+
   // Why: the account list is Owner-only (FR-47).
   it("GET /api/users lists accounts for the Owner only", async () => {
     onQuery = () => ({ data: [USER_ROW], count: 1 });

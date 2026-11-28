@@ -508,31 +508,49 @@ export type Database = {
       suppliers: {
         Row: {
           address: string | null;
+          barangay: string | null;
+          city: string | null;
           contact_number: string | null;
           contact_person: string | null;
           deleted_at: string | null;
+          province: string | null;
+          region: string | null;
           status: string;
+          street: string | null;
           supplier_id: number;
           supplier_name: string;
+          zip_code: string | null;
         };
         ComputedFields: never;
         Insert: {
           address?: string | null;
+          barangay?: string | null;
+          city?: string | null;
           contact_number?: string | null;
           contact_person?: string | null;
           deleted_at?: string | null;
+          province?: string | null;
+          region?: string | null;
           status?: string;
+          street?: string | null;
           supplier_id?: never;
           supplier_name: string;
+          zip_code?: string | null;
         };
         Update: {
           address?: string | null;
+          barangay?: string | null;
+          city?: string | null;
           contact_number?: string | null;
           contact_person?: string | null;
           deleted_at?: string | null;
+          province?: string | null;
+          region?: string | null;
           status?: string;
+          street?: string | null;
           supplier_id?: never;
           supplier_name?: string;
+          zip_code?: string | null;
         };
         Relationships: [];
       };

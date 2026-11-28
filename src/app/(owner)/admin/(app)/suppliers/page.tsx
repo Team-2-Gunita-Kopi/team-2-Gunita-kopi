@@ -2,8 +2,8 @@
 
 import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, DataTable, Dialog, Icon, Input, StatusBadge, useConfirm, useToast } from "@/ui";
-import type { Supplier } from "@/contracts";
+import { Button, DataTable, Dialog, Icon, Input, Select, StatusBadge, useConfirm, useToast } from "@/ui";
+import { PH_REGIONS, type Supplier } from "@/contracts";
 import { USE_MOCKS } from "@/owner/lib/use-mocks";
 import { createSupplier, deleteSupplier, listSuppliers, updateSupplier } from "@/owner/features/suppliers/api";
 import { listIngredients } from "@/owner/features/inventory/api";
@@ -14,9 +14,31 @@ interface SupplierRow extends Record<string, unknown> {
   contactPerson: string;
   phone: string;
   address: string;
+  city: string;
+  province: string;
+  /** Everything the search box matches, lower case. */
+  searchText: string;
   status: string;
   ingredients: number;
 }
+
+/** One line for the table; suppliers saved before the address fields show their old address. */
+function addressLine(s: Pick<Supplier, "street" | "barangay" | "city" | "province" | "zipCode" | "address">): string {
+  if (!s.street) return s.address ?? "";
+  return `${s.street}, ${s.barangay}, ${s.city}, ${s.province} ${s.zipCode}`;
+}
+
+/** Distinct values, ignoring case and spaces at the ends, sorted for a filter list. */
+function distinct(values: string[]): string[] {
+  const seen = new Map<string, string>();
+  for (const v of values) {
+    const t = v.trim();
+    if (t && !seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t);
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
+
+const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 const sampleSuppliers: SupplierRow[] = [
   {
@@ -24,7 +46,10 @@ const sampleSuppliers: SupplierRow[] = [
     name: "Benguet Coffee Roasters Co.",
     contactPerson: "Carlos Mendoza",
     phone: "+63 917 123 4567",
-    address: "La Trinidad, Benguet",
+    address: "Km. 5 Halsema Highway, Betag, La Trinidad, Benguet 2601",
+    city: "La Trinidad",
+    province: "Benguet",
+    searchText: "benguet coffee roasters co. carlos mendoza km. 5 halsema highway betag la trinidad benguet 2601",
     status: "active",
     ingredients: 3,
   },
@@ -33,13 +58,26 @@ const sampleSuppliers: SupplierRow[] = [
     name: "Dairy Fresh Laguna",
     contactPerson: "Maria Santos",
     phone: "+63 918 765 4321",
-    address: "Calamba, Laguna",
+    address: "National Highway, Parian, Calamba, Laguna 4027",
+    city: "Calamba",
+    province: "Laguna",
+    searchText: "dairy fresh laguna maria santos national highway parian calamba laguna 4027",
     status: "active",
     ingredients: 2,
   },
 ];
 
-const EMPTY = { name: "", contactPerson: "", contactNumber: "", address: "" };
+const EMPTY = {
+  name: "",
+  contactPerson: "",
+  contactNumber: "",
+  street: "",
+  barangay: "",
+  city: "",
+  province: "",
+  zipCode: "",
+  region: "",
+};
 
 export default function SuppliersPage() {
   const toast = useToast();
@@ -54,6 +92,9 @@ export default function SuppliersPage() {
   const [editing, setEditing] = useState<Supplier | "new" | null>(null);
   const [form, setForm] = useState(EMPTY);
   const [errorMessage, setErrorMessage] = useState("");
+  const [search, setSearch] = useState("");
+  const [provinceFilter, setProvinceFilter] = useState("");
+  const [cityFilter, setCityFilter] = useState("");
 
   const byId = new Map((suppliers.data ?? []).map((s) => [String(s.id), s]));
   const rows: SupplierRow[] = USE_MOCKS
@@ -63,10 +104,40 @@ export default function SuppliersPage() {
         name: s.name,
         contactPerson: s.contactPerson ?? "",
         phone: s.contactNumber ?? "",
-        address: s.address ?? "",
+        address: addressLine(s),
+        city: s.city ?? "",
+        province: s.province ?? "",
+        searchText: [
+          s.name,
+          s.contactPerson,
+          s.contactNumber,
+          s.street,
+          s.barangay,
+          s.city,
+          s.province,
+          s.zipCode,
+          s.region,
+          s.address,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase(),
         status: s.status,
         ingredients: ingredientCount.get(s.id) ?? 0,
       }));
+
+  const provinces = distinct(rows.map((r) => r.province));
+  // Cities of the chosen province only, so the two lists stay consistent.
+  const cities = distinct(
+    rows.filter((r) => !provinceFilter || same(r.province, provinceFilter)).map((r) => r.city),
+  );
+  const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const filteredRows = rows.filter(
+    (r) =>
+      words.every((w) => r.searchText.includes(w)) &&
+      (!provinceFilter || same(r.province, provinceFilter)) &&
+      (!cityFilter || same(r.city, cityFilter)),
+  );
 
   const open = (s: Supplier | "new") => {
     setErrorMessage("");
@@ -78,7 +149,12 @@ export default function SuppliersPage() {
             name: s.name,
             contactPerson: s.contactPerson ?? "",
             contactNumber: s.contactNumber ?? "",
-            address: s.address ?? "",
+            street: s.street ?? "",
+            barangay: s.barangay ?? "",
+            city: s.city ?? "",
+            province: s.province ?? "",
+            zipCode: s.zipCode ?? "",
+            region: s.region ?? "",
           },
     );
   };
@@ -89,8 +165,9 @@ export default function SuppliersPage() {
     e.preventDefault();
     setErrorMessage("");
     try {
-      if (editing === "new") await createSupplier(form);
-      else if (editing) await updateSupplier(editing.id, form);
+      const body = { ...form, region: form.region as (typeof PH_REGIONS)[number] };
+      if (editing === "new") await createSupplier(body);
+      else if (editing) await updateSupplier(editing.id, body);
       toast(editing === "new" ? "Supplier added." : "Supplier updated.");
       setEditing(null);
       await refresh();
@@ -133,8 +210,11 @@ export default function SuppliersPage() {
     await Promise.all([refresh(), client.invalidateQueries({ queryKey: ["ingredients"] })]);
   };
 
-  const set = (key: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm({ ...form, [key]: e.target.value });
+  const set =
+    (key: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setForm({ ...form, [key]: e.target.value });
+  // Suppliers saved before the address fields: show the old address while the Owner fills them in.
+  const oldAddress = editing && editing !== "new" && !editing.street ? editing.address : null;
 
   return (
     <div className="space-y-6">
@@ -148,6 +228,46 @@ export default function SuppliersPage() {
           Add supplier
         </Button>
       </header>
+
+      <div className="inventory-history-filters" aria-label="Supplier filters">
+        <label className="field">
+          Search
+          <input
+            type="search"
+            placeholder="Name, contact or address"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+        <label className="field">
+          Province
+          <select
+            value={provinceFilter}
+            onChange={(event) => {
+              setProvinceFilter(event.target.value);
+              setCityFilter("");
+            }}
+          >
+            <option value="">All</option>
+            {provinces.map((province) => (
+              <option key={province} value={province}>
+                {province}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          City / Municipality
+          <select value={cityFilter} onChange={(event) => setCityFilter(event.target.value)}>
+            <option value="">All</option>
+            {cities.map((city) => (
+              <option key={city} value={city}>
+                {city}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       {suppliers.error && (
         <p className="text-sm text-[var(--danger)]">
@@ -206,7 +326,8 @@ export default function SuppliersPage() {
             ),
           },
         ]}
-        data={rows}
+        data={filteredRows}
+        emptyMessage={rows.length > 0 ? "No suppliers match these filters." : undefined}
         keyExtractor={(row) => row.id}
       />
 
@@ -224,7 +345,33 @@ export default function SuppliersPage() {
           <Input label="Supplier Name" required maxLength={100} value={form.name} onChange={set("name")} />
           <Input label="Contact Person" maxLength={100} value={form.contactPerson} onChange={set("contactPerson")} />
           <Input label="Contact Number" maxLength={20} value={form.contactNumber} onChange={set("contactNumber")} />
-          <Input label="Address" maxLength={255} value={form.address} onChange={set("address")} />
+          {oldAddress ? <p className="muted">Old address: {oldAddress}</p> : null}
+          <div className="user-form-grid">
+            <Input label="Street / Building" required maxLength={150} value={form.street} onChange={set("street")} />
+            <Input label="Barangay" required maxLength={100} value={form.barangay} onChange={set("barangay")} />
+            <Input label="City / Municipality" required maxLength={100} value={form.city} onChange={set("city")} />
+            <Input label="Province" required maxLength={100} value={form.province} onChange={set("province")} />
+            <Input
+              label="ZIP Code"
+              required
+              inputMode="numeric"
+              pattern="[0-9]{4}"
+              title="4 digits"
+              maxLength={4}
+              value={form.zipCode}
+              onChange={set("zipCode")}
+            />
+            <Select
+              label="Region"
+              required
+              value={form.region}
+              onChange={set("region")}
+              options={[
+                { value: "", label: "Choose a region" },
+                ...PH_REGIONS.map((region) => ({ value: region, label: region })),
+              ]}
+            />
+          </div>
           <div className="flex justify-end space-x-2 pt-2">
             <Button type="button" variant="outline" onClick={() => setEditing(null)}>
               Cancel
