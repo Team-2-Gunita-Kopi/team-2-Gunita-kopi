@@ -105,13 +105,14 @@ describe("Reports Print", () => {
     const preparedRegion = doc.getByRole("region", { name: "PREPARED BY" });
     const prepared = within(preparedRegion);
     expect(preparedRegion.textContent).not.toContain("Ana Reyes");
+    expect(preparedRegion.textContent).not.toContain("Owner / Admin");
     expect(prepared.getByText(/^Name:/).querySelector("span")!.textContent).toBe("");
-    expect(prepared.getByText("Position: Owner / Admin")).toBeInTheDocument();
+    expect(prepared.getByText(/^Position:/).querySelector("span")!.textContent).toBe("");
     const approval = within(doc.getByRole("region", { name: "OWNER'S APPROVAL" }));
     expect(approval.getByText("Name: Ana Reyes")).toBeInTheDocument();
     expect(approval.getByText("Position: Owner")).toBeInTheDocument();
-    // Signature, date and the preparer's name lines stay blank for handwriting: no image, no generated text.
-    expect(printDoc().querySelectorAll(".rp-sign-line span")).toHaveLength(5);
+    // Signature, date and the preparer's name and position lines stay blank for handwriting: no image, no generated text.
+    expect(printDoc().querySelectorAll(".rp-sign-line span")).toHaveLength(6);
     printDoc().querySelectorAll(".rp-sign-line span").forEach((s) => expect(s.textContent).toBe(""));
     expect(printDoc().querySelector("img, canvas, svg")).toBeNull();
   });
