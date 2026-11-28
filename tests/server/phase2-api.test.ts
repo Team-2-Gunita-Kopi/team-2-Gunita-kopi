@@ -1306,29 +1306,43 @@ describe("orders and checkout", () => {
       ...lines7.map((l, i) => ({ ...l, status: statuses[i] })),
       { ...lines7[0], order_line_id: 3, product_id: 2, quantity: 1, unit_price: 60, subtotal: 60, customization: null,
         products: { product_name: "Cookie" }, status: statuses[2] },
-    ],
+    ].map((l) => ({ ...l, cancel_reason: l.status === "cancelled" ? "Wrong order" : null })),
   });
 
   it("cancels chosen items through cancel_order_items and audits it", async () => {
     onQuery = ordersDb;
     const r = await call(
       cancelItems.POST(
-        req("POST", "/api/orders/7/cancel-items", "barista-token", { items: [{ lineId: 1, quantity: 1 }] }),
+        req("POST", "/api/orders/7/cancel-items", "barista-token", {
+          items: [{ lineId: 1, quantity: 1 }],
+          reason: "  Customer changed mind ",
+        }),
         params({ id: "7" }),
       ),
     );
     expect(r.status).toBe(200);
     expect(rpcCalls).toEqual([
-      { name: "cancel_order_items", args: { p_order_id: 7, p_items: [{ line_id: 1, quantity: 1 }] } },
+      {
+        name: "cancel_order_items",
+        args: { p_order_id: 7, p_items: [{ line_id: 1, quantity: 1 }], p_reason: "Customer changed mind" },
+      },
     ]);
-    expect(audits).toEqual([[expect.anything(), "order.cancel_items", "orders", 7, { items: [{ lineId: 1, quantity: 1 }] }]]);
+    expect(audits).toEqual([
+      [
+        expect.anything(),
+        "order.cancel_items",
+        "orders",
+        7,
+        { items: [{ lineId: 1, quantity: 1 }], reason: "Customer changed mind" },
+      ],
+    ]);
     expect(r.body.data.orderId).toBe(7);
   });
 
   it("rejects an empty cancel-items request before touching the database", async () => {
     const r = await call(
       cancelItems.POST(
-        req("POST", "/api/orders/7/cancel-items", "barista-token", { items: [] }),
+        req("POST", "/api/orders/7/cancel-items", "barista-token", { items: [], reason: "Wrong order" }),
         params({ id: "7" }),
       ),
     );
@@ -1337,13 +1351,32 @@ describe("orders and checkout", () => {
     expect(rpcCalls).toHaveLength(0);
   });
 
+  // Every refund needs a reason the Owner can read later.
+  it("rejects a cancel without a reason before touching the database", async () => {
+    for (const body of [
+      { items: [{ lineId: 1, quantity: 1 }] },
+      { items: [{ lineId: 1, quantity: 1 }], reason: "   " },
+      { items: [{ lineId: 1, quantity: 1 }], reason: "x".repeat(101) },
+    ]) {
+      const r = await call(
+        cancelItems.POST(req("POST", "/api/orders/7/cancel-items", "barista-token", body), params({ id: "7" })),
+      );
+      expect(r.status).toBe(400);
+      expect(r.body.error.code).toBe("VALIDATION_ERROR");
+    }
+    expect(rpcCalls).toHaveLength(0);
+  });
+
   it("maps a refused item cancel to 409 INVALID_TRANSITION and audits nothing", async () => {
     onRpc = () => ({
-      error: { code: "P0001", message: "INVALID_TRANSITION: items can be cancelled only while the order is pending or preparing" },
+      error: { code: "P0001", message: "INVALID_TRANSITION: items can be cancelled only while the order is pending" },
     });
     const r = await call(
       cancelItems.POST(
-        req("POST", "/api/orders/7/cancel-items", "barista-token", { items: [{ lineId: 1, quantity: 1 }] }),
+        req("POST", "/api/orders/7/cancel-items", "barista-token", {
+          items: [{ lineId: 1, quantity: 1 }],
+          reason: "Wrong order",
+        }),
         params({ id: "7" }),
       ),
     );
@@ -1357,6 +1390,11 @@ describe("orders and checkout", () => {
     const r = await call(orderById.GET(req("GET", "/api/orders/7", "barista-token"), params({ id: "7" })));
     expect(r.body.data).toMatchObject({ status: "pending", total: 60 });
     expect(r.body.data.items.map((i: { status: string }) => i.status)).toEqual(["cancelled", "cancelled", "pending"]);
+    expect(r.body.data.items.map((i: { cancelReason: string | null }) => i.cancelReason)).toEqual([
+      "Wrong order",
+      "Wrong order",
+      null,
+    ]);
 
     onQuery = (c) => (c.table === "payments" ? payment7 : withStatus("cancelled", "cancelled", "cancelled"));
     const gone = await call(orderById.GET(req("GET", "/api/orders/7", "barista-token"), params({ id: "7" })));

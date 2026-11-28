@@ -1,7 +1,7 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import type { Order } from "@/contracts";
 import { renderWithProviders } from "@/owner/test/render";
 
@@ -41,6 +41,7 @@ const order: Order = {
       customization: "Scrambled egg",
       specialInstructions: null,
       status: "pending",
+      cancelReason: null,
     },
     {
       lineId: 102,
@@ -54,6 +55,7 @@ const order: Order = {
       customization: null,
       specialInstructions: null,
       status: "pending",
+      cancelReason: null,
     },
   ],
   total: 330,
@@ -123,5 +125,53 @@ describe("Order details page", () => {
 
     expect(screen.getByRole("dialog", { name: "Receipt" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Print" })).toBeInTheDocument();
+  });
+
+  // Once preparing, the customer pays for the order: the Owner cannot cancel it either.
+  it("offers no cancel once the order is preparing", async () => {
+    ordersApi.getOrder.mockResolvedValue({
+      ...order,
+      status: "preparing",
+      items: order.items.map((i) => ({ ...i, status: "preparing" as const })),
+    });
+    renderWithProviders(<OrderDetailsPage />);
+    await screen.findByRole("heading", { name: "Order 012" });
+    expect(screen.queryByRole("button", { name: "Cancel order" })).toBeNull();
+  });
+
+  // Paid 400 = total 330 + change 10 + refunded 60.
+  it("shows the refund of cancelled items to the Owner", async () => {
+    const user = userEvent.setup();
+    ordersApi.getOrder.mockResolvedValue({
+      ...order,
+      items: [
+        ...order.items,
+        {
+          ...order.items[0]!,
+          lineId: 103,
+          productId: 5,
+          name: "Ensaymada",
+          quantity: 1,
+          unitPrice: 60,
+          subtotal: 60,
+          customization: null,
+          status: "cancelled",
+          cancelReason: "Wrong order",
+        },
+      ],
+      payment: { ...order.payment!, changeAmount: 10 },
+    });
+    renderWithProviders(<OrderDetailsPage />);
+    await screen.findByRole("heading", { name: "Order 012" });
+
+    const payment = screen.getByRole("heading", { name: "Payment" }).nextElementSibling as HTMLElement;
+    expect(within(payment).getByText("Refunded").nextElementSibling).toHaveTextContent("₱60.00");
+    expect(within(payment).getByText("Refund reason").nextElementSibling).toHaveTextContent("Wrong order");
+
+    await user.click(screen.getByRole("button", { name: "Receipt" }));
+    const receipt = screen.getByRole("dialog", { name: "Receipt" });
+    expect(within(receipt).queryByText(/Ensaymada/)).toBeNull();
+    expect(within(receipt).getByText("Total").closest("tr")).toHaveTextContent("₱330.00");
+    expect(within(receipt).getByText("Refunded").closest("tr")).toHaveTextContent("₱60.00");
   });
 });

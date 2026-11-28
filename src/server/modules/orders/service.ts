@@ -99,7 +99,7 @@ async function namedStockConflict(user: AuthenticatedUser, err: AppError): Promi
 // --- Reading orders -----------------------------------------------------------------
 
 const LINE_SELECT =
-  "order_line_id, order_id, client_tx_id, user_id, product_id, ingredient_id, is_addon, quantity, unit_price, subtotal, order_type, order_date, status, customization, special_instructions, products(product_name), ingredients(ingredient_name), users(full_name)";
+  "order_line_id, order_id, client_tx_id, user_id, product_id, ingredient_id, is_addon, quantity, unit_price, subtotal, order_type, order_date, status, cancel_reason, customization, special_instructions, products(product_name), ingredients(ingredient_name), users(full_name)";
 
 /** Loads whole orders (all rows plus payment), in the order of `orderIds`. */
 async function loadOrders(
@@ -155,6 +155,7 @@ async function loadOrders(
       customization: r.customization,
       specialInstructions: r.special_instructions,
       status: r.status as OrderStatus,
+      cancelReason: r.cancel_reason,
     });
     if (r.status !== "cancelled") {
       order.total = Math.round((order.total + r.subtotal) * 100) / 100;
@@ -217,7 +218,7 @@ export async function listOrders(
 
 /**
  * Moves every item of the order that is not cancelled to the new status. The database enforces
- * the transitions (pending -> preparing -> completed, pending/preparing -> cancelled) and answers
+ * the transitions (pending -> preparing -> completed, pending -> cancelled) and answers
  * INVALID_TRANSITION (409) otherwise. Who changed it and when goes to the audit log.
  */
 export async function updateOrderStatus(
@@ -246,20 +247,25 @@ export async function updateOrderStatus(
 }
 
 /**
- * Cancels chosen items (or part of an item's quantity) of a pending/preparing order through
- * cancel_order_items, which also cancels their add-ons and returns their stock in one transaction.
- * Refunds are handled by hand: the payment is not changed.
+ * Cancels chosen items (or part of an item's quantity) of a pending order through
+ * cancel_order_items, which also cancels their add-ons, keeps the reason and returns their stock in
+ * one transaction. The refund is the full price of the cancelled items (nothing was made yet); the
+ * payment row is not changed.
  */
 export async function cancelOrderItems(
   user: AuthenticatedUser,
   orderId: number,
-  items: CancelOrderItemsRequest["items"],
+  { items, reason }: CancelOrderItemsRequest,
 ): Promise<Order> {
   const { error } = await user.supabaseClient.rpc("cancel_order_items", {
     p_order_id: orderId,
     p_items: items.map((i) => ({ line_id: i.lineId, quantity: i.quantity })),
+    p_reason: reason,
   });
   if (error) throw dbError(error);
-  await auditAction(user, "order.cancel_items", "orders", orderId, { items });
+  await auditAction(user, "order.cancel_items", "orders", orderId, {
+    items,
+    reason,
+  });
   return getOrder(user, orderId);
 }

@@ -20,8 +20,39 @@ export function nextStatus(s: OrderStatus): OrderStatus | null {
   return null;
 }
 
+/** Only while pending: once preparing the customer pays for the order (decided 2026-11-28). */
 export function canCancel(s: OrderStatus): boolean {
-  return s === "pending" || s === "preparing";
+  return s === "pending";
+}
+
+/** Reasons offered when items are cancelled; "Other" asks for a short note instead. */
+export const CANCEL_REASONS = [
+  "Customer changed mind",
+  "Wrong order",
+  "Item unavailable",
+  "Other",
+] as const;
+
+/**
+ * Refund of an order: the full price of every cancelled line (items are cancelled only while
+ * pending, so nothing was made), and the reasons given, in the order they were cancelled.
+ */
+export function orderRefund(
+  lines: {
+    status: OrderStatus;
+    subtotal: number;
+    cancelReason?: string | null;
+  }[],
+): { amount: number; reason: string | null } {
+  const cancelled = lines.filter((l) => l.status === "cancelled");
+  const amount =
+    Math.round(cancelled.reduce((sum, l) => sum + l.subtotal, 0) * 100) / 100;
+  const reasons = [
+    ...new Set(
+      cancelled.flatMap((l) => (l.cancelReason ? [l.cancelReason] : [])),
+    ),
+  ];
+  return { amount, reason: reasons.length ? reasons.join("; ") : null };
 }
 
 /** Queue number using LOCAL date parts; seq resets when the day changes. */

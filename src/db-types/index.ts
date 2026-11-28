@@ -173,6 +173,7 @@ export type Database = {
       };
       orders: {
         Row: {
+          cancel_reason: string | null;
           client_tx_id: string;
           customization: string | null;
           ingredient_id: number | null;
@@ -191,6 +192,7 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          cancel_reason?: string | null;
           client_tx_id: string;
           customization?: string | null;
           ingredient_id?: number | null;
@@ -208,6 +210,7 @@ export type Database = {
           user_id?: number | null;
         };
         Update: {
+          cancel_reason?: string | null;
           client_tx_id?: string;
           customization?: string | null;
           ingredient_id?: number | null;
@@ -696,7 +699,7 @@ export type Database = {
       app_role: { Args: Record<PropertyKey, never>; Returns: string };
       app_user_id: { Args: Record<PropertyKey, never>; Returns: number };
       cancel_order_items: {
-        Args: { p_items: Json; p_order_id: number };
+        Args: { p_items: Json; p_order_id: number; p_reason?: string };
         Returns: undefined;
       };
       create_barista_ingredient: {

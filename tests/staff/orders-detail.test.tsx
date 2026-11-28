@@ -42,6 +42,7 @@ const order: Order = {
       customization: "Scrambled egg",
       specialInstructions: null,
       status: "pending",
+      cancelReason: null,
     },
     {
       lineId: 100,
@@ -55,6 +56,7 @@ const order: Order = {
       customization: "Heated",
       specialInstructions: null,
       status: "pending",
+      cancelReason: null,
     },
   ],
   total: 420,
@@ -114,22 +116,62 @@ describe("Barista order details page", () => {
     ).toBeInTheDocument();
   });
 
-  it("confirms cancellation before updating the order", async () => {
+  // A refund needs a reason; the whole order is cancelled as all of its items so the reason is kept.
+  it("asks for a reason before cancelling the whole order", async () => {
     const user = userEvent.setup();
+    ordersApi.cancelOrderItems
+      .mockReset()
+      .mockResolvedValue({ ...order, status: "cancelled", total: 0 });
     renderWithProviders(<PosOrderDetailsPage />);
     await screen.findByRole("heading", { name: "Order 011" });
 
     await user.click(screen.getByRole("button", { name: "Cancel order" }));
-    const confirmation = await screen.findByRole("dialog", {
-      name: "Cancel order",
+    const dialog = await screen.findByRole("dialog", {
+      name: "Cancel order — Order 011",
     });
-    expect(ordersApi.updateOrderStatus).not.toHaveBeenCalled();
-    await user.click(
-      within(confirmation).getByRole("button", { name: "Cancel order" }),
+    expect(within(dialog).getByText(/gets back ₱420\.00/)).toBeInTheDocument();
+    const submit = within(dialog).getByRole("button", { name: "Cancel order" });
+    expect(submit).toBeDisabled();
+    await user.selectOptions(
+      within(dialog).getByRole("combobox", { name: "Reason" }),
+      "Customer changed mind",
     );
+    await user.click(submit);
 
     await waitFor(() => {
-      expect(ordersApi.updateOrderStatus).toHaveBeenCalledWith(11, "cancelled");
+      expect(ordersApi.cancelOrderItems).toHaveBeenCalledWith(
+        11,
+        [
+          { lineId: 99, quantity: 2 },
+          { lineId: 100, quantity: 2 },
+        ],
+        "Customer changed mind",
+      );
+    });
+    expect(await screen.findByText("Order cancelled.")).toBeInTheDocument();
+    expect(ordersApi.updateOrderStatus).not.toHaveBeenCalled();
+  });
+
+  it("asks for a note when the reason is Other", async () => {
+    const user = userEvent.setup();
+    ordersApi.cancelOrderItems.mockReset().mockResolvedValue(order);
+    renderWithProviders(<PosOrderDetailsPage />);
+    await screen.findByRole("heading", { name: "Order 011" });
+
+    await user.click(screen.getByRole("button", { name: "Cancel order" }));
+    const dialog = await screen.findByRole("dialog", { name: "Cancel order — Order 011" });
+    await user.selectOptions(within(dialog).getByRole("combobox", { name: "Reason" }), "Other");
+    const submit = within(dialog).getByRole("button", { name: "Cancel order" });
+    expect(submit).toBeDisabled();
+    await user.type(within(dialog).getByRole("textbox", { name: "Note" }), " Spilled by rider ");
+    await user.click(submit);
+
+    await waitFor(() => {
+      expect(ordersApi.cancelOrderItems).toHaveBeenCalledWith(
+        11,
+        expect.any(Array),
+        "Spilled by rider",
+      );
     });
   });
 
@@ -147,7 +189,9 @@ describe("Barista order details page", () => {
   // A customer may cancel one item, not the whole order (design 2026-11-28).
   const ensaymadaCancelled: Order = {
     ...order,
-    items: order.items.map((i) => (i.lineId === 100 ? { ...i, status: "cancelled" } : i)),
+    items: order.items.map((i) =>
+      i.lineId === 100 ? { ...i, status: "cancelled", cancelReason: "Customer changed mind" } : i,
+    ),
     total: 280,
   };
 
@@ -162,10 +206,19 @@ describe("Barista order details page", () => {
     const submit = within(dialog).getByRole("button", { name: "Cancel selected" });
     expect(submit).toBeDisabled();
     await user.click(within(dialog).getByRole("checkbox", { name: "2× Ensaymada" }));
+    expect(submit).toBeDisabled();
+    await user.selectOptions(
+      within(dialog).getByRole("combobox", { name: "Reason" }),
+      "Customer changed mind",
+    );
     await user.click(submit);
 
     await waitFor(() => {
-      expect(ordersApi.cancelOrderItems).toHaveBeenCalledWith(11, [{ lineId: 100, quantity: 2 }]);
+      expect(ordersApi.cancelOrderItems).toHaveBeenCalledWith(
+        11,
+        [{ lineId: 100, quantity: 2 }],
+        "Customer changed mind",
+      );
     });
     expect(await screen.findByText("Items cancelled.")).toBeInTheDocument();
     expect(screen.getByText("Cancelled")).toBeInTheDocument();
@@ -185,10 +238,15 @@ describe("Barista order details page", () => {
     const howMany = within(dialog).getByRole("spinbutton", { name: "How many Longsilog to cancel" });
     expect(howMany).toHaveValue(2);
     fireEvent.change(howMany, { target: { value: "1" } });
+    await user.selectOptions(within(dialog).getByRole("combobox", { name: "Reason" }), "Wrong order");
     await user.click(within(dialog).getByRole("button", { name: "Cancel selected" }));
 
     await waitFor(() => {
-      expect(ordersApi.cancelOrderItems).toHaveBeenCalledWith(11, [{ lineId: 99, quantity: 1 }]);
+      expect(ordersApi.cancelOrderItems).toHaveBeenCalledWith(
+        11,
+        [{ lineId: 99, quantity: 1 }],
+        "Wrong order",
+      );
     });
   });
 
@@ -207,14 +265,45 @@ describe("Barista order details page", () => {
     expect(screen.queryByRole("button", { name: "Cancel items" })).toBeNull();
   });
 
-  it("keeps the receipt total equal to the sale that was paid", async () => {
+  // Once preparing, the customer pays for the order: nothing can be cancelled (decided 2026-11-28).
+  it("offers no cancel once the order is preparing", async () => {
+    ordersApi.getOrder.mockResolvedValue({
+      ...order,
+      status: "preparing",
+      items: order.items.map((i) => ({ ...i, status: "preparing" as const })),
+    });
+    renderWithProviders(<PosOrderDetailsPage />);
+    await screen.findByRole("heading", { name: "Order 011" });
+    expect(screen.getByRole("button", { name: "Preparing → Completed" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel items" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel order" })).toBeNull();
+  });
+
+  // Paid 500 = total 280 + change 80 + refunded 140, so the numbers on paper add up.
+  it("shows the refund on the receipt and in the payment details", async () => {
     const user = userEvent.setup();
     ordersApi.getOrder.mockResolvedValue(ensaymadaCancelled);
     renderWithProviders(<PosOrderDetailsPage />);
     await screen.findByRole("heading", { name: "Order 011" });
 
+    const payment = screen.getByRole("heading", { name: "Payment" }).nextElementSibling as HTMLElement;
+    expect(within(payment).getByText("Refunded").nextElementSibling).toHaveTextContent("₱140.00");
+    expect(within(payment).getByText("Refund reason").nextElementSibling).toHaveTextContent(
+      "Customer changed mind",
+    );
+
     await user.click(screen.getByRole("button", { name: "Receipt" }));
     const receipt = screen.getByRole("dialog", { name: "Receipt" });
-    expect(within(receipt).getAllByText("₱420.00").length).toBeGreaterThan(0);
+    expect(within(receipt).queryByText(/Ensaymada/)).toBeNull();
+    expect(within(receipt).getByText("Total").closest("tr")).toHaveTextContent("₱280.00");
+    expect(within(receipt).getByText("Change").closest("tr")).toHaveTextContent("₱80.00");
+    expect(within(receipt).getByText("Refunded").closest("tr")).toHaveTextContent("₱140.00");
+  });
+
+  it("shows no refund rows when nothing was cancelled", async () => {
+    renderWithProviders(<PosOrderDetailsPage />);
+    await screen.findByRole("heading", { name: "Order 011" });
+    expect(screen.queryByText("Refunded")).toBeNull();
+    expect(screen.queryByText("Refund reason")).toBeNull();
   });
 });

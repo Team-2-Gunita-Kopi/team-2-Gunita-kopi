@@ -141,9 +141,9 @@ const apiOrder: ApiOrder = {
   cashierId: 2,
   cashierName: "Bea",
   items: [
-    { lineId: 1, productId: 12, ingredientId: null, isAddon: false, name: "Spanish Latte", quantity: 2, unitPrice: 140, subtotal: 280, customization: "Sugar 50%", specialInstructions: null, status: "pending" },
-    { lineId: 2, productId: null, ingredientId: 7, isAddon: true, name: "Vanilla syrup", quantity: 2, unitPrice: 15, subtotal: 30, customization: null, specialInstructions: null, status: "pending" },
-    { lineId: 3, productId: 15, ingredientId: null, isAddon: false, name: "Croissant", quantity: 1, unitPrice: 85, subtotal: 85, customization: null, specialInstructions: "Heated", status: "pending" },
+    { lineId: 1, productId: 12, ingredientId: null, isAddon: false, name: "Spanish Latte", quantity: 2, unitPrice: 140, subtotal: 280, customization: "Sugar 50%", specialInstructions: null, status: "pending", cancelReason: null },
+    { lineId: 2, productId: null, ingredientId: 7, isAddon: true, name: "Vanilla syrup", quantity: 2, unitPrice: 15, subtotal: 30, customization: null, specialInstructions: null, status: "pending", cancelReason: null },
+    { lineId: 3, productId: 15, ingredientId: null, isAddon: false, name: "Croissant", quantity: 1, unitPrice: 85, subtotal: 85, customization: null, specialInstructions: "Heated", status: "pending", cancelReason: null },
   ],
   total: 395,
   payment: { amountPaid: 500, changeAmount: 105, paymentMethod: "cash", receivedBy: 2, dateTime: "2026-11-18T09:30:00.000Z" },

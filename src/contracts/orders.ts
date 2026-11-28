@@ -79,6 +79,8 @@ export const OrderLineSchema = z.object({
   specialInstructions: z.string().nullable(),
   /** Each item has its own status: one item can be cancelled while the rest of the order continues. */
   status: OrderStatusSchema,
+  /** Why the item was cancelled (picked at cancel time); null when not cancelled or not recorded. */
+  cancelReason: z.string().nullable(),
 });
 export type OrderLine = z.infer<typeof OrderLineSchema>;
 
@@ -133,8 +135,9 @@ export type UpdateOrderStatusRequest = z.infer<
   typeof UpdateOrderStatusRequestSchema
 >;
 
-/** POST /api/orders/{id}/cancel-items: product items to cancel, and how many of each. */
+/** POST /api/orders/{id}/cancel-items: product items to cancel, how many of each, and why. */
 export const CancelOrderItemsRequestSchema = z.object({
+  reason: z.string().trim().min(1, "Choose a reason").max(100),
   items: z
     .array(
       z.object({

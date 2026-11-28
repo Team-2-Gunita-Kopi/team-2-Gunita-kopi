@@ -123,6 +123,14 @@ export function Receipt({
                         {formatPeso(order.changeAmount)}
                       </td>
                     </tr>
+                    {order.refundedAmount ? (
+                      <tr>
+                        <td className="muted">Refunded</td>
+                        <td className="r muted">
+                          {formatPeso(order.refundedAmount)}
+                        </td>
+                      </tr>
+                    ) : null}
                   </>
                 ) : (
                   <tr>

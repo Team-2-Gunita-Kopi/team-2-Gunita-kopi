@@ -47,9 +47,10 @@ export function updateOrderStatus(
 export function cancelOrderItems(
   orderId: number,
   items: { lineId: number; quantity: number }[],
+  reason: string,
 ): Promise<Order> {
   return apiData(`/api/orders/${orderId}/cancel-items`, OrderSchema, {
     method: "POST",
-    body: JSON.stringify({ items }),
+    body: JSON.stringify({ items, reason }),
   });
 }
